@@ -91,7 +91,43 @@ ROUTES: list[tuple[str, str, bool]] = [
     (r"foco\s+por\s+(\d+)\s*h",           "modules.productivity:focus_start",   False),
     (r"(cancela|para)\s+o\s+timer",       "modules.productivity:focus_stop",    False),
     (r"(quanto\s+tempo|status)\s+(do\s+)?timer", "modules.productivity:focus_status", False),
+
+    # Meta
+    (r"ajuda|help|\?",                    "core.orchestrator:list_commands",    False),
 ]
+
+
+def list_commands(*_) -> str:
+    """Lista todos os comandos disponíveis dinamicamente a partir de ROUTES."""
+    seen_handlers = {}
+    for pattern, handler, _ in ROUTES:
+        if handler not in seen_handlers:
+            seen_handlers[handler] = pattern
+
+    lines = ["Comandos disponíveis:\n"]
+    current_group = ""
+    for handler, pattern in seen_handlers.items():
+        group = handler.split(".")[0] if "." in handler else handler
+        if group != current_group:
+            current_group = group
+            group_label = {
+                "modules": handler.split(":")[0].replace("modules.", ""),
+                "output": "overlay",
+                "core": "sistema",
+            }.get(handler.split(".")[0], group)
+            lines.append(f"\n  [{group_label.upper()}]")
+        # Simplifica o padrão para leitura humana
+        readable = (
+            pattern.replace(r"\s+", " ")
+                   .replace(r"\s*", "")
+                   .replace("?", "")
+                   .replace("(", "").replace(")", "")
+                   .replace("|", "/")
+                   .strip()
+        )
+        lines.append(f"    {readable}")
+
+    return "\n".join(lines)
 
 
 class Orchestrator:
