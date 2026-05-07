@@ -1,0 +1,189 @@
+"""
+core/orchestrator.py — Roteador central de comandos
+Recebe texto (voz ou CLI), identifica a intenção e despacha ao módulo correto.
+"""
+
+import re
+import logging
+from typing import Optional, Callable
+
+from core.config import Config
+from core.profiles import ProfileManager
+from output.tts import TTS
+from output.notifier import notify
+
+
+logger = logging.getLogger(__name__)
+
+
+# ── Importações lazy (evita falha se dependência ausente) ──────────────
+def _import_module(name: str):
+    try:
+        import importlib
+        return importlib.import_module(name)
+    except ImportError as e:
+        logger.warning(f"Módulo {name} não disponível: {e}")
+        return None
+
+
+# ── Tabela de rotas ────────────────────────────────────────────────────
+# (padrão regex, handler, requer_confirmação)
+ROUTES: list[tuple[str, str, bool]] = [
+    # Sistema
+    (r"abre?\s+(.+)",                     "modules.system_control:open_app",    False),
+    (r"fecha?\s+(.+)",                    "modules.system_control:close_app",   True),
+    (r"volume\s+(\d+)",                   "modules.system_control:set_volume",  False),
+    (r"(aumenta|sobe)\s+o\s+brilho",      "modules.system_control:brightness_up",   False),
+    (r"(diminui|baixa)\s+o\s+brilho",     "modules.system_control:brightness_down", False),
+    (r"(muta|silencia)\s+o?\s*(som|áudio)","modules.system_control:mute",       False),
+    (r"(lista|mostra)\s+processos",       "modules.system_control:list_processes", False),
+
+    # Transcrição
+    (r"(começa|inicia|start)\s+transcri", "modules.transcription:start",        False),
+    (r"(para|stop)\s+transcri",           "modules.transcription:stop",         False),
+    (r"mostra\s+(o\s+que\s+foi\s+falado|a\s+transcrição)", "modules.transcription:show_last", False),
+
+    # Resumo / IA
+    (r"(resume|resumo)\s+(o\s+que\s+foi\s+falado|a\s+reunião|a\s+transcrição)", "modules.summarizer:summarize_last", False),
+    (r"resumo\s+detalhado",               "modules.summarizer:summarize_detailed", False),
+    (r"(explica?|o\s+que\s+é)\s+(.+)",   "modules.summarizer:explain",         False),
+
+    # Pesquisa
+    (r"(pesquisa|busca\s+na\s+internet)\s+(.+)", "modules.search:route",       False),
+    (r"busca\s+por\s+ia\s+(.+)",          "modules.search:search_ai",           False),
+
+    # Dev tools
+    (r"cria\s+(arquivo|file)\s+(.+)",     "modules.dev_tools:create_file",      False),
+    (r"abre\s+o\s+(vs\s?code|vscode|editor)", "modules.dev_tools:open_vscode", False),
+    (r"commit\s+[\"']?(.+)[\"']?",        "modules.dev_tools:git_commit",       True),
+    (r"git\s+push",                       "modules.dev_tools:git_push",         True),
+    (r"git\s+pull",                       "modules.dev_tools:git_pull",         False),
+    (r"(roda|executa)\s+(os\s+)?testes",  "modules.dev_tools:run_tests",        False),
+    (r"novo\s+terminal",                  "modules.dev_tools:open_terminal",    False),
+
+    # Rotinas
+    (r"modo\s+trabalho",                  "modules.routines:work_mode",         False),
+    (r"modo\s+foco",                      "modules.routines:focus_mode",        False),
+    (r"fim\s+do\s+dia",                   "modules.routines:end_of_day",        False),
+    (r"executa\s+rotina\s+(.+)",          "modules.routines:run",               False),
+
+    # Produtividade
+    (r"(mostra|exibe)\s+(o\s+)?tempo\s+(de\s+uso|no\s+pc)", "modules.productivity:show_usage", False),
+    (r"relatório\s+de\s+produtividade",   "modules.productivity:report",        False),
+
+    # Overlay
+    (r"fecha\s+o\s+overlay",              "output.overlay:hide",                False),
+    (r"abre\s+o\s+overlay",               "output.overlay:show",                False),
+]
+
+
+class Orchestrator:
+    def __init__(self, config: Config):
+        self.config = config
+        self.tts = TTS(config)
+        self.profiles = ProfileManager(config)
+        self._transcription_module = None  # instância persistente para transcrição
+
+    # ── Loops principais ───────────────────────────────────────────────
+
+    def run_text_loop(self):
+        """Loop interativo via terminal."""
+        print("[Axiom] Modo texto ativo. Digite seu comando (ou 'sair' para encerrar):\n")
+        while True:
+            try:
+                command = input("  > ").strip()
+                if not command:
+                    continue
+                if command.lower() in ("sair", "exit", "quit"):
+                    print("[Axiom] Encerrando.")
+                    break
+                response = self.dispatch(command)
+                if response:
+                    print(f"\n  Axiom: {response}\n")
+                    self.tts.speak(response)
+            except (EOFError, KeyboardInterrupt):
+                break
+
+    def run_voice_loop(self):
+        """Loop de escuta contínua com wake word."""
+        stt_module = _import_module("input.stt")
+        if not stt_module:
+            print("[Axiom] Módulo STT não disponível. Usando modo texto.")
+            self.run_text_loop()
+            return
+
+        try:
+            voice = stt_module.VoiceInput(self.config)
+        except Exception as e:
+            logger.error(f"Falha ao inicializar STT: {e}", exc_info=True)
+            print(f"[Axiom] Erro ao inicializar STT: {e}\n[Axiom] Usando modo texto.")
+            self.run_text_loop()
+            return
+
+        print(f"[Axiom] Aguardando wake word '{self.config.get('wake_word.keyword')}'...\n")
+        self.tts.speak("Axiom online. Pronto para receber comandos.")
+
+        while True:
+            command = voice.listen_for_command()
+            if command:
+                logger.info(f"Comando recebido: {command}")
+                response = self.dispatch(command)
+                if response:
+                    self.tts.speak(response)
+
+    # ── Despachante central ────────────────────────────────────────────
+
+    def dispatch(self, command: str) -> Optional[str]:
+        command_lower = command.lower().strip()
+        logger.debug(f"Despachando: {command_lower}")
+
+        for pattern, handler_path, needs_confirm in ROUTES:
+            match = re.search(pattern, command_lower)
+            if match:
+                # Verificar se precisa de confirmação
+                if needs_confirm and self.config.get("security.confirm_critical"):
+                    if not self._confirm(command):
+                        return "Ação cancelada."
+
+                # Resolver e chamar o handler
+                return self._call_handler(handler_path, match)
+
+        # Nenhuma rota bateu → fallback para IA
+        return self._fallback_ai(command)
+
+    # ── Helpers internos ───────────────────────────────────────────────
+
+    def _call_handler(self, handler_path: str, match: re.Match) -> Optional[str]:
+        """Carrega o módulo e chama a função dinamicamente."""
+        try:
+            module_path, func_name = handler_path.rsplit(":", 1)
+            module = _import_module(module_path)
+            if module is None:
+                return f"[Axiom] Módulo '{module_path}' não está disponível."
+
+            func: Callable = getattr(module, func_name, None)
+            if func is None:
+                return f"[Axiom] Função '{func_name}' não encontrada em '{module_path}'."
+
+            # Passa o primeiro grupo capturado, se houver
+            args = [g for g in match.groups() if g is not None]
+            if args:
+                return func(*args)
+            return func()
+
+        except Exception as e:
+            logger.error(f"Erro ao executar '{handler_path}': {e}", exc_info=True)
+            return f"Erro ao executar o comando: {e}"
+
+    def _fallback_ai(self, command: str) -> str:
+        """Repassa ao LLM quando nenhuma rota bate."""
+        summarizer = _import_module("modules.summarizer")
+        if summarizer:
+            return summarizer.ask_ai(command)
+        return "Não entendi o comando. Tente novamente."
+
+    def _confirm(self, action: str) -> bool:
+        """Solicita confirmação para ações críticas."""
+        print(f"\n  [!] Ação crítica: '{action}'")
+        resp = input("      Confirmar? (s/N): ").strip().lower()
+        return resp == "s"
