@@ -88,24 +88,35 @@ class Orchestrator:
 
     def run_text_loop(self):
         """Loop interativo via terminal."""
+        overlay = _import_module("output.overlay")
         print("[Axiom] Modo texto ativo. Digite seu comando (ou 'sair' para encerrar):\n")
         while True:
             try:
+                if overlay:
+                    overlay.set_state("listening")
                 command = input("  > ").strip()
                 if not command:
                     continue
                 if command.lower() in ("sair", "exit", "quit"):
                     print("[Axiom] Encerrando.")
                     break
+                if overlay:
+                    overlay.set_state("processing")
                 response = self.dispatch(command)
                 if response:
                     print(f"\n  Axiom: {response}\n")
+                    if overlay:
+                        overlay.show_message(response)
+                        overlay.set_state("speaking")
                     self.tts.speak(response)
+                if overlay:
+                    overlay.set_state("idle")
             except (EOFError, KeyboardInterrupt):
                 break
 
     def run_voice_loop(self):
-        """Loop de escuta contínua com wake word."""
+        """Loop de escuta contínua com wake word ou push-to-talk."""
+        overlay = _import_module("output.overlay")
         stt_module = _import_module("input.stt")
         if not stt_module:
             print("[Axiom] Módulo STT não disponível. Usando modo texto.")
@@ -120,16 +131,29 @@ class Orchestrator:
             self.run_text_loop()
             return
 
-        print(f"[Axiom] Aguardando wake word '{self.config.get('wake_word.keyword')}'...\n")
-        self.tts.speak("Axiom online. Pronto para receber comandos.")
+        mode = voice._mode
+        if mode == "push_to_talk":
+            print("[Axiom] Modo push-to-talk ativo. Use ctrl+shift+space para falar.\n")
+        else:
+            print(f"[Axiom] Aguardando wake word '{self.config.get('wake_word.keyword')}'...\n")
+        self.tts.speak("Axiom online.")
 
         while True:
+            if overlay:
+                overlay.set_state("listening")
             command = voice.listen_for_command()
             if command:
                 logger.info(f"Comando recebido: {command}")
+                if overlay:
+                    overlay.set_state("processing")
                 response = self.dispatch(command)
                 if response:
+                    if overlay:
+                        overlay.show_message(response)
+                        overlay.set_state("speaking")
                     self.tts.speak(response)
+                if overlay:
+                    overlay.set_state("idle")
 
     # ── Despachante central ────────────────────────────────────────────
 
