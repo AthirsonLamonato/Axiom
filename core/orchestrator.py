@@ -29,14 +29,27 @@ def _import_module(name: str):
 # ── Tabela de rotas ────────────────────────────────────────────────────
 # (padrão regex, handler, requer_confirmação)
 ROUTES: list[tuple[str, str, bool]] = [
-    # Sistema
-    (r"abre?\s+(.+)",                     "modules.system_control:open_app",    False),
-    (r"fecha?\s+(.+)",                    "modules.system_control:close_app",   True),
+    # Dev tools específicos (antes das rotas genéricas de "abre/fecha")
+    (r"abre\s+o\s+(vs\s?code|vscode|editor)", "modules.dev_tools:open_vscode", False),
+    (r"novo\s+terminal",                  "modules.dev_tools:open_terminal",    False),
+    (r"cria\s+(arquivo|file)\s+(.+)",     "modules.dev_tools:create_file",      False),
+    (r"commit\s+[\"']?(.+)[\"']?",        "modules.dev_tools:git_commit",       True),
+    (r"git\s+push",                       "modules.dev_tools:git_push",         True),
+    (r"git\s+pull",                       "modules.dev_tools:git_pull",         False),
+    (r"(roda|executa)\s+(os\s+)?testes",  "modules.dev_tools:run_tests",        False),
+
+    # Overlay específico (antes de "abre/fecha" genérico)
+    (r"abre\s+o\s+overlay",               "output.overlay:show",                False),
+    (r"fecha\s+o\s+overlay",              "output.overlay:hide",                False),
+
+    # Sistema (rotas genéricas por último)
     (r"volume\s+(\d+)",                   "modules.system_control:set_volume",  False),
     (r"(aumenta|sobe)\s+o\s+brilho",      "modules.system_control:brightness_up",   False),
     (r"(diminui|baixa)\s+o\s+brilho",     "modules.system_control:brightness_down", False),
     (r"(muta|silencia)\s+o?\s*(som|áudio)","modules.system_control:mute",       False),
     (r"(lista|mostra)\s+processos",       "modules.system_control:list_processes", False),
+    (r"abre?\s+(.+)",                     "modules.system_control:open_app",    False),
+    (r"fecha?\s+(.+)",                    "modules.system_control:close_app",   True),
 
     # Transcrição
     (r"(começa|inicia|start)\s+transcri", "modules.transcription:start",        False),
@@ -52,15 +65,6 @@ ROUTES: list[tuple[str, str, bool]] = [
     (r"(pesquisa|busca\s+na\s+internet)\s+(.+)", "modules.search:route",       False),
     (r"busca\s+por\s+ia\s+(.+)",          "modules.search:search_ai",           False),
 
-    # Dev tools
-    (r"cria\s+(arquivo|file)\s+(.+)",     "modules.dev_tools:create_file",      False),
-    (r"abre\s+o\s+(vs\s?code|vscode|editor)", "modules.dev_tools:open_vscode", False),
-    (r"commit\s+[\"']?(.+)[\"']?",        "modules.dev_tools:git_commit",       True),
-    (r"git\s+push",                       "modules.dev_tools:git_push",         True),
-    (r"git\s+pull",                       "modules.dev_tools:git_pull",         False),
-    (r"(roda|executa)\s+(os\s+)?testes",  "modules.dev_tools:run_tests",        False),
-    (r"novo\s+terminal",                  "modules.dev_tools:open_terminal",    False),
-
     # Rotinas
     (r"modo\s+trabalho",                  "modules.routines:work_mode",         False),
     (r"modo\s+foco",                      "modules.routines:focus_mode",        False),
@@ -70,10 +74,6 @@ ROUTES: list[tuple[str, str, bool]] = [
     # Produtividade
     (r"(mostra|exibe)\s+(o\s+)?tempo\s+(de\s+uso|no\s+pc)", "modules.productivity:show_usage", False),
     (r"relatório\s+de\s+produtividade",   "modules.productivity:report",        False),
-
-    # Overlay
-    (r"fecha\s+o\s+overlay",              "output.overlay:hide",                False),
-    (r"abre\s+o\s+overlay",               "output.overlay:show",                False),
 ]
 
 

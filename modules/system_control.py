@@ -47,7 +47,7 @@ def close_app(name: str) -> str:
     return f"Nenhum processo '{name}' encontrado."
 
 
-def list_processes() -> str:
+def list_processes(*_) -> str:
     """Lista os 10 processos com maior uso de CPU."""
     import psutil
     procs = sorted(
