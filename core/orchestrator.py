@@ -30,12 +30,22 @@ def _import_module(name: str):
 # (padrão regex, handler, requer_confirmação)
 ROUTES: list[tuple[str, str, bool]] = [
     # Dev tools específicos (antes das rotas genéricas de "abre/fecha")
-    (r"abre\s+o\s+(vs\s?code|vscode|editor)", "modules.dev_tools:open_vscode", False),
+    (r"abre\s+o\s+(vs\s?code|vscode|editor)", "modules.dev_tools:open_vscode",  False),
+    (r"abre\s+o\s+arquivo\s+(.+)",        "modules.dev_tools:open_file",        False),
+    (r"abre\s+o\s+file\s+(.+)",           "modules.dev_tools:open_file",        False),
+    (r"vai\s+para\s+a?\s*linha\s+(\d+)",  "modules.dev_tools:goto_line",        False),
     (r"novo\s+terminal",                  "modules.dev_tools:open_terminal",    False),
     (r"cria\s+(arquivo|file)\s+(.+)",     "modules.dev_tools:create_file",      False),
+    (r"explica\s+o\s+(arquivo|file)\s+(.+)", "modules.dev_tools:explain_file",  False),
+    # Git
     (r"commit\s+[\"']?(.+)[\"']?",        "modules.dev_tools:git_commit",       True),
     (r"git\s+push",                       "modules.dev_tools:git_push",         True),
     (r"git\s+pull",                       "modules.dev_tools:git_pull",         False),
+    (r"(o\s+que\s+mudou|git\s+status)",   "modules.dev_tools:git_status",        False),
+    (r"git\s+log|últimos?\s+commits?|mostra.{0,20}commits?|ultimos\s+commits?",
+                                          "modules.dev_tools:git_log",          False),
+    (r"cria\s+branch\s+(.+)",             "modules.dev_tools:git_create_branch", False),
+    (r"(branch|ramo)\s+atual",            "modules.dev_tools:git_branch_current",False),
     (r"(roda|executa)\s+(os\s+)?testes",  "modules.dev_tools:run_tests",        False),
 
     # Overlay específico (antes de "abre/fecha" genérico)
