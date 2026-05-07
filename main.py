@@ -7,6 +7,11 @@ import argparse
 import sys
 import signal
 
+# Garante UTF-8 no terminal Windows para o banner e mensagens
+if sys.platform == "win32" and hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+    sys.stderr.reconfigure(encoding="utf-8")
+
 from core.orchestrator import Orchestrator
 from core.config import Config
 from core.logger import setup_logging
