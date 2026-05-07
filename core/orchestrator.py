@@ -52,8 +52,8 @@ ROUTES: list[tuple[str, str, bool]] = [
     (r"fecha?\s+(.+)",                    "modules.system_control:close_app",   True),
 
     # Transcrição
-    (r"(começa|inicia|start)\s+transcri", "modules.transcription:start",        False),
-    (r"(para|stop)\s+transcri",           "modules.transcription:stop",         False),
+    (r"(começa|inicia|start)\s+transcri(.+)?",   "modules.transcription:start",    False),
+    (r"(para|stop)\s+transcri",                  "modules.transcription:stop",     False),
     (r"mostra\s+(o\s+que\s+foi\s+falado|a\s+transcrição)", "modules.transcription:show_last", False),
 
     # Resumo / IA
