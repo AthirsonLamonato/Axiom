@@ -9,9 +9,10 @@ profile:
 
 # ── Wake word ─────────────────────────────────
 wake_word:
-  keyword: axiom        # palavra de ativação
+  keyword: porcupine    # keywords built-in: porcupine, jarvis, computer, etc.
   sensitivity: 0.5      # 0.0 (menos sensível) → 1.0 (mais sensível)
   enabled: true
+  access_key: ""        # PICOVOICE_ACCESS_KEY — deixe vazio para usar push-to-talk
 
 # ── Speech-to-Text ────────────────────────────
 stt:
