@@ -48,6 +48,9 @@ google-api-python-client
 # Coqui TTS (voz mais natural, ~1.5 GB de modelos)
 # TTS
 
+# Loopback de áudio do sistema (Windows — captura áudio do speaker)
+# pyaudiowpatch
+
 # Controle de volume Windows
 # pycaw
 # comtypes
