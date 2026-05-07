@@ -84,6 +84,13 @@ ROUTES: list[tuple[str, str, bool]] = [
     # Produtividade
     (r"(mostra|exibe)\s+(o\s+)?tempo\s+(de\s+uso|no\s+pc)", "modules.productivity:show_usage", False),
     (r"relatório\s+de\s+produtividade",   "modules.productivity:report",        False),
+    (r"relatório\s+diário",               "modules.productivity:daily_report",  False),
+
+    # Pomodoro / foco
+    (r"foco\s+por\s+(\d+)\s*min",         "modules.productivity:focus_start",   False),
+    (r"foco\s+por\s+(\d+)\s*h",           "modules.productivity:focus_start",   False),
+    (r"(cancela|para)\s+o\s+timer",       "modules.productivity:focus_stop",    False),
+    (r"(quanto\s+tempo|status)\s+(do\s+)?timer", "modules.productivity:focus_status", False),
 ]
 
 
