@@ -1,0 +1,61 @@
+# ── Axiom — dependências principais ──────────────────────────────────
+# Instale com: pip install -r requirements.txt
+
+# Speech-to-Text
+faster-whisper
+pyaudio
+
+# Wake word
+pvporcupine
+
+# Input
+keyboard
+pynput
+
+# Controle do sistema
+pyautogui
+psutil
+
+# Text-to-Speech
+pyttsx3
+
+# Interface visual
+PyQt6
+
+# IA e NLP
+requests
+duckduckgo-search
+
+# Agendamento
+schedule
+
+# Notificações
+plyer
+
+# Configuração
+pyyaml
+
+# Backup Google Drive
+google-auth
+google-auth-oauthlib
+google-api-python-client
+
+# ── Opcionais ─────────────────────────────────────────────────────────
+
+# Anthropic API (fallback cloud, requer ANTHROPIC_API_KEY)
+# anthropic
+
+# Coqui TTS (voz mais natural, ~1.5 GB de modelos)
+# TTS
+
+# Controle de volume Windows
+# pycaw
+# comtypes
+
+# Controle de brilho Windows
+# wmi
+
+# ── Desenvolvimento ───────────────────────────────────────────────────
+# pytest
+# black
+# ruff
