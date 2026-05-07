@@ -1,336 +1,311 @@
 # Axiom
 
-> Seu assistente pessoal inteligente para automação, produtividade e desenvolvimento.
+> Assistente pessoal inteligente de desktop — controle por voz ou texto, 100% open-source e gratuito.
 
 ![Version](https://img.shields.io/badge/version-v0.1.0--alpha-blue)
-![Python](https://img.shields.io/badge/python-3.10+-green)
+![Python](https://img.shields.io/badge/python-3.9+-green)
 ![License](https://img.shields.io/badge/license-MIT-orange)
-![Status](https://img.shields.io/badge/status-em%20desenvolvimento-red)
+![Tests](https://img.shields.io/badge/tests-36%20passing-brightgreen)
+![CI](https://github.com/AthirsonLamonato/Axiom/actions/workflows/tests.yml/badge.svg)
 
-Assistente pessoal estilo Jarvis — automação, produtividade e IA rodando localmente.
-
----
-
-# 📖 Visão geral
-
-Axiom é um assistente de desktop modular, acionado por voz ou texto, construído inteiramente com ferramentas open-source e gratuitas.
-
-O objetivo do projeto é criar uma IA pessoal capaz de:
-
-- Controlar o computador por voz
-- Automatizar tarefas repetitivas
-- Auxiliar no desenvolvimento de software
-- Transcrever reuniões
-- Gerar resumos automáticos
-- Integrar múltiplas inteligências artificiais
-- Melhorar produtividade
-- Servir como uma central pessoal inteligente
-
-O projeto será desenvolvido inicialmente utilizando apenas ferramentas gratuitas e open-source.
+Axiom é um assistente de desktop estilo Jarvis — modular, expansível e capaz de rodar completamente offline em hardware modesto (4 GB RAM, CPU sem GPU).
 
 ---
 
-# 🚀 Principais características
+## Funcionalidades implementadas
 
-- Funciona 100% offline para funções essenciais
-- Arquitetura modular
-- IA local via Ollama
-- Wake word personalizada (“Axiom”)
-- Integração com VS Code, Git e terminal
-- Dashboard flutuante
-- Sistema de automação inteligente
-
----
-
-# 🧩 Módulos e funcionalidades
-
-| # | Módulo | Funcionalidade | Stack principal |
-|---|---|---|---|
-| 01 | Controle do sistema | Abrir/fechar apps, volume, brilho | pyautogui · psutil |
-| 02 | STT + Wake word | Escuta contínua e ativação por voz | faster-whisper · pvporcupine |
-| 03 | Transcrição | Captura mic + loopback | pyaudio · faster-whisper |
-| 04 | Resumo inteligente | Resumo automático | Ollama |
-| 05 | Pesquisa inteligente | IA local + internet | DuckDuckGo · Ollama |
-| 06 | Dev Tools | VS Code, Git e shell | subprocess |
-| 07 | Segurança | Confirmações e permissões | whitelist |
-| 08 | TTS | Feedback de voz | pyttsx3 |
-| 09 | Overlay visual | Dashboard flutuante | PyQt6 |
-| 10 | Backup automático | Local + nuvem | Google Drive API |
-| 11 | Modo foco | Escuta inteligente | pvporcupine |
-| 12 | Perfis | Trabalho e casual | YAML |
-| 13 | Produtividade | Monitoramento de apps | psutil |
+| Módulo | O que faz |
+|---|---|
+| **STT** | Transcrição via Whisper (`faster-whisper`). Modo push-to-talk (ctrl+shift+space) por padrão; wake word via Porcupine se `access_key` configurada |
+| **Overlay** | Janela flutuante PyQt6 sempre visível: indicador de estado (idle / listening / processing / speaking), histórico dos últimos 3 comandos, fade animado. Toggle: ctrl+shift+a |
+| **Transcrição** | Captura microfone ou loopback do sistema (Windows: WASAPI · Linux: PulseAudio). Auto-save a cada 5 min |
+| **Resumo / IA** | Resumo e explicações via Ollama (local) com fallback para Anthropic API |
+| **Pesquisa** | Roteamento automático: perguntas factuais/atuais → DuckDuckGo + IA; demais → LLM local |
+| **Dev tools** | VS Code, abrir arquivo por nome, ir para linha, criar arquivo, git status/log/commit/push/pull/branch, rodar testes, explicar código via IA |
+| **Rotinas** | Sequências configuráveis em YAML com condições (weekday, weekend, morning, afternoon, evening) |
+| **Pomodoro** | Timer de foco com notificação e overlay ao término |
+| **Produtividade** | Monitoramento de apps via psutil, relatório diário em Markdown |
+| **Sistema** | Abrir/fechar apps, volume, brilho, listar processos (Windows + Linux) |
+| **Segurança** | Confirmação antes de ações críticas, lista configurável |
+| **Backup** | Local automático + Google Drive (opcional, requer OAuth) |
+| **Banco de dados** | SQLite — histórico de comandos, sessões e transcrições |
+| **TTS** | pyttsx3 (offline, leve) ou Coqui TTS (mais natural) |
 
 ---
 
-# 🗂️ Estrutura do projeto
-
-```text
-axiom/
-├── core/
-│   ├── orchestrator.py
-│   ├── config.yaml
-│   └── profiles.py
-│
-├── input/
-│   ├── stt.py
-│   ├── hotkeys.py
-│   └── cli.py
-│
-├── modules/
-│   ├── system_control.py
-│   ├── transcription.py
-│   ├── summarizer.py
-│   ├── search.py
-│   ├── dev_tools.py
-│   ├── routines.py
-│   ├── productivity.py
-│   ├── security.py
-│   └── backup.py
-│
-├── output/
-│   ├── tts.py
-│   ├── overlay.py
-│   └── notifier.py
-│
-├── storage/
-│   ├── db.py
-│   └── file_store.py
-│
-└── main.py
-```
-
----
-
-# ⚙️ Instalação
-
-## 1. Pré-requisitos
-
-- Python 3.10+
-- Ollama instalado
-- PortAudio
-
----
-
-## 2. Clonar projeto
-
-```bash
-git clone https://github.com/seu-usuario/axiom.git
-cd axiom
-```
-
----
-
-## 3. Criar ambiente virtual
-
-### Linux/Mac
-
-```bash
-python -m venv .venv
-source .venv/bin/activate
-```
+## Instalação rápida
 
 ### Windows
 
-```bash
-.venv\Scripts\activate
+```bat
+git clone https://github.com/AthirsonLamonato/Axiom.git
+cd Axiom
+setup.bat
 ```
 
----
+### Linux / Mac
 
-## 4. Instalar dependências
+```bash
+git clone https://github.com/AthirsonLamonato/Axiom.git
+cd Axiom
+bash setup.sh
+```
+
+### Manual
 
 ```bash
 pip install -r requirements.txt
+ollama pull llama3   # baixa o modelo de IA local (~4 GB)
 ```
 
 ---
 
-## 5. Baixar IA local
+## Executar
 
 ```bash
-ollama pull llama3
-```
+# Modo texto — ideal para testar sem microfone
+python main.py --mode text --no-tts --no-overlay
 
-Alternativas:
+# Modo texto com overlay
+python main.py --mode text --no-tts
 
-```bash
-ollama pull mistral
-ollama pull phi3
-```
-
----
-
-## 6. Executar
-
-```bash
+# Modo voz (push-to-talk por padrão)
 python main.py
-```
 
-Modo texto:
-
-```bash
-python main.py --mode text
+# Editor de rotinas
+python main.py --edit-routines
 ```
 
 ---
 
-# 🧠 Stack tecnológica
+## Comandos disponíveis
+
+### Sistema
+```
+abre o VS Code
+abre o Chrome
+fecha o Spotify
+volume 70
+aumenta o brilho / diminui o brilho
+muta o som
+lista processos
+```
+
+### Transcrição
+```
+começa a transcrever
+começa a transcrever o sistema        ← loopback (áudio do speaker)
+para a transcrição
+mostra o que foi falado
+```
+
+### IA e pesquisa
+```
+resume o que foi falado
+resumo detalhado
+explica o que é recursão
+pesquisa como funciona decorators em Python
+busca na internet o clima de amanhã
+```
+
+### Dev tools
+```
+abre o arquivo main.py
+vai para a linha 42
+cria arquivo utils.py
+explica o arquivo orchestrator.py
+commit "feat: nova funcionalidade"
+git push / git pull
+o que mudou                           ← git status
+mostra os últimos commits             ← git log
+cria branch feature/nome
+branch atual
+roda os testes
+novo terminal
+```
+
+### Rotinas e produtividade
+```
+modo trabalho
+modo foco
+fim do dia
+executa rotina end_of_day
+foco por 25 min                       ← timer Pomodoro
+cancela o timer
+status do timer
+mostra o tempo de uso
+relatório de produtividade
+relatório diário
+```
+
+### Overlay e meta
+```
+abre o overlay / fecha o overlay      ← ou ctrl+shift+a
+ajuda                                 ← lista todos os comandos
+```
+
+---
+
+## Configuração
+
+Edite `core/config.yaml`:
+
+```yaml
+# Wake word (deixe vazio para push-to-talk)
+wake_word:
+  access_key: ""          # PICOVOICE_ACCESS_KEY — obtenha em picovoice.ai
+  keyword: porcupine      # keywords gratuitas: porcupine, jarvis, computer…
+
+# IA local
+ai:
+  provider: ollama        # ollama | anthropic
+  model: llama3           # llama3 | mistral | phi3
+
+# Overlay
+overlay:
+  enabled: true
+  position: top-right     # top-left | top-right | bottom-left | bottom-right
+
+# TTS
+tts:
+  enabled: true
+  engine: pyttsx3         # pyttsx3 | coqui
+```
+
+### Anthropic como fallback (opcional)
+
+```bash
+export ANTHROPIC_API_KEY=sk-ant-...   # Linux/Mac
+set ANTHROPIC_API_KEY=sk-ant-...      # Windows
+```
+
+Em `config.yaml`: `ai.provider: anthropic`
+
+### Google Drive para backup (opcional)
+
+1. Crie um projeto em [Google Cloud Console](https://console.cloud.google.com)
+2. Ative a Drive API e baixe `credentials.json`
+3. Coloque em `core/credentials.json`
+4. Em `config.yaml`: `backup.google_drive.enabled: true`
+
+---
+
+## Estrutura do projeto
+
+```
+Axiom/
+├── main.py                    # entry point — argparse, boot completo
+├── setup.bat / setup.sh       # scripts de instalação
+├── requirements.txt
+│
+├── core/
+│   ├── orchestrator.py        # roteador regex → módulos
+│   ├── config.py              # carregador YAML com notação de pontos
+│   ├── config.yaml            # configuração central
+│   ├── profiles.py            # perfis work / casual
+│   └── logger.py              # logging rotativo em arquivo
+│
+├── input/
+│   ├── stt.py                 # Whisper + wake word / push-to-talk
+│   ├── hotkeys.py             # atalhos globais
+│   └── cli.py                 # interface de terminal
+│
+├── modules/
+│   ├── system_control.py      # apps, volume, brilho, processos
+│   ├── transcription.py       # mic + loopback, auto-save
+│   ├── summarizer.py          # Ollama + fallback Anthropic
+│   ├── search.py              # roteamento IA local vs DuckDuckGo
+│   ├── dev_tools.py           # VS Code, Git, arquivos, testes
+│   ├── routines.py            # rotinas YAML com condições
+│   ├── productivity.py        # monitoramento, Pomodoro, relatórios
+│   ├── security.py            # confirmação de ações críticas
+│   └── backup.py              # backup local + Google Drive
+│
+├── output/
+│   ├── tts.py                 # pyttsx3 / Coqui TTS
+│   ├── overlay.py             # overlay PyQt6 thread-safe
+│   └── notifier.py            # notificações desktop
+│
+├── storage/
+│   ├── db.py                  # SQLite — histórico e sessões
+│   └── file_store.py          # transcrições e resumos em Markdown
+│
+└── tests/                     # 36 testes (pytest)
+    ├── test_config.py
+    ├── test_db.py
+    ├── test_orchestrator.py
+    ├── test_stt.py
+    └── test_dev_tools.py
+```
+
+---
+
+## Stack tecnológica
 
 | Funcionalidade | Ferramenta | Tipo |
 |---|---|---|
-| Speech-to-Text | faster-whisper | Local |
-| Wake word | Porcupine | Local |
-| IA local | Ollama | Local |
-| TTS | pyttsx3 | Local |
-| Busca web | DuckDuckGo | Gratuito |
+| Speech-to-Text | faster-whisper (Whisper base) | Local / offline |
+| Wake word | pvporcupine (free tier) | Local / offline |
+| LLM | Ollama (llama3 / mistral / phi3) | Local / offline |
+| LLM cloud | Anthropic API (claude-haiku) | Opcional / pago |
+| TTS | pyttsx3 / Coqui TTS | Local / offline |
+| Busca web | duckduckgo-search | Gratuito |
 | Overlay | PyQt6 | Open-source |
-| Backup | Google Drive API | Gratuito |
-| Monitoramento | ActivityWatch | Open-source |
+| Monitoramento | psutil | Open-source |
+| Banco de dados | SQLite | Open-source |
+| Backup nuvem | Google Drive API | Gratuito |
+| Config | PyYAML | Open-source |
 
 ---
 
-# 📦 requirements.txt
+## Testes
 
-```txt
-faster-whisper
-pyaudio
-pvporcupine
-keyboard
-pynput
-pyautogui
-psutil
-pyttsx3
-PyQt6
-schedule
-requests
-duckduckgo-search
-plyer
-pyyaml
-google-auth
-google-auth-oauthlib
-google-api-python-client
+```bash
+python -m pytest tests/ -v
 ```
 
----
+36 testes cobrindo: config, orchestrator (roteamento), banco de dados, STT e dev tools.
 
-# 🎙️ Exemplos de comandos
-
-## Sistema
-
-- “Axiom, abre o VS Code”
-- “Axiom, fecha o Spotify”
-- “Axiom, volume 60”
-- “Axiom, aumenta o brilho”
+CI automático via GitHub Actions em cada push para `main` e `dev`.
 
 ---
 
-## Transcrição
+## Roadmap
 
-- “Axiom, começa a transcrever a reunião”
-- “Axiom, para a transcrição”
-- “Axiom, resume o que foi falado”
+### v0.1 — Base (concluído)
+- [x] Boot completo com logger, db e produtividade
+- [x] Modo texto e modo voz (push-to-talk)
+- [x] Overlay flutuante com estado e histórico
+- [x] Transcrição mic + loopback + auto-save
+- [x] Dev tools: git por voz, abrir arquivo, explicar código
+- [x] Pomodoro, relatório diário, rotinas com condições
+- [x] CI/CD com GitHub Actions
 
----
-
-## Desenvolvimento
-
-- “Axiom, cria um arquivo utils.py”
-- “Axiom, faz commit”
-- “Axiom, roda os testes”
-- “Axiom, explica esse código”
-
----
-
-## Pesquisa
-
-- “Axiom, pesquisa como funciona recursão”
-- “Axiom, busca na internet o clima de amanhã”
+### v0.2 — Próximo
+- [ ] Speaker diarization (`pyannote.audio`) — identificação de falantes
+- [ ] Calibração automática de ruído para o microfone
+- [ ] Integração com Google Calendar
+- [ ] Modos de perfil dinâmicos via voz
+- [ ] Plugin system para módulos externos
 
 ---
 
-## Rotinas
+## Contribuição
 
-- “Axiom, modo trabalho”
-- “Axiom, modo foco”
-- “Axiom, fim do dia”
-
----
-
-# 🛣️ Roadmap
-
-## Fase 1
-
-- [ ] Núcleo do sistema
-- [ ] IA local via Ollama
-- [ ] Comandos básicos
-
-## Fase 2
-
-- [ ] Speech-to-Text
-- [ ] Controle do sistema
-- [ ] Text-to-Speech
-
-## Fase 3
-
-- [ ] Wake word
-- [ ] Overlay visual
-- [ ] Perfis inteligentes
-
-## Fase 4
-
-- [ ] Transcrição de reuniões
-- [ ] Resumos automáticos
-- [ ] Histórico inteligente
-
-## Fase 5
-
-- [ ] Integração avançada VS Code
-- [ ] Git e automação dev
-- [ ] Pesquisa inteligente
-
-## Fase 6
-
-- [ ] Rotinas inteligentes
-- [ ] Backup automático
-- [ ] Monitoramento de produtividade
+1. Fork o repositório
+2. Crie um módulo em `modules/` seguindo o padrão: funções públicas retornam `str`, use lazy imports
+3. Registre as rotas em `core/orchestrator.py`
+4. Adicione testes em `tests/`
+5. Abra um Pull Request para `dev`
 
 ---
 
-# 🤝 Contribuição
+## Licença
 
-Contribuições são bem-vindas.
-
-Para adicionar um novo módulo:
-
-1. Crie o módulo em `modules/`
-2. Registre no `orchestrator.py`
-3. Documente os comandos
-4. Abra um Pull Request
+MIT License — veja [LICENSE](LICENSE)
 
 ---
 
-# ⚡ Filosofia do projeto
+## Autor
 
-O Axiom não é apenas um assistente virtual.
-
-A ideia é criar uma central inteligente capaz de:
-
-- Entender contexto
-- Automatizar tarefas
-- Auxiliar programação
-- Organizar informações
-- Evoluir constantemente
-
-Tudo isso de forma modular, expansível e gratuita.
-
----
-
-# 📄 Licença
-
-MIT License
-
----
-
-# 👨‍💻 Autor
-
-Desenvolvido por Athy.
+Desenvolvido por [Athy (AthirsonLamonato)](https://github.com/AthirsonLamonato)

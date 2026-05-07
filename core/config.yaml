@@ -1,0 +1,109 @@
+# ──────────────────────────────────────────────
+# Axiom — Configuração principal
+# Copie este arquivo para core/config.yaml e ajuste conforme necessário
+# ──────────────────────────────────────────────
+
+# ── Perfil ativo ──────────────────────────────
+profile:
+  active: work          # work | casual
+
+# ── Wake word ─────────────────────────────────
+wake_word:
+  keyword: porcupine    # keywords built-in: porcupine, jarvis, computer, etc.
+  sensitivity: 0.5      # 0.0 (menos sensível) → 1.0 (mais sensível)
+  enabled: true
+  access_key: ""        # PICOVOICE_ACCESS_KEY — deixe vazio para usar push-to-talk
+
+# ── Speech-to-Text ────────────────────────────
+stt:
+  model: base           # tiny | base | small | medium | large
+  language: pt          # código do idioma
+  device: cpu           # cpu | cuda (GPU Nvidia)
+
+# ── IA local (Ollama) ─────────────────────────
+ai:
+  provider: ollama      # ollama | anthropic
+  model: llama3         # llama3 | mistral | phi3
+  ollama_url: http://localhost:11434
+  max_tokens: 1024
+  system_prompt: |
+    Você é Axiom, um assistente pessoal técnico e objetivo.
+    Responda sempre em português, de forma direta e sem rodeios.
+    Para tarefas de sistema, confirme antes de executar ações críticas.
+
+# ── Text-to-Speech ────────────────────────────
+tts:
+  enabled: true
+  engine: pyttsx3       # pyttsx3 | coqui
+  rate: 175             # palavras por minuto
+  volume: 0.9
+
+# ── Overlay visual ────────────────────────────
+overlay:
+  enabled: true
+  position: top-left    # top-left | top-right | bottom-left | bottom-right
+  duration_ms: 4000     # tempo de exibição de cada mensagem
+  opacity: 0.92
+
+# ── Segurança ─────────────────────────────────
+security:
+  confirm_critical: true     # pede confirmação para ações críticas
+  critical_commands:
+    - fechar tudo
+    - deletar
+    - formatar
+    - git push
+    - git reset
+    - rm -rf
+
+# ── Transcrição ───────────────────────────────
+transcription:
+  output_dir: data/transcriptions
+  format: markdown           # markdown | txt
+  auto_save: true
+
+# ── Backup ────────────────────────────────────
+backup:
+  local_dir: data/backups
+  google_drive:
+    enabled: false           # true após configurar credenciais OAuth
+    folder_name: Axiom Backups
+    credentials_path: core/credentials.json
+
+# ── Logs ──────────────────────────────────────
+logging:
+  level: INFO                # DEBUG | INFO | WARNING | ERROR
+  file: logs/axiom.log
+  max_mb: 10
+
+# ── Perfis de comportamento ───────────────────
+profiles:
+  work:
+    tts_rate: 175
+    response_style: technical   # respostas diretas e técnicas
+    startup_routine: work_mode
+
+  casual:
+    tts_rate: 160
+    response_style: friendly
+    startup_routine: null
+
+# ── Rotinas ───────────────────────────────────
+routines:
+  work_mode:
+    name: "Modo trabalho"
+    steps:
+      - action: open_app
+        target: code            # VS Code
+      - action: open_app
+        target: chrome
+      - action: notify
+        message: "Modo trabalho ativado. Bom trabalho!"
+
+  end_of_day:
+    name: "Fim do dia"
+    steps:
+      - action: save_transcriptions
+      - action: notify
+        message: "Transcrições salvas. Até amanhã!"
+      - action: close_overlay
