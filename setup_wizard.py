@@ -244,6 +244,12 @@ class WizardApp(tk.Tk):
             f.pack(fill="both", expand=True)
             f.pack_forget()
 
+    # ── URL do app no GitHub Releases ─────────────────────────────────
+    _APP_ZIP_URL = (
+        "https://github.com/AthirsonLamonato/Pacoca/releases/download"
+        "/v0.5.0/Pacoca-app-v0.5.0.zip"
+    )
+
     # ── Página 1 — Boas-vindas ────────────────────────────────────────
 
     def _page_welcome(self):
@@ -257,12 +263,10 @@ class WizardApp(tk.Tk):
         info = tk.Frame(f, bg=BG2, padx=12, pady=10)
         info.pack(fill="x")
 
-        axiom_ok = PACOCA_EXE.exists()
         for label, ok in [
             (f"Sistema: {platform.system()} {platform.release()} "
              f"({'64-bit' if platform.machine().endswith('64') else '32-bit'})", True),
             (f"Diretório: {INSTALL_DIR}", True),
-            (f"Paçoca.exe: {PACOCA_EXE}" if axiom_ok else "Paçoca.exe: não encontrado", axiom_ok),
         ]:
             row = tk.Frame(info, bg=BG2)
             row.pack(fill="x", pady=2)
@@ -270,17 +274,39 @@ class WizardApp(tk.Tk):
             tk.Label(row, text=f"  {label}", bg=BG2, fg=FG,
                      font=("Segoe UI", 9)).pack(side="left")
 
-        if not axiom_ok:
-            warn = tk.Frame(f, bg=BG3, padx=12, pady=8)
-            warn.pack(fill="x", pady=(8, 0))
-            body(warn,
-                 "Pacoca.exe não encontrado. Certifique-se de que este wizard está na mesma "
-                 "pasta que a pasta 'Pacoca/' (o executável principal).\n\n"
-                 "Estrutura esperada:\n"
-                 "  📁 Pacoca-v0.5.0-Windows/\n"
-                 "    ▶ Pacoca-Setup.exe   ← este arquivo\n"
-                 "    📁 Pacoca/\n"
-                 "       ▶ Pacoca.exe      ← executável principal", YELLOW).pack(anchor="w")
+        # Linha do Pacoca.exe — mantemos referência para atualizar após download
+        pacoca_row = tk.Frame(info, bg=BG2)
+        pacoca_row.pack(fill="x", pady=2)
+        self._welcome_pacoca_dot = status_dot(pacoca_row, PACOCA_EXE.exists())
+        self._welcome_pacoca_dot.pack(side="left")
+        self._welcome_pacoca_lbl = tk.Label(
+            pacoca_row,
+            text=f"  Pacoca.exe: {PACOCA_EXE}" if PACOCA_EXE.exists() else "  Pacoca.exe: não encontrado",
+            bg=BG2, fg=FG, font=("Segoe UI", 9),
+        )
+        self._welcome_pacoca_lbl.pack(side="left")
+
+        # Seção de download — visível apenas quando o app não está presente
+        self._dl_section = tk.Frame(f, bg=BG3, padx=12, pady=10)
+        if not PACOCA_EXE.exists():
+            self._dl_section.pack(fill="x", pady=(8, 0))
+
+        body(self._dl_section,
+             "Pacoca.exe não encontrado. Clique abaixo para baixar o app (~175 MB).",
+             YELLOW).pack(anchor="w")
+
+        self._dl_progress = ttk.Progressbar(
+            self._dl_section, length=460, mode="determinate", maximum=100
+        )
+        self._dl_progress.pack(fill="x", pady=(6, 2))
+
+        self._dl_status = tk.Label(
+            self._dl_section, text="", bg=BG3, fg=FG2, font=("Segoe UI", 8)
+        )
+        self._dl_status.pack(anchor="w", pady=(0, 4))
+
+        btn(self._dl_section, "⬇  Baixar Paçoca (~175 MB)",
+            self._download_app, width=26).pack(anchor="w")
 
         tk.Frame(f, bg=BORDER, height=1).pack(fill="x", pady=14)
         body(f, "Este assistente irá:\n"
@@ -289,6 +315,54 @@ class WizardApp(tk.Tk):
                 "  3. Fazer login com o Google (Calendar + Drive)\n"
                 "  4. Criar um atalho na área de trabalho").pack(anchor="w")
         return f
+
+    def _download_app(self):
+        """Baixa Pacoca-app-v0.5.0.zip do GitHub Releases e extrai em INSTALL_DIR."""
+        import tempfile, zipfile as zf
+
+        self._dl_status.config(text="Iniciando download…", fg=YELLOW)
+        self._dl_progress.config(value=0)
+
+        def run():
+            try:
+                tmp = Path(tempfile.mktemp(suffix=".zip"))
+
+                def reporthook(count, block_size, total_size):
+                    if total_size > 0:
+                        pct = int(count * block_size * 100 / total_size)
+                        self.after(0, lambda p=pct: self._dl_progress.config(value=min(p, 100)))
+                        self.after(0, lambda p=pct: self._dl_status.config(
+                            text=f"Baixando… {min(p, 100)}%", fg=YELLOW))
+
+                urllib.request.urlretrieve(self._APP_ZIP_URL, str(tmp), reporthook)
+
+                self.after(0, lambda: self._dl_status.config(text="Extraindo…", fg=YELLOW))
+                with zf.ZipFile(str(tmp), "r") as z:
+                    z.extractall(str(INSTALL_DIR))
+                tmp.unlink(missing_ok=True)
+
+                self.after(0, self._on_app_downloaded)
+
+            except Exception as e:
+                self.after(0, lambda: self._dl_status.config(
+                    text=f"Erro: {e}", fg=RED))
+
+        threading.Thread(target=run, daemon=True).start()
+
+    def _on_app_downloaded(self):
+        """Chamado após download concluído — atualiza UI da página 1."""
+        ok = PACOCA_EXE.exists()
+        self._dl_progress.config(value=100)
+        if ok:
+            self._dl_status.config(text="✓ Pacoca.exe pronto!", fg=GREEN)
+            self._welcome_pacoca_dot.config(fg=GREEN)
+            self._welcome_pacoca_lbl.config(text=f"  Pacoca.exe: {PACOCA_EXE}")
+            self._dl_section.pack_forget()
+        else:
+            self._dl_status.config(
+                text="Download concluído mas Pacoca.exe ainda não encontrado. "
+                     "Verifique se o ZIP contém a pasta Pacoca/.",
+                fg=YELLOW)
 
     # ── Página 2 — Ollama ─────────────────────────────────────────────
 
@@ -386,10 +460,10 @@ class WizardApp(tk.Tk):
             return e
 
         cfg = read_config()
-        self._cfg_model    = tk.StringVar(value=cfg.get("ai", {}).get("model", "llama3"))
-        self._cfg_password = tk.StringVar(value=cfg.get("web", {}).get("password", ""))
-        self._cfg_obsidian = tk.StringVar(value=cfg.get("obsidian", {}).get("vault_path", ""))
-        self._cfg_wakekey  = tk.StringVar(value=cfg.get("wake_word", {}).get("access_key", ""))
+        self._cfg_model     = tk.StringVar(value=cfg.get("ai", {}).get("model", "llama3"))
+        self._cfg_password  = tk.StringVar(value=cfg.get("web", {}).get("password", ""))
+        self._cfg_obsidian  = tk.StringVar(value=cfg.get("obsidian", {}).get("vault_path", ""))
+        self._cfg_wakemodel = tk.StringVar(value=cfg.get("wake_word", {}).get("model_path", ""))
 
         field("Modelo LLM:", self._cfg_model, "llama3")
         field("Senha do dashboard:", self._cfg_password, "(vazio = sem senha)", show="*")
@@ -406,7 +480,8 @@ class WizardApp(tk.Tk):
             filedialog.askdirectory(title="Selecione o vault do Obsidian") or self._cfg_obsidian.get()
         ), color=BG3, width=3).pack(side="left", padx=4)
 
-        field("Picovoice access key:", self._cfg_wakekey, "(opcional — wake word 'Paçoca')")
+        field("Modelo wake word (.onnx):", self._cfg_wakemodel,
+              "(opcional — ex: pacoca.onnx; vazio = hey_jarvis padrão)")
 
         tk.Frame(f, bg=BORDER, height=1).pack(fill="x", pady=10)
         self._cfg_status = tk.Label(f, text="", bg=BG, fg=FG2, font=("Segoe UI", 8))
@@ -419,7 +494,7 @@ class WizardApp(tk.Tk):
             "ai":        {"model": self._cfg_model.get() or "llama3"},
             "web":       {"password": self._cfg_password.get()},
             "obsidian":  {"vault_path": self._cfg_obsidian.get()},
-            "wake_word": {"access_key": self._cfg_wakekey.get()},
+            "wake_word": {"model_path": self._cfg_wakemodel.get()},
         }
         result = write_config_values(values)
         if result is True:
