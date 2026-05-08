@@ -14,9 +14,11 @@ Paçoca é um assistente de desktop estilo Jarvis — modular, expansível e cap
 
 ## Download
 
-**[⬇ Pacoca-v0.5.0-Windows.zip](https://github.com/AthirsonLamonato/Pacoca/releases/download/v0.5.0/Pacoca-v0.5.0-Windows.zip)** — Windows 64-bit · 175 MB · sem Python, sem pip install
+**[⬇ Pacoca-Setup.exe](https://github.com/AthirsonLamonato/Pacoca/releases/download/v0.5.0/Pacoca-Setup.exe)** — Windows 64-bit · 34 MB · sem Python, sem pip install
 
-> Extraia o ZIP, rode `Pacoca-Setup.exe` e siga as 4 etapas do assistente de instalação.
+> Execute `Pacoca-Setup.exe` — o wizard baixa o app e configura tudo automaticamente.
+
+Também disponível: **[Pacoca-v0.5.0-Windows.zip](https://github.com/AthirsonLamonato/Pacoca/releases/download/v0.5.0/Pacoca-v0.5.0-Windows.zip)** (184 MB · inclui o app completo, para instalação offline)
 
 ---
 
@@ -24,13 +26,13 @@ Paçoca é um assistente de desktop estilo Jarvis — modular, expansível e cap
 
 ### Opção 1 — Executável (recomendado, apenas Windows)
 
-1. Baixe `Pacoca-v0.5.0-Windows.zip` na [página de releases](https://github.com/AthirsonLamonato/Pacoca/releases/tag/v0.5.0)
-2. Extraia em qualquer pasta
-3. Execute `Pacoca-Setup.exe` — o wizard configura tudo automaticamente:
+1. Baixe `Pacoca-Setup.exe` (34 MB) na [página de releases](https://github.com/AthirsonLamonato/Pacoca/releases/tag/v0.5.0)
+2. Execute — o wizard cuida de tudo:
+   - Baixa o app principal (~151 MB) automaticamente se necessário
    - Baixa e instala o Ollama + modelo de IA
    - Configura `core/config.yaml`
    - Faz login com o Google (Calendar + Drive, opcional)
-   - Cria atalho na área de trabalho apontando para `Pacoca/Pacoca.exe`
+   - Cria atalho na área de trabalho
 
 O `Pacoca.exe` traz todas as dependências Python bundled — PyQt6, faster-whisper, FastAPI, Google Auth e mais. **Não é necessário instalar Python ou qualquer pacote.**
 
@@ -38,7 +40,7 @@ O `Pacoca.exe` traz todas as dependências Python bundled — PyQt6, faster-whis
 
 ```bash
 git clone https://github.com/AthirsonLamonato/Pacoca.git
-cd Paçoca
+cd Pacoca
 ```
 
 **Windows:**
@@ -92,7 +94,7 @@ python main.py --edit-routines
 
 | Módulo | O que faz |
 |---|---|
-| **STT** | Transcrição via Whisper (`faster-whisper`). Calibração automática de ruído; VAD por energia RMS. Push-to-talk `ctrl+shift+space` por padrão; wake word via Porcupine se configurada |
+| **STT** | Transcrição via Whisper (`faster-whisper`). Calibração automática de ruído; VAD por energia RMS. Push-to-talk `ctrl+shift+space` por padrão; wake word via openWakeWord (sem API key, modelo customizável) |
 | **Overlay** | Janela flutuante PyQt6: estado (idle / listening / processing / speaking), histórico dos 3 últimos comandos, fade animado. Toggle: `ctrl+shift+a` |
 | **Transcrição** | Captura microfone ou loopback do sistema (Windows: WASAPI · Linux: PulseAudio). Auto-save a cada 5 min |
 | **Resumo / IA** | Resumo e explicações via Ollama (local) com fallback para Anthropic API |
