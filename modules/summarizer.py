@@ -22,17 +22,22 @@ def _get_config():
     return _config
 
 
-def ask_ai(prompt: str, system: str = None) -> str:
+def ask_ai(prompt: str, system: str = None, use_context: bool = True) -> str:
     """
     Envia um prompt ao LLM configurado e retorna a resposta.
     Usa Ollama por padrão; fallback para Anthropic se configurado.
+    use_context=True injeta o histórico da sessão no prompt.
     """
     config = _get_config()
     provider = config.get("ai.provider", "ollama")
 
     if system is None:
-        from core.profiles import ProfileManager
-        system = ProfileManager(config).system_prompt()
+        from core.profiles import _get_manager
+        system = _get_manager().system_prompt()
+
+    if use_context and config.get("ai.use_context", True):
+        from storage.context import build_context_prompt
+        prompt = build_context_prompt(prompt)
 
     if provider == "ollama":
         return _ask_ollama(prompt, system, config)
@@ -130,3 +135,37 @@ def summarize(text: str, detailed: bool = False) -> str:
 def explain(topic: str, *_) -> str:
     """Explica um conceito de forma clara e objetiva."""
     return ask_ai(f"Explique de forma clara e objetiva: {topic}")
+
+
+def summarize_meeting(*_) -> str:
+    """Gera um sumário estruturado da última reunião transcrita."""
+    from storage.file_store import load_last_transcription
+    text = load_last_transcription()
+    if not text:
+        return "Nenhuma transcrição disponível. Grave uma reunião com 'começa a transcrever'."
+
+    prompt = (
+        "Analise a transcrição de reunião abaixo e gere um sumário estruturado em português. "
+        "Organize obrigatoriamente nas seguintes seções:\n\n"
+        "## Resumo executivo\n(2-3 frases)\n\n"
+        "## Tópicos discutidos\n(lista de bullet points)\n\n"
+        "## Decisões tomadas\n(o que foi decidido objetivamente)\n\n"
+        "## Action items\n(próximos passos com responsável, se mencionado)\n\n"
+        "## Pendências\n(pontos sem resolução ou que precisam de follow-up)\n\n"
+        f"Transcrição:\n{text}"
+    )
+    return ask_ai(prompt, use_context=False)
+
+
+def summarize_session(*_) -> str:
+    """Resumo do que foi feito na sessão atual (baseado no contexto)."""
+    from storage.context import get_turns
+    turns = get_turns()
+    if not turns:
+        return "Nenhuma interação no contexto atual."
+    history = "\n".join(f"- {cmd}" for cmd, _ in turns)
+    prompt = (
+        f"Liste de forma concisa o que o usuário fez nesta sessão:\n{history}\n\n"
+        "Gere um resumo em 3-5 bullet points do que foi realizado."
+    )
+    return ask_ai(prompt, use_context=False)
