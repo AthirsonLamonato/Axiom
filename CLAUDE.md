@@ -60,7 +60,7 @@ axiom/
 | STT                | faster-whisper (Whisper base)     |
 | Wake word          | openWakeWord (sem API key)         |
 | LLM local          | Ollama (llama3 / mistral / phi3)  |
-| LLM cloud fallback | Anthropic API (claude-haiku)      |
+| LLM cloud fallback | Groq API (free tier, llama3)      |
 | TTS                | pyttsx3 / Coqui TTS               |
 | Busca web          | duckduckgo-search                 |
 | Overlay            | PyQt6                             |

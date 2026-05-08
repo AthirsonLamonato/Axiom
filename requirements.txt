@@ -46,8 +46,8 @@ google-api-python-client
 # fastapi
 # uvicorn[standard]
 
-# Anthropic API (fallback cloud, requer ANTHROPIC_API_KEY)
-# anthropic
+# Groq API (fallback cloud gratuito — sem biblioteca extra, usa requests)
+# Obtenha GROQ_API_KEY gratuitamente em console.groq.com
 
 # Clipboard (copiar/colar texto por voz)
 # pyperclip
