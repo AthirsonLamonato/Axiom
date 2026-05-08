@@ -250,6 +250,14 @@ class WizardApp(tk.Tk):
         "/v0.5.0/Pacoca-app-v0.5.0.zip"
     )
 
+    # ── Credenciais OAuth do desenvolvedor (embutidas no app) ──────────
+    # Crie em: console.cloud.google.com → APIs & Services → Credenciais
+    #   → Criar credenciais → OAuth 2.0 → Aplicativo desktop
+    # Copie client_id e client_secret aqui. O usuário final não precisa
+    # fazer nada no Google Cloud — só clicar em "Login com Google".
+    _GOOGLE_CLIENT_ID     = ""   # preencha: "...apps.googleusercontent.com"
+    _GOOGLE_CLIENT_SECRET = ""   # preencha: "GOCSPX-..."
+
     # ── Página 1 — Boas-vindas ────────────────────────────────────────
 
     def _page_welcome(self):
@@ -506,43 +514,15 @@ class WizardApp(tk.Tk):
 
     def _page_google(self):
         f = styled_frame(self._content)
-        h1(f, "Integração Google (opcional)").pack(anchor="w", pady=(0, 4))
-        body(f, "Necessário para: ver agenda, criar eventos e backup no Google Drive. "
-                "Pode pular — configure depois com 'paçoca, autoriza calendário'.").pack(anchor="w")
-        tk.Frame(f, bg=BORDER, height=1).pack(fill="x", pady=10)
+        h1(f, "Integração Google").pack(anchor="w", pady=(0, 4))
+        body(f, "Conecte sua conta Google para usar o Calendário e o Drive. "
+                "Não é necessário criar nenhum projeto — basta fazer login.").pack(anchor="w")
+        tk.Frame(f, bg=BORDER, height=1).pack(fill="x", pady=12)
 
-        h2(f, "1. Criar credenciais OAuth").pack(anchor="w", pady=(0, 4))
-        body(f, "• console.cloud.google.com → APIs & Services → Credenciais\n"
-                "• Novo projeto → Ativar Calendar API e Drive API\n"
-                "• Criar credenciais → OAuth 2.0 → Aplicativo desktop → Baixar JSON"
-             ).pack(anchor="w", padx=8)
-        btn(f, "Abrir Google Cloud Console",
-            lambda: webbrowser.open("https://console.cloud.google.com/apis/credentials"),
-            color=BG3, width=28).pack(anchor="w", pady=(6, 0))
-
-        tk.Frame(f, bg=BORDER, height=1).pack(fill="x", pady=10)
-        h2(f, "2. Selecionar credentials.json").pack(anchor="w", pady=(0, 4))
-
-        default_creds = INSTALL_DIR / "core" / "credentials.json"
-        self._creds_var = tk.StringVar(
-            value=str(default_creds) if default_creds.exists() else ""
-        )
-        creds_row = tk.Frame(f, bg=BG)
-        creds_row.pack(fill="x", pady=2)
-        tk.Label(creds_row, text="credentials.json:", bg=BG, fg=FG2,
-                 font=("Segoe UI", 8), width=18, anchor="w").pack(side="left")
-        tk.Entry(creds_row, textvariable=self._creds_var, bg=BG2, fg=FG,
-                 insertbackground=FG, relief="flat", font=("Segoe UI", 8),
-                 highlightthickness=1, highlightcolor=ACCENT,
-                 highlightbackground=BORDER).pack(side="left", fill="x", expand=True)
-        btn(creds_row, "…", self._pick_credentials, color=BG3, width=3).pack(side="left", padx=4)
-
-        tk.Frame(f, bg=BORDER, height=1).pack(fill="x", pady=10)
-        h2(f, "3. Autorizar conta Google").pack(anchor="w", pady=(0, 6))
-
+        # Dots de status
         token_ok = (INSTALL_DIR / "core" / "google_token.json").exists()
         grid = tk.Frame(f, bg=BG)
-        grid.pack(fill="x")
+        grid.pack(fill="x", pady=(0, 4))
 
         self._cal_dot = status_dot(grid, token_ok)
         self._cal_dot.grid(row=0, column=0, sticky="w")
@@ -556,64 +536,94 @@ class WizardApp(tk.Tk):
                                   bg=BG, fg=FG, font=("Segoe UI", 9))
         self._drv_lbl.grid(row=1, column=1, sticky="w", pady=(2, 0))
 
-        self._google_status = tk.Label(f, text="", bg=BG, fg=FG2, font=("Segoe UI", 8))
-        self._google_status.pack(anchor="w", pady=(8, 2))
-        btn(f, "Conectar conta Google", self._run_google_auth, width=22).pack(anchor="w")
-        body(f, "Uma janela do navegador abrirá para você fazer login.", FG2).pack(anchor="w", pady=(6, 0))
+        tk.Frame(f, bg=BORDER, height=1).pack(fill="x", pady=12)
+
+        self._google_status = tk.Label(f, text="", bg=BG, fg=FG2, font=("Segoe UI", 8),
+                                        wraplength=480, justify="left")
+        self._google_status.pack(anchor="w", pady=(0, 6))
+
+        btn(f, "  Login com Google  ", self._run_google_auth, width=22).pack(anchor="w")
+        body(f, "Uma janela do navegador abrirá. Escolha sua conta e clique em Permitir.",
+             FG2).pack(anchor="w", pady=(6, 0))
+
+        tk.Frame(f, bg=BORDER, height=1).pack(fill="x", pady=14)
+
+        skip_row = tk.Frame(f, bg=BG)
+        skip_row.pack(anchor="w")
+        body(skip_row, "Não precisa agora?", FG2).pack(side="left")
+        tk.Button(
+            skip_row, text="  Pular esta etapa →  ",
+            command=self._go_next,
+            bg=BG, fg=FG2, activebackground=BG2, activeforeground=FG,
+            relief="flat", font=("Segoe UI", 9), cursor="hand2",
+            borderwidth=0,
+        ).pack(side="left", padx=6)
+        body(skip_row, "(configure depois dizendo 'paçoca, autoriza calendário')",
+             FG2).pack(side="left")
         return f
 
-    def _pick_credentials(self):
-        path = filedialog.askopenfilename(
-            title="Selecione credentials.json",
-            filetypes=[("JSON", "*.json"), ("Todos", "*.*")],
-        )
-        if path:
-            self._creds_var.set(path)
-
     def _run_google_auth(self):
-        creds_src = self._creds_var.get().strip()
-        if not creds_src or not os.path.exists(creds_src):
+        if not self._GOOGLE_CLIENT_ID or not self._GOOGLE_CLIENT_SECRET:
             self._google_status.config(
-                text="Selecione um credentials.json válido primeiro.", fg=RED)
+                text="Credenciais OAuth não configuradas no app. "
+                     "O desenvolvedor precisa preencher _GOOGLE_CLIENT_ID e "
+                     "_GOOGLE_CLIENT_SECRET em setup_wizard.py.",
+                fg=YELLOW,
+            )
             return
-        self._google_status.config(text="Abrindo navegador para autorização…", fg=YELLOW)
+
+        self._google_status.config(text="Abrindo navegador para login…", fg=YELLOW)
 
         SCOPES = [
             "https://www.googleapis.com/auth/calendar",
             "https://www.googleapis.com/auth/drive.file",
         ]
-        dest_creds = INSTALL_DIR / "core" / "credentials.json"
-        token_path = INSTALL_DIR / "core" / "google_token.json"
+        token_path  = INSTALL_DIR / "core" / "google_token.json"
+        creds_path  = INSTALL_DIR / "core" / "credentials.json"
+
+        # Constrói o client_config a partir das constantes embutidas
+        client_config = {
+            "installed": {
+                "client_id":      self._GOOGLE_CLIENT_ID,
+                "client_secret":  self._GOOGLE_CLIENT_SECRET,
+                "auth_uri":       "https://accounts.google.com/o/oauth2/auth",
+                "token_uri":      "https://oauth2.googleapis.com/token",
+                "redirect_uris":  ["urn:ietf:wg:oauth:2.0:oob", "http://localhost"],
+            }
+        }
 
         def run():
             try:
-                dest_creds.parent.mkdir(parents=True, exist_ok=True)
-                if Path(creds_src).resolve() != dest_creds.resolve():
-                    shutil.copy2(creds_src, dest_creds)
+                token_path.parent.mkdir(parents=True, exist_ok=True)
 
-                # Tenta importar direto (bundled no exe)
                 try:
                     from google_auth_oauthlib.flow import InstalledAppFlow
-                    flow = InstalledAppFlow.from_client_secrets_file(str(dest_creds), SCOPES)
+                    flow = InstalledAppFlow.from_client_config(client_config, SCOPES)
                     creds = flow.run_local_server(port=0)
                     token_path.write_text(creds.to_json(), encoding="utf-8")
+                    # Salva credentials.json para que os módulos possam fazer refresh
+                    creds_path.write_text(json.dumps(client_config), encoding="utf-8")
                 except ImportError:
-                    # Fallback: tenta via Python do sistema
                     exe = _find_system_python()
                     if not exe:
                         raise RuntimeError(
-                            "google-auth-oauthlib não está disponível.\n"
+                            "google-auth-oauthlib não disponível. "
                             "Execute o Paçoca.exe uma vez e tente novamente.")
                     script = (
                         "from google_auth_oauthlib.flow import InstalledAppFlow\n"
                         "import json,sys\n"
-                        "f=InstalledAppFlow.from_client_secrets_file(sys.argv[1],json.loads(sys.argv[2]))\n"
+                        "cfg=json.loads(sys.argv[1])\n"
+                        "scopes=json.loads(sys.argv[2])\n"
+                        "f=InstalledAppFlow.from_client_config(cfg,scopes)\n"
                         "c=f.run_local_server(port=0)\n"
                         "open(sys.argv[3],'w').write(c.to_json())\n"
+                        "open(sys.argv[4],'w').write(sys.argv[1])\n"
                         "print('OK')\n"
                     )
                     r = subprocess.run(
-                        [exe, "-c", script, str(dest_creds), json.dumps(SCOPES), str(token_path)],
+                        [exe, "-c", script,
+                         json.dumps(client_config), json.dumps(SCOPES),
+                         str(token_path), str(creds_path)],
                         capture_output=True, text=True, timeout=120,
                     )
                     if r.returncode != 0 or "OK" not in r.stdout:
@@ -624,7 +634,7 @@ class WizardApp(tk.Tk):
                     self._drv_dot.config(fg=GREEN)
                     self._cal_lbl.config(text="  Google Calendar  ✓")
                     self._drv_lbl.config(text="  Google Drive  ✓")
-                    self._google_status.config(text="Conta Google conectada com sucesso.", fg=GREEN)
+                    self._google_status.config(text="✓ Conta Google conectada.", fg=GREEN)
 
                 self.after(0, _ok)
             except Exception as e:
