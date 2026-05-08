@@ -29,6 +29,9 @@ core/token.json
 # ── Config local (use config.yaml como base) ──
 # core/config.yaml  ← versionado propositalmente
 
+# ── Claude Code ───────────────────────────────
+.claude/
+
 # ── IDEs ──────────────────────────────────────
 .vscode/
 .idea/

@@ -89,3 +89,7 @@ class TTS:
     def set_rate(self, rate: int):
         if self.engine_name == "pyttsx3" and self._engine:
             self._engine.setProperty("rate", rate)
+
+    def set_volume(self, volume: float):
+        if self.engine_name == "pyttsx3" and self._engine:
+            self._engine.setProperty("volume", volume)

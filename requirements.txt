@@ -42,8 +42,28 @@ google-api-python-client
 
 # ── Opcionais ─────────────────────────────────────────────────────────
 
+# Dashboard web local (abre no browser em localhost:7755)
+# fastapi
+# uvicorn[standard]
+
 # Anthropic API (fallback cloud, requer ANTHROPIC_API_KEY)
 # anthropic
+
+# Clipboard (copiar/colar texto por voz)
+# pyperclip
+
+# OCR de tela (leitura de texto na tela)
+# Instale também o Tesseract OCR: github.com/UB-Mannheim/tesseract/wiki (Windows)
+#                                  sudo apt install tesseract-ocr tesseract-ocr-por (Linux)
+# pytesseract
+# Pillow
+
+# Speaker diarization (identificação de falantes, ~2 GB de modelos)
+# Requer: token em huggingface.co/settings/tokens + aceitar termos em
+#   huggingface.co/pyannote/speaker-diarization-3.1
+# Instale: pip install pyannote.audio
+# Defina:  set HF_TOKEN=seu_token  (Windows) / export HF_TOKEN=seu_token (Linux/Mac)
+# pyannote.audio
 
 # Coqui TTS (voz mais natural, ~1.5 GB de modelos)
 # TTS

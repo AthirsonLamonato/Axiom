@@ -2,7 +2,7 @@
 
 > Assistente pessoal inteligente de desktop — controle por voz ou texto, 100% open-source e gratuito.
 
-![Version](https://img.shields.io/badge/version-v0.1.0--alpha-blue)
+![Version](https://img.shields.io/badge/version-v0.4.0-blue)
 ![Python](https://img.shields.io/badge/python-3.9+-green)
 ![License](https://img.shields.io/badge/license-MIT-orange)
 ![Tests](https://img.shields.io/badge/tests-36%20passing-brightgreen)
@@ -16,7 +16,7 @@ Axiom é um assistente de desktop estilo Jarvis — modular, expansível e capaz
 
 | Módulo | O que faz |
 |---|---|
-| **STT** | Transcrição via Whisper (`faster-whisper`). Modo push-to-talk (ctrl+shift+space) por padrão; wake word via Porcupine se `access_key` configurada |
+| **STT** | Transcrição via Whisper (`faster-whisper`). Calibração automática de ruído no boot; VAD inteligente por energia RMS. Push-to-talk (ctrl+shift+space) por padrão; wake word via Porcupine se `access_key` configurada |
 | **Overlay** | Janela flutuante PyQt6 sempre visível: indicador de estado (idle / listening / processing / speaking), histórico dos últimos 3 comandos, fade animado. Toggle: ctrl+shift+a |
 | **Transcrição** | Captura microfone ou loopback do sistema (Windows: WASAPI · Linux: PulseAudio). Auto-save a cada 5 min |
 | **Resumo / IA** | Resumo e explicações via Ollama (local) com fallback para Anthropic API |
@@ -28,6 +28,22 @@ Axiom é um assistente de desktop estilo Jarvis — modular, expansível e capaz
 | **Sistema** | Abrir/fechar apps, volume, brilho, listar processos (Windows + Linux) |
 | **Segurança** | Confirmação antes de ações críticas, lista configurável |
 | **Backup** | Local automático + Google Drive (opcional, requer OAuth) |
+| **Perfis** | work / casual / focus / meeting / night — alteráveis por voz em tempo real |
+| **Google Calendar** | Ver agenda do dia, próximo evento, adicionar eventos por voz |
+| **Calibração STT** | Calibração automática de ruído no boot + comando por voz |
+| **Speaker diarization** | Identifica falantes na transcrição (`[Falante 1]`, `[Falante 2]`…) — requer pyannote.audio |
+| **Plugin system** | Carregamento dinâmico de módulos em `plugins/`. Plugin de anotações incluído. Hot-reload por voz |
+| **Memória contextual** | Histórico da sessão injetado no prompt do LLM para respostas coerentes |
+| **Lembretes** | Notificações agendadas por voz — horário absoluto ou relativo |
+| **Clipboard** | Copiar texto/último resultado, ler e limpar área de transferência por voz |
+| **OCR de tela** | Lê texto visível na tela via pytesseract. Salva screenshots |
+| **Multi-idioma STT** | Troca o idioma de reconhecimento por voz (PT, EN, ES, FR, DE…) |
+| **Sumário de reunião** | Sumário estruturado com resumo executivo, decisões, action items e pendências |
+| **Dashboard web** | Interface local (FastAPI + htmx) em `localhost:7755` — histórico, lembretes, envio de comandos |
+| **Obsidian** | Exporta transcrições, sumários e nota diária para qualquer vault Markdown |
+| **Comandos encadeados** | "abre o VS Code e depois foco por 25 min" — múltiplos comandos em sequência |
+| **Modo reunião auto** | Detecta Zoom/Teams/Slack via psutil; ativa perfil meeting e transcrição automaticamente |
+| **TTS profile-aware** | Rate e volume do TTS sincronizados ao trocar perfil |
 | **Banco de dados** | SQLite — histórico de comandos, sessões e transcrições |
 | **TTS** | pyttsx3 (offline, leve) ou Coqui TTS (mais natural) |
 
@@ -74,6 +90,12 @@ python main.py
 
 # Editor de rotinas
 python main.py --edit-routines
+
+# Dashboard web (abre o browser em localhost:7755)
+python main.py --web
+
+# Somente o dashboard, sem modo voz
+python main.py --mode text --no-tts --no-overlay --web
 ```
 
 ---
@@ -138,6 +160,124 @@ relatório de produtividade
 relatório diário
 ```
 
+### Perfis dinâmicos
+```
+perfil trabalho / perfil work
+perfil casual
+perfil foco / perfil focus
+perfil reunião / perfil meeting
+perfil noturno / perfil noite
+qual perfil                           ← perfil atual
+lista perfis                          ← todos os perfis disponíveis
+```
+
+### Google Calendar
+```
+o que tenho hoje / agenda hoje
+próximo evento / próximo compromisso
+adiciona reunião amanhã às 14h
+adiciona dentista hoje às 10h30
+autoriza calendário                   ← primeira autenticação OAuth
+```
+
+### Speaker diarization
+```
+identifica falantes                   ← roda após parar a transcrição
+diariza falantes
+```
+
+### Plugins
+```
+lista plugins                         ← plugins carregados e rotas
+recarrega plugins                     ← hot-reload sem reiniciar
+```
+
+### Anotações (plugin incluso)
+```
+anota reunião com João amanhã às 10h
+minhas anotações
+busca nas anotações reunião
+limpa anotações
+```
+
+### Lembretes
+```
+me lembra às 15h de reunião
+me lembra em 30 minutos de fazer backup
+me lembra às 9h30 de tomar remédio
+lista lembretes
+cancela lembrete 2
+cancela lembretes                     ← cancela todos
+```
+
+### Clipboard
+```
+copia o último resultado
+copia Python é incrível para o clipboard
+lê a área de transferência
+lê o clipboard
+limpa o clipboard
+```
+
+### OCR / Tela
+```
+lê o texto na tela
+lê a tela
+lê a região central
+salva screenshot
+```
+
+### Idioma do STT
+```
+muda para inglês
+muda para espanhol
+muda para francês
+idioma atual
+```
+
+### Contexto e sessão
+```
+mostra o contexto                     ← histórico da sessão
+limpa o contexto                      ← reinicia memória contextual
+resume a sessão                       ← bullet points do que foi feito
+resume a reunião                      ← sumário estruturado com action items
+```
+
+### STT / Microfone
+```
+calibra o microfone                   ← recalibra o limiar de ruído
+recalibra o mic
+```
+
+### Dashboard web
+```
+abre o dashboard                      ← inicia o servidor web e abre o browser
+inicia a interface web
+para o servidor web / fecha o dashboard
+```
+
+### Obsidian / exportação
+```
+exporta a transcrição para o obsidian
+exporta o sumário para o obsidian
+cria a nota diária / atualiza a nota diária
+exporta as notas para o obsidian
+```
+
+### Detector de reunião automático
+```
+ativa o detector de reunião           ← monitora Zoom, Teams, Slack…
+desativa o detector de reunião
+status do detector
+```
+
+### Comandos encadeados
+```
+abre o VS Code e depois foco por 25 min
+começa a transcrever e então ativa o detector de reunião
+para a transcrição e em seguida exporta o sumário para o obsidian
+```
+
 ### Overlay e meta
 ```
 abre o overlay / fecha o overlay      ← ou ctrl+shift+a
@@ -188,6 +328,44 @@ Em `config.yaml`: `ai.provider: anthropic`
 3. Coloque em `core/credentials.json`
 4. Em `config.yaml`: `backup.google_drive.enabled: true`
 
+### Plugins
+
+Coloque qualquer arquivo `.py` em `plugins/` e ele será carregado automaticamente no próximo boot (ou via `"recarrega plugins"`). Cada plugin deve declarar `NAME`, `VERSION`, `DESCRIPTION` e `ROUTES`. Use `plugins/_template.py` como ponto de partida.
+
+```yaml
+plugins:
+  enabled: true
+  directory: plugins
+```
+
+### Dashboard web (opcional)
+
+```bash
+pip install fastapi "uvicorn[standard]"
+python main.py --web        # ou diga "abre o dashboard"
+```
+
+### Obsidian / exportação de notas (opcional)
+
+```yaml
+obsidian:
+  vault_path: C:/Users/seu_usuario/Documents/ObsidianVault/Axiom
+```
+
+### Google Calendar (opcional)
+
+1. No mesmo projeto do Google Cloud Console, ative a **Calendar API**
+2. Baixe o `credentials.json` (OAuth 2.0) e coloque em `core/credentials.json`
+3. Execute o comando de voz `"autoriza calendário"` — o browser abre para login
+4. O token é salvo em `core/calendar_token.json` e renovado automaticamente
+
+```yaml
+calendar:
+  credentials_path: core/credentials.json
+  token_path: core/calendar_token.json
+  timezone: America/Sao_Paulo
+```
+
 ---
 
 ## Estrutura do projeto
@@ -199,14 +377,15 @@ Axiom/
 ├── requirements.txt
 │
 ├── core/
-│   ├── orchestrator.py        # roteador regex → módulos
+│   ├── orchestrator.py        # roteador regex → módulos + plugins
+│   ├── plugin_loader.py       # escaneia plugins/ e injeta rotas
 │   ├── config.py              # carregador YAML com notação de pontos
 │   ├── config.yaml            # configuração central
-│   ├── profiles.py            # perfis work / casual
+│   ├── profiles.py            # perfis work / casual / focus / meeting / night
 │   └── logger.py              # logging rotativo em arquivo
 │
 ├── input/
-│   ├── stt.py                 # Whisper + wake word / push-to-talk
+│   ├── stt.py                 # Whisper + wake word / push-to-talk + calibração de ruído
 │   ├── hotkeys.py             # atalhos globais
 │   └── cli.py                 # interface de terminal
 │
@@ -219,7 +398,14 @@ Axiom/
 │   ├── routines.py            # rotinas YAML com condições
 │   ├── productivity.py        # monitoramento, Pomodoro, relatórios
 │   ├── security.py            # confirmação de ações críticas
-│   └── backup.py              # backup local + Google Drive
+│   ├── backup.py              # backup local + Google Drive
+│   ├── calendar_integration.py # Google Calendar — agenda, próximo evento, criar evento
+│   ├── reminders.py           # lembretes agendados por voz
+│   ├── clipboard_tools.py     # copiar/ler área de transferência por voz
+│   ├── screen_reader.py       # OCR de tela via pytesseract
+│   ├── meeting_detector.py    # detecta videochamadas via psutil
+│   ├── obsidian.py            # exporta notas/transcrições para vault Markdown
+│   └── web_server.py          # inicia o servidor do dashboard web
 │
 ├── output/
 │   ├── tts.py                 # pyttsx3 / Coqui TTS
@@ -228,7 +414,16 @@ Axiom/
 │
 ├── storage/
 │   ├── db.py                  # SQLite — histórico e sessões
-│   └── file_store.py          # transcrições e resumos em Markdown
+│   ├── file_store.py          # transcrições e resumos em Markdown
+│   └── context.py             # memória contextual de sessão (ring buffer)
+│
+├── web/
+│   ├── __init__.py
+│   └── app.py                 # FastAPI app com htmx — dashboard local
+│
+├── plugins/                   # plugins externos (carregados automaticamente)
+│   ├── notes.py               # anotações rápidas (plugin incluso)
+│   └── _template.py           # template para criar novos plugins
 │
 └── tests/                     # 36 testes (pytest)
     ├── test_config.py
@@ -254,6 +449,8 @@ Axiom/
 | Monitoramento | psutil | Open-source |
 | Banco de dados | SQLite | Open-source |
 | Backup nuvem | Google Drive API | Gratuito |
+| Google Calendar | Google Calendar API (OAuth 2.0) | Gratuito |
+| Dashboard web | FastAPI + htmx + uvicorn | Open-source / opcional |
 | Config | PyYAML | Open-source |
 
 ---
@@ -264,7 +461,7 @@ Axiom/
 python -m pytest tests/ -v
 ```
 
-36 testes cobrindo: config, orchestrator (roteamento), banco de dados, STT e dev tools.
+36+ testes cobrindo: config, orchestrator (roteamento), banco de dados, STT e dev tools.
 
 CI automático via GitHub Actions em cada push para `main` e `dev`.
 
@@ -281,12 +478,37 @@ CI automático via GitHub Actions em cada push para `main` e `dev`.
 - [x] Pomodoro, relatório diário, rotinas com condições
 - [x] CI/CD com GitHub Actions
 
-### v0.2 — Próximo
-- [ ] Speaker diarization (`pyannote.audio`) — identificação de falantes
-- [ ] Calibração automática de ruído para o microfone
-- [ ] Integração com Google Calendar
-- [ ] Modos de perfil dinâmicos via voz
-- [ ] Plugin system para módulos externos
+### v0.2 — Concluído
+- [x] Calibração automática de ruído para o microfone
+- [x] Integração com Google Calendar
+- [x] Modos de perfil dinâmicos via voz (focus, meeting, night + aliases PT)
+- [x] Plugin system — carregamento dinâmico de `plugins/`, hot-reload por voz
+- [x] Speaker diarization (`pyannote.audio`) — identificação de falantes (opcional, requer HF_TOKEN)
+
+### v0.3 — Concluído
+- [x] Memória contextual — histórico da sessão injetado no prompt do LLM (configurável)
+- [x] Notificações agendadas por voz — "me lembra às 15h de reunião" / "em 30 min"
+- [x] Clipboard por voz — copiar texto/último resultado, ler e limpar área de transferência
+- [x] OCR de tela — "lê o texto na tela" e "salva screenshot" via pytesseract + Pillow
+- [x] Troca de idioma STT por voz — "muda para inglês", "muda para espanhol" etc.
+- [x] Sumário de reunião aprimorado — seções: resumo executivo, decisões, action items, pendências
+- [x] Sumário da sessão — "resume a sessão" gera bullet points do que foi feito
+
+### v0.4 — Concluído
+- [x] Interface web local (FastAPI + htmx) — dashboard de histórico, lembretes, contexto e comandos
+- [x] Exportação para Obsidian — transcrições, sumários, nota diária e anotações com frontmatter YAML
+- [x] Comandos encadeados — separadores naturais: "e depois", "em seguida", "então" + "e" com detecção
+- [x] Modo reunião automático — detecta Zoom/Teams/Slack/Webex via psutil; ativa perfil e transcrição
+- [x] TTS profile-aware — rate e volume sincronizados ao trocar perfil por voz
+- [x] `--web` flag — inicia o dashboard ao subir o assistente
+
+### v0.5 — Próximo
+- [ ] Síntese de voz aprimorada — vozes neurais via Coqui TTS com modelo PT-BR
+- [ ] Editor visual de rotinas no dashboard web
+- [ ] Integração com Notion
+- [ ] Notificações push no browser via WebSocket (polling → streaming)
+- [ ] Autenticação básica no dashboard (senha local)
+- [ ] Síntese de voz aprimorada — vozes neurais via Coqui TTS com modelo PT-BR
 
 ---
 

@@ -19,6 +19,8 @@ stt:
   model: base           # tiny | base | small | medium | large
   language: pt          # código do idioma
   device: cpu           # cpu | cuda (GPU Nvidia)
+  auto_calibrate: true  # calibrar ruído ambiente na inicialização do modo voz
+  noise_threshold: 300  # limiar de energia RMS (atualizado automaticamente na calibração)
 
 # ── IA local (Ollama) ─────────────────────────
 ai:
@@ -26,6 +28,7 @@ ai:
   model: llama3         # llama3 | mistral | phi3
   ollama_url: http://localhost:11434
   max_tokens: 1024
+  use_context: true     # injeta histórico da sessão no prompt (memória contextual)
   system_prompt: |
     Você é Axiom, um assistente pessoal técnico e objetivo.
     Responda sempre em português, de forma direta e sem rodeios.
@@ -62,6 +65,22 @@ transcription:
   format: markdown           # markdown | txt
   auto_save: true
 
+# ── Plugins ───────────────────────────────────
+plugins:
+  enabled: true
+  directory: plugins        # diretório escaneado na inicialização
+
+# ── Google Calendar ───────────────────────────
+calendar:
+  credentials_path: core/credentials.json  # OAuth 2.0 client secrets (baixe do Google Cloud)
+  token_path: core/calendar_token.json     # gerado automaticamente após primeira auth
+  timezone: America/Sao_Paulo
+
+# ── Obsidian ──────────────────────────────────
+obsidian:
+  vault_path: ""            # ex: C:/Users/user/Documents/Obsidian/Axiom
+                            # Deixe vazio para desabilitar exportação
+
 # ── Backup ────────────────────────────────────
 backup:
   local_dir: data/backups
@@ -80,11 +99,31 @@ logging:
 profiles:
   work:
     tts_rate: 175
+    tts_volume: 0.9
     response_style: technical   # respostas diretas e técnicas
     startup_routine: work_mode
 
   casual:
     tts_rate: 160
+    tts_volume: 0.85
+    response_style: friendly
+    startup_routine: null
+
+  focus:
+    tts_rate: 150
+    tts_volume: 0.75
+    response_style: concise     # máximo 2 frases por resposta
+    startup_routine: null
+
+  meeting:
+    tts_rate: 145
+    tts_volume: 0.7
+    response_style: formal
+    startup_routine: null
+
+  night:
+    tts_rate: 155
+    tts_volume: 0.5
     response_style: friendly
     startup_routine: null
 
