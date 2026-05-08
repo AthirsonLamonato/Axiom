@@ -7,13 +7,80 @@ Dois modos:
 
 import logging
 import threading
+from typing import Optional
 import numpy as np
 
 logger = logging.getLogger(__name__)
 
 SAMPLE_RATE = 16000
 CHUNK = 1024
-COMMAND_DURATION = 5  # segundos de captura após ativação
+MAX_COMMAND_DURATION = 10   # segundos máximos de captura (failsafe)
+CALIBRATION_DURATION = 1.5  # segundos para medir ruído ambiente
+ENERGY_MULTIPLIER = 2.5     # limiar = noise_rms × este fator
+MIN_ENERGY = 300.0           # limiar mínimo absoluto (evita calibração muito baixa)
+SILENCE_CHUNKS = 18          # chunks silenciosos consecutivos para encerrar gravação
+
+# Instância singleton — acessível para comandos de voz
+_voice: Optional["VoiceInput"] = None
+
+
+def get_instance() -> Optional["VoiceInput"]:
+    return _voice
+
+
+def init_voice(config) -> "VoiceInput":
+    global _voice
+    _voice = VoiceInput(config)
+    return _voice
+
+
+def calibrar_microfone(*_) -> str:
+    """Comando de voz: recalibra o limiar de ruído ambiente."""
+    if _voice is None:
+        return "STT não inicializado. Inicie o modo voz primeiro."
+    threshold = _voice.calibrate()
+    return f"Calibração concluída. Limiar de energia ajustado para {threshold:.0f}."
+
+
+# Mapa de nomes de idioma → código ISO 639-1
+_LANG_MAP = {
+    "português": "pt", "portugues": "pt", "portuguese": "pt", "pt": "pt",
+    "inglês":    "en", "ingles":    "en", "english":    "en", "en": "en",
+    "espanhol":  "es", "spanish":   "es", "es":         "es",
+    "francês":   "fr", "frances":   "fr", "french":     "fr", "fr": "fr",
+    "alemão":    "de", "alemao":    "de", "german":     "de", "de": "de",
+    "italiano":  "it", "italian":   "it", "it":         "it",
+    "japonês":   "ja", "japones":   "ja", "japanese":   "ja", "ja": "ja",
+}
+
+
+_LANG_DISPLAY = {
+    "pt": "Português", "en": "Inglês", "es": "Espanhol",
+    "fr": "Francês",   "de": "Alemão", "it": "Italiano", "ja": "Japonês",
+}
+_active_language: str = ""   # persiste troca de idioma mesmo sem _voice ativo
+
+
+def switch_language(lang: str, *_) -> str:
+    """Altera o idioma de reconhecimento de voz em tempo real."""
+    global _active_language
+    code = _LANG_MAP.get(lang.lower().strip(), lang.lower().strip())
+    _active_language = code
+    if _voice is not None:
+        _voice.config.set("stt.language", code)
+    return f"Idioma do STT alterado para: {_LANG_DISPLAY.get(code, code)} ({code})"
+
+
+def current_language(*_) -> str:
+    """Retorna o idioma atual de reconhecimento."""
+    if _voice is not None:
+        lang = _voice.config.get("stt.language", "pt")
+    elif _active_language:
+        lang = _active_language
+    else:
+        from core.config import Config
+        lang = Config().get("stt.language", "pt")
+    return f"Idioma atual: {_LANG_DISPLAY.get(lang, lang)} ({lang})"
 
 
 class VoiceInput:
@@ -27,6 +94,7 @@ class VoiceInput:
         self.config = config
         self._whisper = self._load_whisper()
         self._pa = self._load_pyaudio()
+        self._noise_threshold: float = config.get("stt.noise_threshold", MIN_ENERGY)
 
         access_key = config.get("wake_word.access_key", "")
         if access_key:
@@ -36,6 +104,13 @@ class VoiceInput:
             self._mode = "push_to_talk"
             self._porcupine = None
             logger.info("pvporcupine sem access_key — usando push-to-talk (ctrl+shift+space)")
+
+        # Calibração automática na inicialização (se habilitada)
+        if config.get("stt.auto_calibrate", True):
+            try:
+                self.calibrate()
+            except Exception as e:
+                logger.warning("Calibração automática falhou: %s — usando limiar padrão", e)
 
     def _load_whisper(self):
         from faster_whisper import WhisperModel
@@ -117,32 +192,75 @@ class VoiceInput:
         print("gravando...", end=" ", flush=True)
         return self._capture_and_transcribe()
 
+    # ── Calibração de ruído ────────────────────────────────────────────
+
+    def calibrate(self) -> float:
+        """Mede o ruído ambiente por CALIBRATION_DURATION segundos e ajusta o limiar."""
+        import pyaudio
+        print("[Axiom] Calibrando microfone...", end=" ", flush=True)
+        stream = self._pa.open(
+            rate=SAMPLE_RATE, channels=1, format=pyaudio.paInt16,
+            input=True, frames_per_buffer=CHUNK,
+        )
+        num_chunks = int(SAMPLE_RATE / CHUNK * CALIBRATION_DURATION)
+        rms_values = []
+        for _ in range(num_chunks):
+            data = stream.read(CHUNK, exception_on_overflow=False)
+            rms_values.append(self._rms(data))
+        stream.stop_stream()
+        stream.close()
+
+        noise_floor = float(np.mean(rms_values)) if rms_values else MIN_ENERGY
+        self._noise_threshold = max(noise_floor * ENERGY_MULTIPLIER, MIN_ENERGY)
+        self.config.set("stt.noise_threshold", self._noise_threshold)
+        print(f"ok (limiar: {self._noise_threshold:.0f})")
+        logger.info("Calibração: noise_floor=%.1f threshold=%.1f", noise_floor, self._noise_threshold)
+        return self._noise_threshold
+
+    @staticmethod
+    def _rms(audio_chunk: bytes) -> float:
+        data = np.frombuffer(audio_chunk, dtype=np.int16).astype(np.float32)
+        return float(np.sqrt(np.mean(data ** 2))) if len(data) > 0 else 0.0
+
     # ── Transcrição ────────────────────────────────────────────────────
 
     def _capture_and_transcribe(self) -> str:
         import pyaudio
 
         language = self.config.get("stt.language", "pt")
-        frames = []
-        num_chunks = int(SAMPLE_RATE / CHUNK * COMMAND_DURATION)
+        max_chunks = int(SAMPLE_RATE / CHUNK * MAX_COMMAND_DURATION)
 
         stream = self._pa.open(
-            rate=SAMPLE_RATE,
-            channels=1,
-            format=pyaudio.paInt16,
-            input=True,
-            frames_per_buffer=CHUNK,
+            rate=SAMPLE_RATE, channels=1, format=pyaudio.paInt16,
+            input=True, frames_per_buffer=CHUNK,
         )
-        for _ in range(num_chunks):
-            frames.append(stream.read(CHUNK, exception_on_overflow=False))
-        stream.stop_stream()
-        stream.close()
+
+        frames = []
+        voice_started = False
+        silence_count = 0
+
+        try:
+            for _ in range(max_chunks):
+                chunk = stream.read(CHUNK, exception_on_overflow=False)
+                frames.append(chunk)
+                energy = self._rms(chunk)
+
+                if energy > self._noise_threshold:
+                    voice_started = True
+                    silence_count = 0
+                elif voice_started:
+                    silence_count += 1
+                    if silence_count >= SILENCE_CHUNKS:
+                        break  # fim da fala detectado
+        finally:
+            stream.stop_stream()
+            stream.close()
 
         audio = np.frombuffer(b"".join(frames), dtype=np.int16).astype(np.float32) / 32768.0
         segments, _ = self._whisper.transcribe(audio, language=language, vad_filter=True)
         text = " ".join(s.text for s in segments).strip()
         print(f"ok → '{text}'")
-        logger.info(f"Transcrição: {text!r}")
+        logger.info("Transcrição: %r", text)
         return text
 
     def transcribe_file(self, path: str) -> str:

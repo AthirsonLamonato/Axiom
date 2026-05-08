@@ -14,7 +14,7 @@ def config(tmp_path):
     from core.config import Config
     data = {
         "wake_word": {"keyword": "porcupine", "sensitivity": 0.5, "access_key": ""},
-        "stt": {"model": "base", "language": "pt", "device": "cpu"},
+        "stt": {"model": "base", "language": "pt", "device": "cpu", "auto_calibrate": False},
         "logging": {"level": "WARNING", "file": "logs/axiom.log", "max_mb": 10},
     }
     path = tmp_path / "config.yaml"
@@ -35,11 +35,11 @@ def test_voice_input_init_push_to_talk(config):
 
 def test_voice_input_whisper_transcribes_audio(config):
     """Whisper deve transcrever áudio sintético sem erros (resultado pode ser vazio)."""
-    from input.stt import VoiceInput, SAMPLE_RATE, COMMAND_DURATION
+    from input.stt import VoiceInput, SAMPLE_RATE, MAX_COMMAND_DURATION
     v = VoiceInput(config)
 
     # áudio de silêncio: resultado esperado é string vazia ou curta
-    silence = np.zeros(int(SAMPLE_RATE * COMMAND_DURATION), dtype=np.float32)
+    silence = np.zeros(int(SAMPLE_RATE * MAX_COMMAND_DURATION), dtype=np.float32)
     segments, _ = v._whisper.transcribe(silence, language="pt", vad_filter=True)
     result = " ".join(s.text for s in segments).strip()
 
