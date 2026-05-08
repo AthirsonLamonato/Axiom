@@ -43,6 +43,17 @@ def start(*_) -> str:
     except Exception:
         pass
 
+    # Propaga senha do config para o app web
+    try:
+        from core.config import Config
+        _cfg = Config()
+        pwd = _cfg.get("web.password", "")
+        if pwd:
+            from web.app import set_password
+            set_password(pwd)
+    except Exception:
+        pass
+
     _server_running = True
 
     def _run():

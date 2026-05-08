@@ -82,3 +82,6 @@ google-api-python-client
 # pytest
 # black
 # ruff
+
+# Empacotamento como executável (build.bat / build.sh)
+# pyinstaller

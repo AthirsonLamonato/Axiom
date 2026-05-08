@@ -54,6 +54,11 @@ def _fire(rid: int, message: str) -> None:
         overlay.show_message(f"Lembrete: {message}")
     except Exception:
         pass
+    try:
+        from web.app import push_event
+        push_event("reminder", f"⏰ {message}")
+    except Exception:
+        pass
     logger.info("Lembrete #%d disparado: %s", rid, message)
     print(f"\n[Axiom] ⏰ Lembrete: {message}")
 

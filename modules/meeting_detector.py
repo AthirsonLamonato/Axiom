@@ -72,6 +72,11 @@ def _on_meeting_start(app_name: str) -> None:
         notify("Axiom", f"Reunião detectada ({app_name}). Transcrição iniciada.")
     except Exception:
         pass
+    try:
+        from web.app import push_event
+        push_event("meeting", f"🟢 Reunião detectada: {app_name}")
+    except Exception:
+        pass
 
     print(f"\n[Axiom] Reunião detectada: {app_name}. Perfil → meeting, transcrição iniciada.")
 
@@ -96,6 +101,11 @@ def _on_meeting_end() -> None:
     try:
         from output.notifier import notify
         notify("Axiom", "Reunião encerrada. Transcrição salva.")
+    except Exception:
+        pass
+    try:
+        from web.app import push_event
+        push_event("meeting", "🔴 Reunião encerrada. Transcrição salva.")
     except Exception:
         pass
 
