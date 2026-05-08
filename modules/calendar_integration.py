@@ -13,8 +13,11 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-SCOPES = ["https://www.googleapis.com/auth/calendar"]
-TOKEN_PATH = "core/calendar_token.json"
+SCOPES = [
+    "https://www.googleapis.com/auth/calendar",
+    "https://www.googleapis.com/auth/drive.file",
+]
+TOKEN_PATH = "core/google_token.json"
 CREDS_PATH = "core/credentials.json"
 
 
