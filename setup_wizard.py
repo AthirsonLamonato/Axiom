@@ -253,7 +253,14 @@ class WizardApp(tk.Tk):
     # ── Credenciais OAuth (lidas de core/credentials.json em runtime) ──
     # O arquivo core/credentials.json está no .gitignore e é embutido
     # no exe pelo PyInstaller. O usuário final não precisa fazer nada.
-    _GOOGLE_CREDS_FILE = INSTALL_DIR / "core" / "credentials.json"
+    def _get_google_creds_file(self) -> Path:
+        # PyInstaller onefile extrai arquivos bundled em sys._MEIPASS (tmp dir)
+        meipass = getattr(sys, "_MEIPASS", None)
+        if meipass:
+            bundled = Path(meipass) / "core" / "credentials.json"
+            if bundled.exists():
+                return bundled
+        return INSTALL_DIR / "core" / "credentials.json"
 
     # ── Página 1 — Boas-vindas ────────────────────────────────────────
 
@@ -560,7 +567,7 @@ class WizardApp(tk.Tk):
         return f
 
     def _run_google_auth(self):
-        creds_file = self._GOOGLE_CREDS_FILE
+        creds_file = self._get_google_creds_file()
         if not creds_file.exists():
             self._google_status.config(
                 text="Arquivo core/credentials.json não encontrado. "
