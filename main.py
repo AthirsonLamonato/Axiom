@@ -47,6 +47,11 @@ def parse_args():
         action="store_true",
         help="Abre editor interativo de rotinas",
     )
+    parser.add_argument(
+        "--web",
+        action="store_true",
+        help="Inicia o dashboard web em http://127.0.0.1:7755",
+    )
     return parser.parse_args()
 
 
@@ -168,6 +173,10 @@ def main():
     ))
 
     orchestrator = Orchestrator(config)
+
+    if args.web:
+        from modules import web_server
+        print(web_server.start())
 
     notify("Axiom iniciado", f"Modo {args.mode} ativo.")
 

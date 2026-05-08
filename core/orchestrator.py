@@ -8,7 +8,7 @@ import logging
 from typing import Optional, Callable
 
 from core.config import Config
-from core.profiles import ProfileManager
+from core.profiles import init_manager
 from output.tts import TTS
 from output.notifier import notify
 
@@ -52,6 +52,11 @@ ROUTES: list[tuple[str, str, bool]] = [
     (r"abre\s+o\s+overlay",               "output.overlay:show",                False),
     (r"fecha\s+o\s+overlay",              "output.overlay:hide",                False),
 
+    # Dashboard web (antes de "abre/fecha" genérico)
+    (r"(abre|inicia)\s+o\s+dashboard",              "modules.web_server:start",  False),
+    (r"(inicia|sobe)\s+(a\s+)?interface\s+web",     "modules.web_server:start",  False),
+    (r"(para|fecha)\s+o\s+(servidor\s+web|dashboard)", "modules.web_server:stop", False),
+
     # Sistema (rotas genéricas por último)
     (r"volume\s+(\d+)",                   "modules.system_control:set_volume",  False),
     (r"(aumenta|sobe)\s+o\s+brilho",      "modules.system_control:brightness_up",   False),
@@ -65,6 +70,15 @@ ROUTES: list[tuple[str, str, bool]] = [
     (r"(começa|inicia|start)\s+transcri(.+)?",   "modules.transcription:start",    False),
     (r"(para|stop)\s+transcri",                  "modules.transcription:stop",     False),
     (r"mostra\s+(o\s+que\s+foi\s+falado|a\s+transcrição)", "modules.transcription:show_last", False),
+    (r"(identifica|diariz[ae])\s+(os\s+)?falantes?",       "modules.transcription:diarize",   False),
+
+    # Obsidian / exportação de notas
+    (r"exporta\s+(a\s+)?transcri[çc][aã]o\s+(para\s+o?\s*)?obsidian",
+                                                          "modules.obsidian:export_transcription", False),
+    (r"exporta\s+(o\s+)?sum[aá]rio\s+(para\s+o?\s*)?obsidian",
+                                                          "modules.obsidian:export_summary",       False),
+    (r"(cria|atualiza)\s+(a\s+)?nota\s+di[aá]ria",        "modules.obsidian:daily_note",           False),
+    (r"exporta\s+(as\s+)?notas\s+(para\s+o?\s*)?obsidian","modules.obsidian:export_notes_plugin",  False),
 
     # Resumo / IA
     (r"(resume|resumo)\s+(o\s+que\s+foi\s+falado|a\s+reunião|a\s+transcrição)", "modules.summarizer:summarize_last", False),
@@ -92,15 +106,95 @@ ROUTES: list[tuple[str, str, bool]] = [
     (r"(cancela|para)\s+o\s+timer",       "modules.productivity:focus_stop",    False),
     (r"(quanto\s+tempo|status)\s+(do\s+)?timer", "modules.productivity:focus_status", False),
 
+    # Detector de reunião automático
+    (r"(ativa|inicia|liga)\s+(o\s+)?detector\s+de\s+reuni[aã]o",
+                                                          "modules.meeting_detector:start_monitoring", False),
+    (r"(desativa|para|desliga)\s+(o\s+)?detector\s+de\s+reuni[aã]o",
+                                                          "modules.meeting_detector:stop_monitoring",  False),
+    (r"(status|estado)\s+do\s+detector(\s+de\s+reuni[aã]o)?",
+                                                          "modules.meeting_detector:status",           False),
+
+    # Perfis dinâmicos por voz
+    (r"(muda|ativa)\s+(para\s+)?perfil\s+(.+)",  "core.profiles:switch_profile",   False),
+    (r"perfil\s+(work|casual|focus|foco|meeting|reunião|reuniao|noturno|noite|trabalho)",
+                                                  "core.profiles:switch_profile",   False),
+    (r"(qual|mostra)\s+(o\s+)?perfil(\s+atual)?", "core.profiles:current_profile",  False),
+    (r"(lista|quais)\s+(os\s+)?perfis",           "core.profiles:list_profiles",    False),
+
+    # Google Calendar
+    (r"(o\s+que\s+tenho|agenda)\s+(hoje|amanhã|amanha)",
+                                                  "modules.calendar_integration:get_today_events", False),
+    (r"(próximo|proximo)\s+(evento|compromisso|reunião|reuniao)",
+                                                  "modules.calendar_integration:get_next_event",   False),
+    (r"(adiciona|marca|cria)\s+(no\s+calendário|no\s+calendario|evento|reunião|reuniao)\s+(.+)",
+                                                  "modules.calendar_integration:add_event",        False),
+    (r"autoriza\s+(calendário|calendario|google\s+calendar)",
+                                                  "modules.calendar_integration:auth_calendar",    False),
+
+    # Calibração de microfone + idioma STT
+    (r"(calibra|recalibra)\s+(o\s+)?(microfone|mic|ruído|ruido)",
+                                                  "input.stt:calibrar_microfone",                  False),
+    (r"(muda|troca|altera)\s+(para\s+)?(inglês|ingles|espanhol|francês|frances|alemão|alemao|português|portugues|italiano|japonês|japones|english|spanish|french|german|italian|japanese)\b",
+                                                  "input.stt:switch_language",                     False),
+    (r"idioma\s+atual",                           "input.stt:current_language",                    False),
+
+    # Lembretes
+    (r"me\s+lembra?\s+.+",                       "modules.reminders:add",                         False),
+    (r"(lista|mostra)\s+(os\s+)?lembretes",       "modules.reminders:list_reminders",              False),
+    (r"cancela\s+(o\s+)?lembrete[s]?(\s+\d+)?",  "modules.reminders:cancel",                      False),
+
+    # Clipboard
+    (r"copia\s+o\s+(último|ultimo)\s+resultado",  "modules.clipboard_tools:copy_last",             False),
+    (r"copia\s+(.+)\s+para\s+o\s+clipboard",      "modules.clipboard_tools:copy_text",             False),
+    (r"(lê|le|mostra)\s+(a\s+)?área\s+de\s+transfer",
+                                                  "modules.clipboard_tools:read_clipboard",        False),
+    (r"(lê|le|mostra)\s+(o\s+)?clipboard",        "modules.clipboard_tools:read_clipboard",        False),
+    (r"limpa\s+(o\s+)?clipboard",                 "modules.clipboard_tools:clear_clipboard",       False),
+
+    # OCR / leitura de tela
+    (r"(lê|le|leia)\s+(o\s+)?texto\s+na\s+tela", "modules.screen_reader:read_screen",             False),
+    (r"(lê|le|leia)\s+(a\s+)?tela",               "modules.screen_reader:read_screen",             False),
+    (r"(lê|le|leia)\s+(a\s+)?região\s+(central)?","modules.screen_reader:read_region",             False),
+    (r"salva\s+(um\s+)?screenshot",               "modules.screen_reader:save_screenshot",         False),
+
+    # Contexto de conversa
+    (r"(limpa|apaga)\s+(o\s+)?contexto",          "storage.context:clear",                         False),
+    (r"(mostra|exibe)\s+(o\s+)?contexto",         "storage.context:show",                          False),
+
+    # Sumários de sessão e reunião
+    (r"(resume|resumo)\s+(a\s+)?reunião",         "modules.summarizer:summarize_meeting",          False),
+    (r"(resume|resumo)\s+(a\s+)?sessão",          "modules.summarizer:summarize_session",          False),
+
+    # Plugins
+    (r"(lista|mostra)\s+(os\s+)?plugins(\s+carregados)?",
+                                                  "core.plugin_loader:list_loaded",                False),
+    (r"(recarrega|reload)\s+(os\s+)?plugins",     "core.plugin_loader:reload_all",                 False),
+
     # Meta
     (r"ajuda|help|\?",                    "core.orchestrator:list_commands",    False),
 ]
 
+_CHAIN_SEP = re.compile(
+    r'\s+(?:e depois|depois disso|em seguida|então|entao)\s+', re.IGNORECASE
+)
+_CHAIN_AND = re.compile(r'\s+e\s+', re.IGNORECASE)
+
 
 def list_commands(*_) -> str:
-    """Lista todos os comandos disponíveis dinamicamente a partir de ROUTES."""
+    """Lista todos os comandos disponíveis (built-in + plugins)."""
+    try:
+        import importlib
+        from core.plugin_loader import _registry
+        plugin_routes = []
+        for info in _registry.values():
+            mod = importlib.import_module(info["module"])
+            plugin_routes.extend(getattr(mod, "ROUTES", []))
+    except Exception:
+        plugin_routes = []
+
+    all_routes = list(ROUTES) + plugin_routes
     seen_handlers = {}
-    for pattern, handler, _ in ROUTES:
+    for pattern, handler, _ in all_routes:
         if handler not in seen_handlers:
             seen_handlers[handler] = pattern
 
@@ -134,8 +228,30 @@ class Orchestrator:
     def __init__(self, config: Config):
         self.config = config
         self.tts = TTS(config)
-        self.profiles = ProfileManager(config)
+        self.profiles = init_manager(config)
         self._transcription_module = None  # instância persistente para transcrição
+        self._plugin_routes: list = []
+        self._all_routes: list = list(ROUTES)
+        self._last_profile: str = ""
+        self._load_plugins()
+        try:
+            from modules import web_server
+            web_server.set_orc(self)
+        except Exception:
+            pass
+
+    def _load_plugins(self) -> None:
+        if not self.config.get("plugins.enabled", True):
+            return
+        from core import plugin_loader
+        plugins_dir = self.config.get("plugins.directory", "plugins")
+        plugin_loader.set_orchestrator(self)
+        self._plugin_routes = plugin_loader.load_all(plugins_dir)
+        self._all_routes = list(ROUTES) + self._plugin_routes
+
+    def _reload_plugins(self) -> None:
+        self._load_plugins()
+        logger.info("Plugins recarregados: %d rota(s) de plugins", len(self._plugin_routes))
 
     # ── Loops principais ───────────────────────────────────────────────
 
@@ -155,7 +271,7 @@ class Orchestrator:
                     break
                 if overlay:
                     overlay.set_state("processing")
-                response = self.dispatch(command)
+                response = self.dispatch_chain(command)
                 if response:
                     print(f"\n  Axiom: {response}\n")
                     if overlay:
@@ -177,7 +293,7 @@ class Orchestrator:
             return
 
         try:
-            voice = stt_module.VoiceInput(self.config)
+            voice = stt_module.init_voice(self.config)
         except Exception as e:
             logger.error(f"Falha ao inicializar STT: {e}", exc_info=True)
             print(f"[Axiom] Erro ao inicializar STT: {e}\n[Axiom] Usando modo texto.")
@@ -199,7 +315,7 @@ class Orchestrator:
                 logger.info(f"Comando recebido: {command}")
                 if overlay:
                     overlay.set_state("processing")
-                response = self.dispatch(command)
+                response = self.dispatch_chain(command)
                 if response:
                     if overlay:
                         overlay.show_message(response)
@@ -212,21 +328,34 @@ class Orchestrator:
 
     def dispatch(self, command: str) -> Optional[str]:
         command_lower = command.lower().strip()
-        logger.debug(f"Despachando: {command_lower}")
+        logger.debug("Despachando: %s", command_lower)
 
-        for pattern, handler_path, needs_confirm in ROUTES:
+        response: Optional[str] = None
+
+        for pattern, handler_path, needs_confirm in self._all_routes:
             match = re.search(pattern, command_lower)
             if match:
-                # Verificar se precisa de confirmação
                 if needs_confirm and self.config.get("security.confirm_critical"):
                     if not self._confirm(command):
                         return "Ação cancelada."
+                response = self._call_handler(handler_path, match)
+                break
 
-                # Resolver e chamar o handler
-                return self._call_handler(handler_path, match)
+        if response is None:
+            response = self._fallback_ai(command)
 
-        # Nenhuma rota bateu → fallback para IA
-        return self._fallback_ai(command)
+        # Registra no contexto e expõe para clipboard
+        if response:
+            from storage.context import add as _ctx_add
+            _ctx_add(command, response)
+            try:
+                from modules.clipboard_tools import set_last_response
+                set_last_response(response)
+            except Exception:
+                pass
+
+        self._sync_tts_profile()
+        return response
 
     # ── Helpers internos ───────────────────────────────────────────────
 
@@ -258,6 +387,50 @@ class Orchestrator:
         if summarizer:
             return summarizer.ask_ai(command)
         return "Não entendi o comando. Tente novamente."
+
+    def dispatch_chain(self, command: str) -> Optional[str]:
+        """Executa múltiplos comandos encadeados separados por conectores naturais."""
+        parts = _CHAIN_SEP.split(command)
+        if len(parts) == 1:
+            and_parts = _CHAIN_AND.split(command, maxsplit=1)
+            if (
+                len(and_parts) == 2
+                and self._matches_route(and_parts[0])
+                and self._matches_route(and_parts[1])
+            ):
+                parts = and_parts
+        if len(parts) == 1:
+            return self.dispatch(command)
+        responses = []
+        for part in parts:
+            part = part.strip()
+            if part:
+                resp = self.dispatch(part)
+                if resp:
+                    responses.append(resp)
+        return " | ".join(responses) if responses else None
+
+    def _matches_route(self, text: str) -> bool:
+        t = text.lower().strip()
+        for pattern, _, _ in self._all_routes:
+            if re.search(pattern, t):
+                return True
+        return False
+
+    def _sync_tts_profile(self) -> None:
+        try:
+            from core.profiles import _get_manager
+            mgr = _get_manager()
+            if mgr.active == self._last_profile:
+                return
+            self._last_profile = mgr.active
+            prof = mgr.PROFILES.get(mgr.active, {})
+            if prof.get("tts_rate"):
+                self.tts.set_rate(prof["tts_rate"])
+            if prof.get("tts_volume"):
+                self.tts.set_volume(prof["tts_volume"])
+        except Exception:
+            pass
 
     def _confirm(self, action: str) -> bool:
         """Solicita confirmação para ações críticas."""
