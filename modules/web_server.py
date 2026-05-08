@@ -11,6 +11,7 @@ logger = logging.getLogger(__name__)
 
 _server_thread: Optional[threading.Thread] = None
 _server_running = False
+_server_orc = None
 PORT = 7755
 HOST = "127.0.0.1"
 
@@ -43,13 +44,15 @@ def start(*_) -> str:
     except Exception:
         pass
 
-    # Propaga senha do config para o app web
+    # Propaga senha do config para o app web (usa config do orchestrator se disponível)
     try:
-        from core.config import Config
-        _cfg = Config()
-        pwd = _cfg.get("web.password", "")
+        from web.app import set_password
+        cfg = _server_orc.config if _server_orc else None
+        if cfg is None:
+            from core.config import Config
+            cfg = Config()
+        pwd = cfg.get("web.password", "")
         if pwd:
-            from web.app import set_password
             set_password(pwd)
     except Exception:
         pass
@@ -99,6 +102,8 @@ def _open_browser():
 
 def set_orc(orc) -> None:
     """Chamado pelo Orchestrator para injetar a referência no app web."""
+    global _server_orc
+    _server_orc = orc
     try:
         from web.app import set_orchestrator
         set_orchestrator(orc)

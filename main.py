@@ -164,7 +164,7 @@ def main():
 ██║  ██║██╔╝ ██╗██║╚██████╔╝██║ ╚═╝ ██║
 ╚═╝  ╚═╝╚═╝  ╚═╝╚═╝ ╚═════╝ ╚═╝     ╚═╝
 
-  Assistente pessoal inteligente — v0.1.0-alpha
+  Assistente pessoal inteligente — v0.5.0
   Modo: {mode} | Perfil: {profile}
   Pressione Ctrl+C para encerrar.
 """.format(
