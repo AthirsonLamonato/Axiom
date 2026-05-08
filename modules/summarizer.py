@@ -1,5 +1,5 @@
 """
-modules/summarizer.py — Integração com IA local (Ollama) e cloud (Anthropic)
+modules/summarizer.py — Integração com IA local (Ollama) e cloud (Groq)
 Geração de resumos, explicações e respostas livres.
 """
 
@@ -41,8 +41,8 @@ def ask_ai(prompt: str, system: str = None, use_context: bool = True) -> str:
 
     if provider == "ollama":
         return _ask_ollama(prompt, system, config)
-    elif provider == "anthropic":
-        return _ask_anthropic(prompt, system, config)
+    elif provider == "groq":
+        return _ask_groq(prompt, system, config)
     return "Provedor de IA não configurado."
 
 
@@ -77,25 +77,36 @@ def _ask_ollama(prompt: str, system: str, config) -> str:
         return f"Erro ao consultar IA: {e}"
 
 
-def _ask_anthropic(prompt: str, system: str, config) -> str:
-    api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+def _ask_groq(prompt: str, system: str, config) -> str:
+    api_key = os.environ.get("GROQ_API_KEY", "")
     if not api_key:
-        return "ANTHROPIC_API_KEY não definida."
+        return "GROQ_API_KEY não definida. Obtenha gratuitamente em console.groq.com"
+    model = config.get("ai.groq_model", "llama3-8b-8192")
+    max_tokens = config.get("ai.max_tokens", 1024)
     try:
-        import anthropic
-        client = anthropic.Anthropic(api_key=api_key)
-        message = client.messages.create(
-            model="claude-haiku-4-5-20251001",
-            max_tokens=config.get("ai.max_tokens", 1024),
-            system=system,
-            messages=[{"role": "user", "content": prompt}],
+        resp = requests.post(
+            "https://api.groq.com/openai/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": model,
+                "messages": [
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": prompt},
+                ],
+                "max_tokens": max_tokens,
+            },
+            timeout=30,
         )
-        return message.content[0].text.strip()
-    except ImportError:
-        return "Biblioteca anthropic não instalada: pip install anthropic"
+        resp.raise_for_status()
+        return resp.json()["choices"][0]["message"]["content"].strip()
+    except requests.Timeout:
+        return "Timeout: Groq demorou muito para responder."
     except Exception as e:
-        logger.error(f"Erro Anthropic: {e}")
-        return f"Erro ao consultar Anthropic: {e}"
+        logger.error(f"Erro Groq: {e}")
+        return f"Erro ao consultar Groq: {e}"
 
 
 # ── Funções de alto nível ──────────────────────────────────────────────

@@ -7,6 +7,9 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ## [0.5.0] — 2026-05-08
 
+### Alterado
+- **Groq substitui Anthropic** como fallback cloud de IA — gratuito, sem cartão, OpenAI-compatible; `GROQ_API_KEY` (console.groq.com); modelo padrão `llama3-8b-8192`
+
 ### Adicionado
 - **73 testes** (eram 36): `test_dispatch_chain.py`, `test_reminders.py`, `test_context.py`
 - **WebSocket no dashboard** — endpoint `/ws/command` para respostas instantâneas; `/ws/events` para push em tempo real (lembretes, reuniões)

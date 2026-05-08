@@ -97,7 +97,7 @@ python main.py --edit-routines
 | **STT** | Transcrição via Whisper (`faster-whisper`). Calibração automática de ruído; VAD por energia RMS. Push-to-talk `ctrl+shift+space` por padrão; wake word via openWakeWord (sem API key, modelo customizável) |
 | **Overlay** | Janela flutuante PyQt6: estado (idle / listening / processing / speaking), histórico dos 3 últimos comandos, fade animado. Toggle: `ctrl+shift+a` |
 | **Transcrição** | Captura microfone ou loopback do sistema (Windows: WASAPI · Linux: PulseAudio). Auto-save a cada 5 min |
-| **Resumo / IA** | Resumo e explicações via Ollama (local) com fallback para Anthropic API |
+| **Resumo / IA** | Resumo e explicações via Ollama (local) com fallback para Groq API (gratuito) |
 | **Pesquisa** | Roteamento automático: perguntas factuais/atuais → DuckDuckGo + IA; demais → LLM local |
 | **Dev tools** | VS Code, abrir arquivo por nome, ir para linha, criar arquivo, git status/log/commit/push/pull/branch, rodar testes, explicar código via IA |
 | **Rotinas** | Sequências configuráveis em YAML com condições (`weekday`, `weekend`, `morning`, `afternoon`, `evening`) |
@@ -283,7 +283,7 @@ wake_word:
 
 # IA local
 ai:
-  provider: ollama        # ollama | anthropic
+  provider: ollama        # ollama | groq
   model: llama3           # llama3 | mistral | phi3
 
 # Overlay
@@ -301,14 +301,19 @@ web:
   password: ""            # deixe vazio para sem autenticação
 ```
 
-### Anthropic como fallback (opcional)
+### Groq como fallback (opcional, gratuito)
+
+1. Crie conta gratuita em [console.groq.com](https://console.groq.com) e gere uma API key
+2. Defina a variável de ambiente:
 
 ```bash
-set ANTHROPIC_API_KEY=sk-ant-...      # Windows
-export ANTHROPIC_API_KEY=sk-ant-...   # Linux/Mac
+set GROQ_API_KEY=gsk_...      # Windows
+export GROQ_API_KEY=gsk_...   # Linux/Mac
 ```
 
-Em `config.yaml`: `ai.provider: anthropic`
+3. Em `config.yaml`: `ai.provider: groq`
+
+O plano gratuito da Groq oferece 30 requisições/minuto e 6.000 tokens/minuto — mais que suficiente para uso pessoal.
 
 ### Google Calendar e Drive (opcional)
 
@@ -376,7 +381,7 @@ Pacoca/
 ├── modules/
 │   ├── system_control.py      # apps, volume, brilho, processos
 │   ├── transcription.py       # mic + loopback, auto-save
-│   ├── summarizer.py          # Ollama + fallback Anthropic
+│   ├── summarizer.py          # Ollama + fallback Groq (gratuito)
 │   ├── search.py              # roteamento IA local vs DuckDuckGo
 │   ├── dev_tools.py           # VS Code, Git, arquivos, testes
 │   ├── routines.py            # rotinas YAML com condições
@@ -429,7 +434,7 @@ Pacoca/
 | Speech-to-Text | faster-whisper (Whisper base) | Local / offline |
 | Wake word | openWakeWord (sem API key) | Local / offline |
 | LLM | Ollama (llama3 / mistral / phi3) | Local / offline |
-| LLM cloud | Anthropic API (claude-haiku) | Opcional / pago |
+| LLM cloud | Groq API (llama3, free tier) | Opcional / gratuito |
 | TTS | pyttsx3 | Local / offline |
 | Busca web | duckduckgo-search | Gratuito |
 | Overlay | PyQt6 | Open-source |

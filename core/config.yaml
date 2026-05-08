@@ -25,9 +25,10 @@ stt:
 
 # ── IA local (Ollama) ─────────────────────────
 ai:
-  provider: ollama      # ollama | anthropic
-  model: llama3         # llama3 | mistral | phi3
+  provider: ollama      # ollama | groq
+  model: llama3         # llama3 | mistral | phi3 (modelos Ollama)
   ollama_url: http://localhost:11434
+  groq_model: llama3-8b-8192   # modelo Groq (llama3-8b-8192 | mixtral-8x7b-32768)
   max_tokens: 1024
   use_context: true     # injeta histórico da sessão no prompt (memória contextual)
   system_prompt: |
