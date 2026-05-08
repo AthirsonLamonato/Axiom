@@ -250,13 +250,10 @@ class WizardApp(tk.Tk):
         "/v0.5.0/Pacoca-app-v0.5.0.zip"
     )
 
-    # ── Credenciais OAuth do desenvolvedor (embutidas no app) ──────────
-    # Crie em: console.cloud.google.com → APIs & Services → Credenciais
-    #   → Criar credenciais → OAuth 2.0 → Aplicativo desktop
-    # Copie client_id e client_secret aqui. O usuário final não precisa
-    # fazer nada no Google Cloud — só clicar em "Login com Google".
-    _GOOGLE_CLIENT_ID     = ""   # preencha: "...apps.googleusercontent.com"
-    _GOOGLE_CLIENT_SECRET = ""   # preencha: "GOCSPX-..."
+    # ── Credenciais OAuth (lidas de core/credentials.json em runtime) ──
+    # O arquivo core/credentials.json está no .gitignore e é embutido
+    # no exe pelo PyInstaller. O usuário final não precisa fazer nada.
+    _GOOGLE_CREDS_FILE = INSTALL_DIR / "core" / "credentials.json"
 
     # ── Página 1 — Boas-vindas ────────────────────────────────────────
 
@@ -563,12 +560,12 @@ class WizardApp(tk.Tk):
         return f
 
     def _run_google_auth(self):
-        if not self._GOOGLE_CLIENT_ID or not self._GOOGLE_CLIENT_SECRET:
+        creds_file = self._GOOGLE_CREDS_FILE
+        if not creds_file.exists():
             self._google_status.config(
-                text="Credenciais OAuth não configuradas no app. "
-                     "O desenvolvedor precisa preencher _GOOGLE_CLIENT_ID e "
-                     "_GOOGLE_CLIENT_SECRET em setup_wizard.py.",
-                fg=YELLOW,
+                text="Arquivo core/credentials.json não encontrado. "
+                     "Certifique-se de que o Paçoca.exe está instalado corretamente.",
+                fg=RED,
             )
             return
 
@@ -578,19 +575,10 @@ class WizardApp(tk.Tk):
             "https://www.googleapis.com/auth/calendar",
             "https://www.googleapis.com/auth/drive.file",
         ]
-        token_path  = INSTALL_DIR / "core" / "google_token.json"
-        creds_path  = INSTALL_DIR / "core" / "credentials.json"
+        token_path = INSTALL_DIR / "core" / "google_token.json"
 
-        # Constrói o client_config a partir das constantes embutidas
-        client_config = {
-            "installed": {
-                "client_id":      self._GOOGLE_CLIENT_ID,
-                "client_secret":  self._GOOGLE_CLIENT_SECRET,
-                "auth_uri":       "https://accounts.google.com/o/oauth2/auth",
-                "token_uri":      "https://oauth2.googleapis.com/token",
-                "redirect_uris":  ["urn:ietf:wg:oauth:2.0:oob", "http://localhost"],
-            }
-        }
+        with open(creds_file, encoding="utf-8") as _f:
+            client_config = json.load(_f)
 
         def run():
             try:
@@ -601,8 +589,6 @@ class WizardApp(tk.Tk):
                     flow = InstalledAppFlow.from_client_config(client_config, SCOPES)
                     creds = flow.run_local_server(port=0)
                     token_path.write_text(creds.to_json(), encoding="utf-8")
-                    # Salva credentials.json para que os módulos possam fazer refresh
-                    creds_path.write_text(json.dumps(client_config), encoding="utf-8")
                 except ImportError:
                     exe = _find_system_python()
                     if not exe:
@@ -617,13 +603,12 @@ class WizardApp(tk.Tk):
                         "f=InstalledAppFlow.from_client_config(cfg,scopes)\n"
                         "c=f.run_local_server(port=0)\n"
                         "open(sys.argv[3],'w').write(c.to_json())\n"
-                        "open(sys.argv[4],'w').write(sys.argv[1])\n"
                         "print('OK')\n"
                     )
                     r = subprocess.run(
                         [exe, "-c", script,
                          json.dumps(client_config), json.dumps(SCOPES),
-                         str(token_path), str(creds_path)],
+                         str(token_path)],
                         capture_output=True, text=True, timeout=120,
                     )
                     if r.returncode != 0 or "OK" not in r.stdout:

@@ -8,7 +8,10 @@ a = Analysis(
     ['setup_wizard.py'],
     pathex=['.'],
     binaries=[],
-    datas=[],
+    datas=[
+        # Credenciais OAuth embutidas no exe (gitignored, não vai para o repo)
+        ('core/credentials.json', 'core'),
+    ],
     hiddenimports=[
         'tkinter',
         'tkinter.ttk',
