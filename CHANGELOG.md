@@ -1,6 +1,6 @@
 # Changelog
 
-Todas as mudanças notáveis do projeto Axiom são documentadas aqui.
+Todas as mudanças notáveis do projeto Paçoca são documentadas aqui.
 Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ---

@@ -1,5 +1,5 @@
 # -*- mode: python ; coding: utf-8 -*-
-# PyInstaller spec para o Setup Wizard do Axiom
+# PyInstaller spec para o Setup Wizard do Pacoca
 # Gera um executável standalone (~15MB) sem dependências externas
 
 block_cipher = None
@@ -69,7 +69,7 @@ exe = EXE(
     a.zipfiles,
     a.datas,
     [],
-    name='Axiom-Setup',
+    name='Pacoca-Setup',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

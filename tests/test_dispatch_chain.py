@@ -18,11 +18,11 @@ def config(tmp_path):
         "tts": {"enabled": False},
         "ai": {"provider": "ollama", "model": "llama3",
                "ollama_url": "http://localhost:11434", "max_tokens": 512,
-               "system_prompt": "Você é Axiom."},
+               "system_prompt": "Você é Paçoca."},
         "security": {"confirm_critical": False, "critical_commands": []},
         "plugins": {"enabled": False},
         "routines": {},
-        "logging": {"level": "WARNING", "file": "logs/axiom.log", "max_mb": 10},
+        "logging": {"level": "WARNING", "file": "logs/pacoca.log", "max_mb": 10},
         "wake_word": {"keyword": "axiom"},
     }
     path = tmp_path / "config.yaml"

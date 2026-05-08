@@ -11,7 +11,7 @@ from collections import deque
 
 logger = logging.getLogger(__name__)
 
-_instance: "AxiomOverlay | None" = None
+_instance: "PacocaOverlay | None" = None
 _msg_queue: queue.Queue = queue.Queue()
 
 STATES = {
@@ -22,7 +22,7 @@ STATES = {
 }
 
 
-class AxiomOverlay:
+class PacocaOverlay:
     def __init__(self, config):
         from PyQt6.QtWidgets import QApplication, QLabel, QWidget, QVBoxLayout, QHBoxLayout
         from PyQt6.QtCore import Qt, QTimer, QPropertyAnimation, QEasingCurve
@@ -66,7 +66,7 @@ class AxiomOverlay:
         self._state_dot = QLabel("●")
         self._state_dot.setFont(QFont("Segoe UI", 9))
         self._state_dot.setStyleSheet("color: #555577; background: transparent; border: none;")
-        self._state_label = QLabel("Axiom")
+        self._state_label = QLabel("Paçoca")
         self._state_label.setFont(QFont("Segoe UI", 9))
         self._state_label.setStyleSheet("color: #888899; background: transparent; border: none;")
         header.addWidget(self._state_dot)
@@ -184,7 +184,7 @@ class AxiomOverlay:
 def init(config):
     global _instance
     try:
-        _instance = AxiomOverlay(config)
+        _instance = PacocaOverlay(config)
         thread = threading.Thread(target=_instance.run, daemon=True)
         thread.start()
         logger.info("Overlay rodando em thread dedicada")
@@ -205,7 +205,7 @@ def show_message(text: str, duration_ms: int = None):
         ms = duration_ms or _instance.duration_ms
         _msg_queue.put(("message", text, ms))
     else:
-        print(f"[Axiom] {text}")
+        print(f"[Paçoca] {text}")
 
 
 def set_state(state: str):

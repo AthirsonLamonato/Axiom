@@ -1,7 +1,7 @@
 """
-setup_wizard.py — Assistente de instalação visual do Axiom
+setup_wizard.py — Assistente de instalação visual do Paçoca
 Funciona em qualquer PC Windows — sem Python, sem pip install.
-Axiom.exe já traz todas as dependências bundled.
+Paçoca.exe já traz todas as dependências bundled.
 """
 
 import glob
@@ -42,7 +42,7 @@ def _detect_install_dir() -> Path:
 
 
 INSTALL_DIR = _detect_install_dir()
-AXIOM_EXE   = INSTALL_DIR / "Axiom" / "Axiom.exe"   # onedir build
+PACOCA_EXE   = INSTALL_DIR / "Pacoca" / "Pacoca.exe"   # onedir build
 
 
 # ── Ollama ────────────────────────────────────────────────────────────
@@ -100,11 +100,11 @@ def create_shortcut():
     if platform.system() != "Windows":
         return
     desktop = Path.home() / "Desktop"
-    target  = str(AXIOM_EXE) if AXIOM_EXE.exists() else ""
+    target  = str(PACOCA_EXE) if PACOCA_EXE.exists() else ""
     if not target:
         return
 
-    bat = desktop / "Axiom.bat"
+    bat = desktop / "Pacoca.bat"
     bat.write_text(
         f'@echo off\nstart "" "{target}"\n',
         encoding="utf-8",
@@ -112,10 +112,10 @@ def create_shortcut():
     try:
         import win32com.client  # type: ignore
         shell = win32com.client.Dispatch("WScript.Shell")
-        lnk = shell.CreateShortCut(str(desktop / "Axiom.lnk"))
+        lnk = shell.CreateShortCut(str(desktop / "Pacoca.lnk"))
         lnk.TargetPath = target
-        lnk.WorkingDirectory = str(AXIOM_EXE.parent)
-        lnk.Description = "Axiom — Assistente pessoal inteligente"
+        lnk.WorkingDirectory = str(PACOCA_EXE.parent)
+        lnk.Description = "Paçoca — Assistente pessoal inteligente"
         lnk.save()
         bat.unlink(missing_ok=True)
     except Exception:
@@ -159,7 +159,7 @@ class WizardApp(tk.Tk):
 
     def __init__(self):
         super().__init__()
-        self.title("Axiom — Assistente de instalação")
+        self.title("Paçoca — Assistente de instalação")
         self.configure(bg=BG)
         self.resizable(False, False)
         self.geometry("540x560")
@@ -183,7 +183,7 @@ class WizardApp(tk.Tk):
         hdr = tk.Frame(self, bg=BG2, height=70)
         hdr.pack(fill="x")
         hdr.pack_propagate(False)
-        tk.Label(hdr, text="⚡ AXIOM", bg=BG2, fg=ACCENT,
+        tk.Label(hdr, text="⚡ PAÇOCA", bg=BG2, fg=ACCENT,
                  font=("Segoe UI", 20, "bold")).pack(side="left", padx=20, pady=12)
         self._step_lbl = tk.Label(hdr, text="", bg=BG2, fg=FG2, font=("Segoe UI", 9))
         self._step_lbl.pack(side="right", padx=20)
@@ -248,7 +248,7 @@ class WizardApp(tk.Tk):
 
     def _page_welcome(self):
         f = styled_frame(self._content)
-        h1(f, "Bem-vindo ao Axiom").pack(anchor="w", pady=(0, 4))
+        h1(f, "Bem-vindo ao Paçoca").pack(anchor="w", pady=(0, 4))
         body(f, "Assistente pessoal de desktop — controle por voz ou texto, "
                 "100% local e gratuito. Sem pip install — tudo já está no executável.").pack(anchor="w")
         tk.Frame(f, bg=BORDER, height=1).pack(fill="x", pady=14)
@@ -257,12 +257,12 @@ class WizardApp(tk.Tk):
         info = tk.Frame(f, bg=BG2, padx=12, pady=10)
         info.pack(fill="x")
 
-        axiom_ok = AXIOM_EXE.exists()
+        axiom_ok = PACOCA_EXE.exists()
         for label, ok in [
             (f"Sistema: {platform.system()} {platform.release()} "
              f"({'64-bit' if platform.machine().endswith('64') else '32-bit'})", True),
             (f"Diretório: {INSTALL_DIR}", True),
-            (f"Axiom.exe: {AXIOM_EXE}" if axiom_ok else "Axiom.exe: não encontrado", axiom_ok),
+            (f"Paçoca.exe: {PACOCA_EXE}" if axiom_ok else "Paçoca.exe: não encontrado", axiom_ok),
         ]:
             row = tk.Frame(info, bg=BG2)
             row.pack(fill="x", pady=2)
@@ -274,13 +274,13 @@ class WizardApp(tk.Tk):
             warn = tk.Frame(f, bg=BG3, padx=12, pady=8)
             warn.pack(fill="x", pady=(8, 0))
             body(warn,
-                 "Axiom.exe não encontrado. Certifique-se de que este wizard está na mesma "
-                 "pasta que a pasta 'Axiom/' (o executável principal).\n\n"
+                 "Pacoca.exe não encontrado. Certifique-se de que este wizard está na mesma "
+                 "pasta que a pasta 'Pacoca/' (o executável principal).\n\n"
                  "Estrutura esperada:\n"
-                 "  📁 Axiom-v0.5.0-Windows/\n"
-                 "    ▶ Axiom-Setup.exe   ← este arquivo\n"
-                 "    📁 Axiom/\n"
-                 "       ▶ Axiom.exe      ← executável principal", YELLOW).pack(anchor="w")
+                 "  📁 Pacoca-v0.5.0-Windows/\n"
+                 "    ▶ Pacoca-Setup.exe   ← este arquivo\n"
+                 "    📁 Pacoca/\n"
+                 "       ▶ Pacoca.exe      ← executável principal", YELLOW).pack(anchor="w")
 
         tk.Frame(f, bg=BORDER, height=1).pack(fill="x", pady=14)
         body(f, "Este assistente irá:\n"
@@ -295,7 +295,7 @@ class WizardApp(tk.Tk):
     def _page_ollama(self):
         f = styled_frame(self._content)
         h1(f, "Ollama & Modelo de IA").pack(anchor="w", pady=(0, 4))
-        body(f, "O Axiom usa o Ollama para rodar um LLM local. "
+        body(f, "O Paçoca usa o Ollama para rodar um LLM local. "
                 "Sem internet após o download.").pack(anchor="w")
         tk.Frame(f, bg=BORDER, height=1).pack(fill="x", pady=10)
 
@@ -406,7 +406,7 @@ class WizardApp(tk.Tk):
             filedialog.askdirectory(title="Selecione o vault do Obsidian") or self._cfg_obsidian.get()
         ), color=BG3, width=3).pack(side="left", padx=4)
 
-        field("Picovoice access key:", self._cfg_wakekey, "(opcional — wake word 'Axiom')")
+        field("Picovoice access key:", self._cfg_wakekey, "(opcional — wake word 'Paçoca')")
 
         tk.Frame(f, bg=BORDER, height=1).pack(fill="x", pady=10)
         self._cfg_status = tk.Label(f, text="", bg=BG, fg=FG2, font=("Segoe UI", 8))
@@ -433,7 +433,7 @@ class WizardApp(tk.Tk):
         f = styled_frame(self._content)
         h1(f, "Integração Google (opcional)").pack(anchor="w", pady=(0, 4))
         body(f, "Necessário para: ver agenda, criar eventos e backup no Google Drive. "
-                "Pode pular — configure depois com 'axiom, autoriza calendário'.").pack(anchor="w")
+                "Pode pular — configure depois com 'paçoca, autoriza calendário'.").pack(anchor="w")
         tk.Frame(f, bg=BORDER, height=1).pack(fill="x", pady=10)
 
         h2(f, "1. Criar credenciais OAuth").pack(anchor="w", pady=(0, 4))
@@ -528,7 +528,7 @@ class WizardApp(tk.Tk):
                     if not exe:
                         raise RuntimeError(
                             "google-auth-oauthlib não está disponível.\n"
-                            "Execute o Axiom.exe uma vez e tente novamente.")
+                            "Execute o Paçoca.exe uma vez e tente novamente.")
                     script = (
                         "from google_auth_oauthlib.flow import InstalledAppFlow\n"
                         "import json,sys\n"
@@ -570,12 +570,12 @@ class WizardApp(tk.Tk):
             w.destroy()
 
         h1(f, "Tudo pronto!").pack(anchor="w", pady=(0, 4))
-        body(f, "O Axiom está configurado e pronto para usar.").pack(anchor="w")
+        body(f, "O Paçoca está configurado e pronto para usar.").pack(anchor="w")
         tk.Frame(f, bg=BORDER, height=1).pack(fill="x", pady=12)
 
         cfg_path = _cfg_path()
         checks = [
-            ("Axiom.exe encontrado",    AXIOM_EXE.exists()),
+            ("Paçoca.exe encontrado",    PACOCA_EXE.exists()),
             ("Ollama disponível",        ollama_installed()),
             ("config.yaml configurado",  cfg_path.exists()),
             ("Google autorizado",        (INSTALL_DIR / "core" / "google_token.json").exists()),
@@ -593,8 +593,8 @@ class WizardApp(tk.Tk):
         self._shortcut_status.pack(anchor="w", pady=(0, 4))
 
         def make_shortcut():
-            if not AXIOM_EXE.exists():
-                self._shortcut_status.config(text="Axiom.exe não encontrado.", fg=RED)
+            if not PACOCA_EXE.exists():
+                self._shortcut_status.config(text="Paçoca.exe não encontrado.", fg=RED)
                 return
             try:
                 create_shortcut()
@@ -603,27 +603,27 @@ class WizardApp(tk.Tk):
                 self._shortcut_status.config(text=f"Erro: {e}", fg=RED)
 
         def launch():
-            if not AXIOM_EXE.exists():
-                messagebox.showerror("Axiom.exe não encontrado",
-                                     f"Esperado em:\n{AXIOM_EXE}")
+            if not PACOCA_EXE.exists():
+                messagebox.showerror("Paçoca.exe não encontrado",
+                                     f"Esperado em:\n{PACOCA_EXE}")
                 return
             flags = subprocess.CREATE_NEW_CONSOLE if platform.system() == "Windows" else 0
             subprocess.Popen(
-                [str(AXIOM_EXE), "--mode", "text", "--no-tts"],
-                cwd=str(AXIOM_EXE.parent),
+                [str(PACOCA_EXE), "--mode", "text", "--no-tts"],
+                cwd=str(PACOCA_EXE.parent),
                 creationflags=flags,
             )
             self.destroy()
 
         def launch_web():
-            if not AXIOM_EXE.exists():
-                messagebox.showerror("Axiom.exe não encontrado",
-                                     f"Esperado em:\n{AXIOM_EXE}")
+            if not PACOCA_EXE.exists():
+                messagebox.showerror("Paçoca.exe não encontrado",
+                                     f"Esperado em:\n{PACOCA_EXE}")
                 return
             flags = subprocess.CREATE_NEW_CONSOLE if platform.system() == "Windows" else 0
             subprocess.Popen(
-                [str(AXIOM_EXE), "--mode", "text", "--no-tts", "--web"],
-                cwd=str(AXIOM_EXE.parent),
+                [str(PACOCA_EXE), "--mode", "text", "--no-tts", "--web"],
+                cwd=str(PACOCA_EXE.parent),
                 creationflags=flags,
             )
             self.destroy()
@@ -631,7 +631,7 @@ class WizardApp(tk.Tk):
         btn_row = tk.Frame(f, bg=BG)
         btn_row.pack(anchor="w", pady=4)
         btn(btn_row, "🖥  Criar atalho",    make_shortcut, color=BG3, width=14).pack(side="left")
-        btn(btn_row, "▶  Iniciar Axiom",   launch, width=14).pack(side="left", padx=8)
+        btn(btn_row, "▶  Iniciar Paçoca",   launch, width=14).pack(side="left", padx=8)
         btn(btn_row, "🌐  Com dashboard",  launch_web, color="#1f5f2e", width=16).pack(side="left")
 
 

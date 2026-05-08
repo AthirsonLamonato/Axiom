@@ -2,10 +2,10 @@
 
 ## Contexto do projeto
 
-Você está trabalhando no **Axiom**, um assistente pessoal de desktop estilo Jarvis,
+Você está trabalhando no **Paçoca**, um assistente pessoal de desktop estilo Jarvis,
 desenvolvido em Python 3.10+, 100% open-source e gratuito.
 
-O projeto pertence ao repositório: https://github.com/AthirsonLamonato/Axiom
+O projeto pertence ao repositório: https://github.com/AthirsonLamonato/Pacoca
 Desenvolvido por: Athy (AthirsonLamonato)
 
 ---
@@ -26,7 +26,7 @@ axiom/
 │   └── logger.py              # logging rotativo em arquivo
 │
 ├── input/
-│   ├── stt.py                 # Whisper (faster-whisper) + wake word (pvporcupine)
+│   ├── stt.py                 # Whisper (faster-whisper) + wake word (openWakeWord)
 │   ├── hotkeys.py             # hotkeys globais via keyboard
 │   └── cli.py                 # interface de terminal interativa
 │
@@ -58,7 +58,7 @@ axiom/
 | Funcionalidade     | Ferramenta                        |
 |--------------------|-----------------------------------|
 | STT                | faster-whisper (Whisper base)     |
-| Wake word          | pvporcupine (1 keyword free tier) |
+| Wake word          | openWakeWord (sem API key)         |
 | LLM local          | Ollama (llama3 / mistral / phi3)  |
 | LLM cloud fallback | Anthropic API (claude-haiku)      |
 | TTS                | pyttsx3 / Coqui TTS               |
@@ -148,8 +148,8 @@ elif OS == "Linux":
 - [ ] **Testar `input/stt.py`** com microfone real
   - Validar captura de áudio com pyaudio
   - Validar transcrição com faster-whisper modelo `base`
-  - Testar wake word "axiom" com pvporcupine
-- [ ] **Implementar fallback de STT**: se pvporcupine não estiver disponível (sem API key), rodar em modo "push-to-talk" com hotkey `ctrl+shift+space`
+  - Testar wake word "paçoca" com openWakeWord (modelo customizado necessário)
+- [ ] **Implementar fallback de STT**: se openWakeWord não estiver disponível (sem API key), rodar em modo "push-to-talk" com hotkey `ctrl+shift+space`
 - [ ] **Calibração automática de ruído**: usar `speech_recognition.Microphone` para ajustar threshold de silêncio automaticamente
 - [ ] **Indicador visual de escuta** no overlay: mostrar "ouvindo..." enquanto captura
 
@@ -227,7 +227,7 @@ pytest tests/ -v
 
 ```
 feat: adiciona novo módulo de calendário
-fix: corrige crash no stt quando pvporcupine não está instalado
+fix: corrige crash no stt quando openWakeWord não está instalado
 refactor: extrai lógica de confirmação para security.py
 test: adiciona testes para orchestrator
 docs: atualiza README com novos comandos

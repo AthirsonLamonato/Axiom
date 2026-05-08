@@ -13,9 +13,9 @@ def config(tmp_path):
     import yaml
     from core.config import Config
     data = {
-        "wake_word": {"keyword": "porcupine", "sensitivity": 0.5, "access_key": ""},
+        "wake_word": {"enabled": False, "sensitivity": 0.5, "model_path": ""},
         "stt": {"model": "base", "language": "pt", "device": "cpu", "auto_calibrate": False},
-        "logging": {"level": "WARNING", "file": "logs/axiom.log", "max_mb": 10},
+        "logging": {"level": "WARNING", "file": "logs/pacoca.log", "max_mb": 10},
     }
     path = tmp_path / "config.yaml"
     path.write_text(yaml.dump(data), encoding="utf-8")
@@ -23,11 +23,11 @@ def config(tmp_path):
 
 
 def test_voice_input_init_push_to_talk(config):
-    """Sem access_key deve iniciar em modo push-to-talk."""
+    """Com wake_word.enabled=False deve iniciar em modo push-to-talk."""
     from input.stt import VoiceInput
     v = VoiceInput(config)
     assert v._mode == "push_to_talk"
-    assert v._porcupine is None
+    assert v._oww is None
     assert v._whisper is not None
     assert v._pa is not None
     v.close()

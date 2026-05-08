@@ -1,5 +1,5 @@
 # ──────────────────────────────────────────────
-# Axiom — Configuração principal
+# Paçoca — Configuração principal
 # Copie este arquivo para core/config.yaml e ajuste conforme necessário
 # ──────────────────────────────────────────────
 
@@ -9,10 +9,11 @@ profile:
 
 # ── Wake word ─────────────────────────────────
 wake_word:
-  keyword: porcupine    # keywords built-in: porcupine, jarvis, computer, etc.
-  sensitivity: 0.5      # 0.0 (menos sensível) → 1.0 (mais sensível)
   enabled: true
-  access_key: ""        # PICOVOICE_ACCESS_KEY — deixe vazio para usar push-to-talk
+  sensitivity: 0.5      # 0.0 (menos sensível) → 1.0 (mais sensível)
+  model_path: ""        # Caminho para modelo .onnx customizado (ex: pacoca.onnx)
+                        # Deixe vazio para usar hey_jarvis (padrão)
+                        # Para treinar "Paçoca": github.com/dscripka/openWakeWord#training
 
 # ── Speech-to-Text ────────────────────────────
 stt:
@@ -30,14 +31,14 @@ ai:
   max_tokens: 1024
   use_context: true     # injeta histórico da sessão no prompt (memória contextual)
   system_prompt: |
-    Você é Axiom, um assistente pessoal técnico e objetivo.
+    Você é Paçoca, um assistente pessoal técnico e objetivo.
     Responda sempre em português, de forma direta e sem rodeios.
     Para tarefas de sistema, confirme antes de executar ações críticas.
 
 # ── Text-to-Speech ────────────────────────────
 tts:
   enabled: true
-  engine: pyttsx3       # pyttsx3 | coqui
+  engine: pyttsx3       # pyttsx3
   rate: 175             # palavras por minuto
   volume: 0.9
 
@@ -82,7 +83,7 @@ web:
 
 # ── Obsidian ──────────────────────────────────
 obsidian:
-  vault_path: ""            # ex: C:/Users/user/Documents/Obsidian/Axiom
+  vault_path: ""            # ex: C:/Users/user/Documents/Obsidian/Pacoca
                             # Deixe vazio para desabilitar exportação
 
 # ── Backup ────────────────────────────────────
@@ -90,14 +91,14 @@ backup:
   local_dir: data/backups
   google_drive:
     enabled: false           # true após configurar credenciais OAuth
-    folder_name: Axiom Backups
+    folder_name: Pacoca Backups
     credentials_path: core/credentials.json
     token_path: core/google_token.json
 
 # ── Logs ──────────────────────────────────────
 logging:
   level: INFO                # DEBUG | INFO | WARNING | ERROR
-  file: logs/axiom.log
+  file: logs/pacoca.log
   max_mb: 10
 
 # ── Perfis de comportamento ───────────────────
