@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 BANNER = """
 ┌─────────────────────────────────────────┐
-│  Axiom — Modo texto                     │
+│  Paçoca — Modo texto                    │
 │  Digite um comando ou 'ajuda' para      │
 │  ver os exemplos disponíveis.           │
 │  'sair' para encerrar.                  │
@@ -50,7 +50,7 @@ def print_help():
 
 
 def print_response(text: str):
-    print(f"\n  Axiom › {text}\n")
+    print(f"\n  Paçoca › {text}\n")
 
 
 def is_exit(command: str) -> bool:

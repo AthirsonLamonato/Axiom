@@ -17,7 +17,7 @@ def config_file(tmp_path):
         "profile": {"active": "work"},
         "tts": {"enabled": True, "rate": 175},
         "ai": {"provider": "ollama", "model": "llama3"},
-        "logging": {"level": "INFO", "file": "logs/axiom.log", "max_mb": 10},
+        "logging": {"level": "INFO", "file": "logs/pacoca.log", "max_mb": 10},
     }
     path = tmp_path / "config.yaml"
     path.write_text(yaml.dump(data), encoding="utf-8")

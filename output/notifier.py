@@ -14,7 +14,7 @@ def notify(title: str, message: str):
         notification.notify(
             title=title,
             message=message,
-            app_name="Axiom",
+            app_name="Paçoca",
             timeout=5,
         )
     except ImportError:

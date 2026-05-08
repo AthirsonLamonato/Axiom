@@ -1,12 +1,12 @@
-# ── Axiom — dependências principais ──────────────────────────────────
+# ── Paçoca — dependências principais ─────────────────────────────────
 # Instale com: pip install -r requirements.txt
 
 # Speech-to-Text
 faster-whisper
 pyaudio
 
-# Wake word
-pvporcupine
+# Wake word (sem API key, roda 100% local)
+openwakeword
 
 # Input
 keyboard

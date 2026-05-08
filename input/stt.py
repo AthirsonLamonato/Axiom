@@ -1,7 +1,7 @@
 """
 input/stt.py — Speech-to-Text com Whisper
 Dois modos:
-  - Wake word via pvporcupine (requer PICOVOICE_ACCESS_KEY)
+  - Wake word via openWakeWord (modelo customizável, sem API key)
   - Push-to-talk via ctrl+shift+space (fallback automático)
 """
 
@@ -14,6 +14,7 @@ logger = logging.getLogger(__name__)
 
 SAMPLE_RATE = 16000
 CHUNK = 1024
+OWW_CHUNK = 1280            # openWakeWord espera janelas de 80ms a 16kHz
 MAX_COMMAND_DURATION = 10   # segundos máximos de captura (failsafe)
 CALIBRATION_DURATION = 1.5  # segundos para medir ruído ambiente
 ENERGY_MULTIPLIER = 2.5     # limiar = noise_rms × este fator
@@ -86,7 +87,7 @@ def current_language(*_) -> str:
 class VoiceInput:
     """
     Seleciona automaticamente o modo de escuta:
-    wake word se pvporcupine + access_key disponíveis,
+    wake word via openWakeWord (se disponível),
     caso contrário push-to-talk.
     """
 
@@ -96,14 +97,13 @@ class VoiceInput:
         self._pa = self._load_pyaudio()
         self._noise_threshold: float = config.get("stt.noise_threshold", MIN_ENERGY)
 
-        access_key = config.get("wake_word.access_key", "")
-        if access_key:
+        if config.get("wake_word.enabled", True):
             self._mode = "wake_word"
-            self._porcupine = self._load_porcupine(access_key)
+            self._oww = self._load_openwakeword()
         else:
             self._mode = "push_to_talk"
-            self._porcupine = None
-            logger.info("pvporcupine sem access_key — usando push-to-talk (ctrl+shift+space)")
+            self._oww = None
+            logger.info("Wake word desabilitado — usando push-to-talk (ctrl+shift+space)")
 
         # Calibração automática na inicialização (se habilitada)
         if config.get("stt.auto_calibrate", True):
@@ -126,20 +126,25 @@ class VoiceInput:
         logger.info("PyAudio inicializado")
         return pa
 
-    def _load_porcupine(self, access_key: str):
+    def _load_openwakeword(self):
+        """
+        Carrega openWakeWord. Usa modelo customizado se wake_word.model_path for definido
+        (ex: um arquivo paçoca.onnx treinado), ou hey_jarvis como padrão.
+
+        Para treinar um modelo "Paçoca": github.com/dscripka/openWakeWord#training
+        """
         try:
-            import pvporcupine
-            keyword = self.config.get("wake_word.keyword", "porcupine")
-            sensitivity = self.config.get("wake_word.sensitivity", 0.5)
-            porcupine = pvporcupine.create(
-                access_key=access_key,
-                keywords=[keyword],
-                sensitivities=[sensitivity],
-            )
-            logger.info(f"pvporcupine carregado: keyword={keyword}")
-            return porcupine
+            from openwakeword.model import Model
+            model_path = self.config.get("wake_word.model_path", "")
+            if model_path:
+                oww = Model(wakeword_models=[model_path], inference_framework="onnx")
+                logger.info(f"openWakeWord carregado: modelo customizado '{model_path}'")
+            else:
+                oww = Model(wakeword_models=["hey_jarvis"], inference_framework="onnx")
+                logger.info("openWakeWord carregado: modelo padrão 'hey_jarvis'")
+            return oww
         except Exception as e:
-            logger.warning(f"pvporcupine falhou ({e}) — usando push-to-talk")
+            logger.warning(f"openWakeWord falhou ({e}) — usando push-to-talk")
             self._mode = "push_to_talk"
             return None
 
@@ -155,21 +160,23 @@ class VoiceInput:
 
     def _listen_wake_word(self) -> str:
         import pyaudio
+        threshold = self.config.get("wake_word.sensitivity", 0.5)
         stream = self._pa.open(
-            rate=self._porcupine.sample_rate,
+            rate=SAMPLE_RATE,
             channels=1,
             format=pyaudio.paInt16,
             input=True,
-            frames_per_buffer=self._porcupine.frame_length,
+            frames_per_buffer=OWW_CHUNK,
         )
         try:
             while True:
                 pcm = np.frombuffer(
-                    stream.read(self._porcupine.frame_length, exception_on_overflow=False),
+                    stream.read(OWW_CHUNK, exception_on_overflow=False),
                     dtype=np.int16,
                 )
-                if self._porcupine.process(pcm) >= 0:
-                    logger.debug("Wake word detectada")
+                prediction = self._oww.predict(pcm)
+                if any(v >= threshold for v in prediction.values()):
+                    logger.debug("Wake word detectada: %s", prediction)
                     stream.stop_stream()
                     return self._capture_and_transcribe()
         finally:
@@ -182,7 +189,7 @@ class VoiceInput:
         """Aguarda ctrl+shift+space, captura e transcreve."""
         import keyboard
 
-        print("[Axiom] Pressione ctrl+shift+space para falar...", end=" ", flush=True)
+        print("[Paçoca] Pressione ctrl+shift+space para falar...", end=" ", flush=True)
 
         event = threading.Event()
         keyboard.add_hotkey("ctrl+shift+space", event.set, suppress=True)
@@ -197,7 +204,7 @@ class VoiceInput:
     def calibrate(self) -> float:
         """Mede o ruído ambiente por CALIBRATION_DURATION segundos e ajusta o limiar."""
         import pyaudio
-        print("[Axiom] Calibrando microfone...", end=" ", flush=True)
+        print("[Paçoca] Calibrando microfone...", end=" ", flush=True)
         stream = self._pa.open(
             rate=SAMPLE_RATE, channels=1, format=pyaudio.paInt16,
             input=True, frames_per_buffer=CHUNK,
@@ -269,7 +276,5 @@ class VoiceInput:
         return " ".join(s.text for s in segments).strip()
 
     def close(self):
-        if self._porcupine:
-            self._porcupine.delete()
         if self._pa:
             self._pa.terminate()

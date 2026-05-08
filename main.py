@@ -1,5 +1,5 @@
 """
-Axiom — Assistente pessoal inteligente
+Paçoca — Assistente pessoal inteligente
 Ponto de entrada principal
 """
 
@@ -49,7 +49,7 @@ from output.notifier import notify
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Axiom — Assistente pessoal inteligente")
+    parser = argparse.ArgumentParser(description="Paçoca — Assistente pessoal inteligente")
     parser.add_argument(
         "--mode",
         choices=["voice", "text"],
@@ -86,7 +86,7 @@ def parse_args():
 
 
 def shutdown(sig, frame):
-    print("\n\n[Axiom] Encerrando... até logo.")
+    print("\n\n[Paçoca] Encerrando... até logo.")
     sys.exit(0)
 
 
@@ -187,14 +187,14 @@ def main():
         overlay.init(config)
 
     print("""
- █████╗ ██╗  ██╗██╗ ██████╗ ███╗   ███╗
-██╔══██╗╚██╗██╔╝██║██╔═══██╗████╗ ████║
-███████║ ╚███╔╝ ██║██║   ██║██╔████╔██║
-██╔══██║ ██╔██╗ ██║██║   ██║██║╚██╔╝██║
-██║  ██║██╔╝ ██╗██║╚██████╔╝██║ ╚═╝ ██║
-╚═╝  ╚═╝╚═╝  ╚═╝╚═╝ ╚═════╝ ╚═╝     ╚═╝
+██████╗  █████╗  ██████╗ ██████╗  ██████╗  █████╗
+██╔══██╗██╔══██╗██╔════╝██╔═══██╗██╔════╝ ██╔══██╗
+██████╔╝███████║██║     ██║   ██║██║      ███████║
+██╔═══╝ ██╔══██║██║     ██║   ██║██║      ██╔══██║
+██║     ██║  ██║╚██████╗╚██████╔╝╚██████╗ ██║  ██║
+╚═╝     ╚═╝  ╚═╝ ╚═════╝ ╚═════╝  ╚═════╝ ╚═╝  ╚═╝
 
-  Assistente pessoal inteligente — v0.5.0
+  Paçoca — Assistente pessoal inteligente v0.5.0
   Modo: {mode} | Perfil: {profile}
   Pressione Ctrl+C para encerrar.
 """.format(
@@ -208,7 +208,7 @@ def main():
         from modules import web_server
         print(web_server.start())
 
-    notify("Axiom iniciado", f"Modo {args.mode} ativo.")
+    notify("Paçoca iniciada", f"Modo {args.mode} ativo.")
 
     if args.mode == "text":
         orchestrator.run_text_loop()

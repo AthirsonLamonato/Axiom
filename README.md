@@ -1,4 +1,4 @@
-# Axiom
+# Paçoca
 
 > Assistente pessoal inteligente de desktop — controle por voz ou texto, 100% open-source e gratuito.
 
@@ -6,17 +6,17 @@
 ![Python](https://img.shields.io/badge/python-3.9+-green)
 ![License](https://img.shields.io/badge/license-MIT-orange)
 ![Tests](https://img.shields.io/badge/tests-73%20passing-brightgreen)
-![CI](https://github.com/AthirsonLamonato/Axiom/actions/workflows/tests.yml/badge.svg)
+![CI](https://github.com/AthirsonLamonato/Pacoca/actions/workflows/tests.yml/badge.svg)
 
-Axiom é um assistente de desktop estilo Jarvis — modular, expansível e capaz de rodar completamente offline em hardware modesto (4 GB RAM, CPU sem GPU).
+Paçoca é um assistente de desktop estilo Jarvis — modular, expansível e capaz de rodar completamente offline em hardware modesto (4 GB RAM, CPU sem GPU).
 
 ---
 
 ## Download
 
-**[⬇ Axiom-v0.5.0-Windows.zip](https://github.com/AthirsonLamonato/Axiom/releases/download/v0.5.0/Axiom-v0.5.0-Windows.zip)** — Windows 64-bit · 175 MB · sem Python, sem pip install
+**[⬇ Pacoca-v0.5.0-Windows.zip](https://github.com/AthirsonLamonato/Pacoca/releases/download/v0.5.0/Pacoca-v0.5.0-Windows.zip)** — Windows 64-bit · 175 MB · sem Python, sem pip install
 
-> Extraia o ZIP, rode `Axiom-Setup.exe` e siga as 4 etapas do assistente de instalação.
+> Extraia o ZIP, rode `Pacoca-Setup.exe` e siga as 4 etapas do assistente de instalação.
 
 ---
 
@@ -24,21 +24,21 @@ Axiom é um assistente de desktop estilo Jarvis — modular, expansível e capaz
 
 ### Opção 1 — Executável (recomendado, apenas Windows)
 
-1. Baixe `Axiom-v0.5.0-Windows.zip` na [página de releases](https://github.com/AthirsonLamonato/Axiom/releases/tag/v0.5.0)
+1. Baixe `Pacoca-v0.5.0-Windows.zip` na [página de releases](https://github.com/AthirsonLamonato/Pacoca/releases/tag/v0.5.0)
 2. Extraia em qualquer pasta
-3. Execute `Axiom-Setup.exe` — o wizard configura tudo automaticamente:
+3. Execute `Pacoca-Setup.exe` — o wizard configura tudo automaticamente:
    - Baixa e instala o Ollama + modelo de IA
    - Configura `core/config.yaml`
    - Faz login com o Google (Calendar + Drive, opcional)
-   - Cria atalho na área de trabalho apontando para `Axiom/Axiom.exe`
+   - Cria atalho na área de trabalho apontando para `Pacoca/Pacoca.exe`
 
-O `Axiom.exe` traz todas as dependências Python bundled — PyQt6, faster-whisper, FastAPI, Google Auth e mais. **Não é necessário instalar Python ou qualquer pacote.**
+O `Pacoca.exe` traz todas as dependências Python bundled — PyQt6, faster-whisper, FastAPI, Google Auth e mais. **Não é necessário instalar Python ou qualquer pacote.**
 
 ### Opção 2 — A partir do código-fonte
 
 ```bash
-git clone https://github.com/AthirsonLamonato/Axiom.git
-cd Axiom
+git clone https://github.com/AthirsonLamonato/Pacoca.git
+cd Paçoca
 ```
 
 **Windows:**
@@ -65,9 +65,9 @@ ollama pull llama3
 ### Via executável
 
 ```
-Axiom/Axiom.exe                         # modo voz (padrão)
-Axiom/Axiom.exe --mode text --no-tts    # modo texto, sem voz
-Axiom/Axiom.exe --web                   # com dashboard em localhost:7755
+Pacoca/Pacoca.exe                         # modo voz (padrão)
+Pacoca/Pacoca.exe --mode text --no-tts    # modo texto, sem voz
+Pacoca/Pacoca.exe --web                   # com dashboard em localhost:7755
 ```
 
 ### Via Python (código-fonte)
@@ -269,13 +269,15 @@ ajuda
 
 ## Configuração
 
-Edite `core/config.yaml` (gerado automaticamente no primeiro boot do `Axiom.exe`, ou configurado pelo wizard):
+Edite `core/config.yaml` (gerado automaticamente no primeiro boot do `Pacoca.exe`, ou configurado pelo wizard):
 
 ```yaml
-# Wake word (deixe vazio para push-to-talk)
+# Wake word (deixe vazio para desabilitar e usar push-to-talk)
 wake_word:
-  access_key: ""          # PICOVOICE_ACCESS_KEY — obtenha em picovoice.ai
-  keyword: porcupine      # keywords gratuitas: porcupine, jarvis, computer…
+  enabled: true
+  sensitivity: 0.5
+  model_path: ""          # Caminho para modelo .onnx customizado (ex: pacoca.onnx)
+                          # Para treinar "Paçoca": github.com/dscripka/openWakeWord#training
 
 # IA local
 ai:
@@ -308,7 +310,7 @@ Em `config.yaml`: `ai.provider: anthropic`
 
 ### Google Calendar e Drive (opcional)
 
-O wizard (`Axiom-Setup.exe`) faz o login automaticamente. Para configurar manualmente:
+O wizard (`Pacoca-Setup.exe`) faz o login automaticamente. Para configurar manualmente:
 
 1. Crie um projeto em [Google Cloud Console](https://console.cloud.google.com)
 2. Ative **Calendar API** e **Drive API**
@@ -335,7 +337,7 @@ backup:
 
 ```yaml
 obsidian:
-  vault_path: C:/Users/seu_usuario/Documents/ObsidianVault/Axiom
+  vault_path: C:/Users/seu_usuario/Documents/ObsidianVault/Paçoca
 ```
 
 ### Plugins
@@ -347,12 +349,12 @@ Coloque qualquer arquivo `.py` em `plugins/` e ele será carregado automaticamen
 ## Estrutura do projeto
 
 ```
-Axiom/
+Pacoca/
 ├── main.py                    # entry point — argparse, boot, bootstrap PyInstaller
 ├── setup_wizard.py            # assistente de instalação GUI (tkinter, sem deps)
 ├── setup.bat / setup.sh       # instalação via código-fonte
-├── axiom.spec                 # PyInstaller — build do Axiom.exe (todas as deps bundled)
-├── wizard.spec                # PyInstaller — build do Axiom-Setup.exe
+├── pacoca.spec                # PyInstaller — build do Pacoca.exe (todas as deps bundled)
+├── wizard.spec                # PyInstaller — build do Pacoca-Setup.exe
 ├── build.bat / build.sh       # scripts de build
 ├── requirements.txt
 │
@@ -423,7 +425,7 @@ Axiom/
 | Funcionalidade | Ferramenta | Tipo |
 |---|---|---|
 | Speech-to-Text | faster-whisper (Whisper base) | Local / offline |
-| Wake word | pvporcupine (free tier) | Local / offline |
+| Wake word | openWakeWord (sem API key) | Local / offline |
 | LLM | Ollama (llama3 / mistral / phi3) | Local / offline |
 | LLM cloud | Anthropic API (claude-haiku) | Opcional / pago |
 | TTS | pyttsx3 | Local / offline |
@@ -490,8 +492,8 @@ CI automático via GitHub Actions em cada push para `main` e `dev`.
 - [x] Dashboard WebSocket — resposta instantânea + push de eventos em tempo real
 - [x] Editor visual de rotinas no dashboard (htmx CRUD)
 - [x] Autenticação no dashboard — cookie + login (`web.password`)
-- [x] **Axiom.exe standalone** — todas as deps Python bundled via PyInstaller; zero pip install para o usuário final
-- [x] **Setup wizard GUI** (`Axiom-Setup.exe`) — instala Ollama, faz login Google, cria atalho; roda em qualquer PC Windows sem Python instalado
+- [x] **Pacoca.exe standalone** — todas as deps Python bundled via PyInstaller; zero pip install para o usuário final
+- [x] **Setup wizard GUI** (`Pacoca-Setup.exe`) — instala Ollama, faz login Google, cria atalho; roda em qualquer PC Windows sem Python instalado
 - [x] Token Google unificado (`google_token.json`) — cobre Calendar + Drive em um único OAuth
 
 ### v0.6 — Próximo
