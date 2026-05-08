@@ -1,20 +1,23 @@
 """
 setup_wizard.py — Assistente de instalação visual do Axiom
 Usa apenas tkinter (stdlib) — funciona sem instalar nada primeiro.
-Gera: atalho na área de trabalho + core/config.yaml configurado.
+Roda em qualquer PC Windows, mesmo sem Python instalado.
 """
 
+import glob
 import json
 import os
 import platform
+import re
 import shutil
 import subprocess
 import sys
 import threading
+import urllib.request
 import webbrowser
 from pathlib import Path
 import tkinter as tk
-from tkinter import filedialog, font, messagebox, ttk
+from tkinter import filedialog, messagebox, ttk
 
 # ── Paleta ────────────────────────────────────────────────────────────
 BG      = "#0d1117"
@@ -32,6 +35,7 @@ if getattr(sys, "frozen", False):
     INSTALL_DIR = Path(sys.executable).parent.resolve()
 else:
     INSTALL_DIR = Path(__file__).parent.resolve()
+
 PACKAGES_REQUIRED = [
     "pyyaml", "psutil", "requests", "duckduckgo-search",
     "schedule", "keyboard", "plyer",
@@ -47,26 +51,124 @@ PACKAGES_OPTIONAL = [
     ("Pillow", "OCR de tela"),
 ]
 
+# ── Python discovery ──────────────────────────────────────────────────
+
+_PYTHON_EXE: str = ""   # cache; vazio = ainda não buscou
+
+
+def _python_version_ok(exe: str) -> bool:
+    try:
+        r = subprocess.run([exe, "--version"], capture_output=True, text=True, timeout=5)
+        ver = r.stdout.strip() or r.stderr.strip()
+        m = re.search(r"Python 3\.(\d+)", ver)
+        return bool(m and int(m.group(1)) >= 9)
+    except Exception:
+        return False
+
+
+def _find_python() -> str:
+    """Retorna o caminho de um Python 3.9+ usável, ou string vazia."""
+    global _PYTHON_EXE
+    if _PYTHON_EXE:
+        return _PYTHON_EXE
+
+    # 1. Se não for exe congelado, o próprio processo já É Python
+    if not getattr(sys, "frozen", False):
+        if _python_version_ok(sys.executable):
+            _PYTHON_EXE = sys.executable
+            return _PYTHON_EXE
+
+    # 2. PATH
+    for name in ("python3", "python", "py"):
+        p = shutil.which(name)
+        if p and _python_version_ok(p):
+            _PYTHON_EXE = p
+            return _PYTHON_EXE
+
+    # 3. Locais comuns no Windows (mais recente primeiro)
+    patterns = [
+        r"C:\Users\*\AppData\Local\Programs\Python\Python3*\python.exe",
+        r"C:\Python3*\python.exe",
+        r"C:\Program Files\Python3*\python.exe",
+        r"C:\Program Files (x86)\Python3*\python.exe",
+    ]
+    candidates: list[str] = []
+    for pat in patterns:
+        candidates.extend(glob.glob(pat))
+    for exe in sorted(candidates, reverse=True):
+        if _python_version_ok(exe):
+            _PYTHON_EXE = exe
+            return _PYTHON_EXE
+
+    return ""
+
+
+def _auto_install_python(on_progress, on_done):
+    """Baixa e instala Python 3.12 silenciosamente (sem admin, sem UAC)."""
+    arch = "amd64" if platform.machine().endswith("64") else "win32"
+    version = "3.12.9"
+    url = f"https://www.python.org/ftp/python/{version}/python-{version}-{arch}.exe"
+    tmp = Path(os.environ.get("TEMP", str(Path.home()))) / f"python-{version}-installer.exe"
+
+    def run():
+        global _PYTHON_EXE
+        try:
+            # Download com progresso
+            def reporthook(count, block, total):
+                if total > 0:
+                    mb_done = count * block / 1024 / 1024
+                    mb_total = total / 1024 / 1024
+                    pct = min(45, int(count * block / total * 45))
+                    on_progress(f"Baixando Python {version}… {mb_done:.1f}/{mb_total:.0f} MB", pct)
+
+            on_progress(f"Conectando a python.org…", 2)
+            urllib.request.urlretrieve(url, str(tmp), reporthook)
+
+            on_progress("Instalando Python… (pode demorar 1-2 min)", 50)
+            subprocess.run(
+                [str(tmp), "/quiet", "InstallAllUsers=0",
+                 "PrependPath=1", "Include_pip=1", "Include_launcher=0"],
+                check=True, timeout=300,
+            )
+            _PYTHON_EXE = ""   # força re-busca
+            found = _find_python()
+            if found:
+                on_progress(f"Python instalado: {found}", 100)
+                on_done(True, "")
+            else:
+                on_done(False, "Instalação concluída mas Python não foi encontrado. Reinicie o wizard.")
+        except Exception as e:
+            on_done(False, str(e))
+
+    threading.Thread(target=run, daemon=True).start()
+
 
 # ── Utilitários ───────────────────────────────────────────────────────
 
-def pip_install(pkg: str, callback=None):
+def pip_install(pkg: str, callback=None) -> bool:
+    exe = _find_python()
+    if not exe:
+        if callback:
+            callback(pkg, False)
+        return False
     result = subprocess.run(
-        [sys.executable, "-m", "pip", "install", pkg, "--quiet"],
+        [exe, "-m", "pip", "install", pkg, "--quiet"],
         capture_output=True, text=True,
     )
+    ok = result.returncode == 0
     if callback:
-        callback(pkg, result.returncode == 0)
-    return result.returncode == 0
+        callback(pkg, ok)
+    return ok
 
 
 def pkg_installed(name: str) -> bool:
-    clean = name.split("[")[0].replace("-", "_")
-    try:
-        __import__(clean)
-        return True
-    except ImportError:
+    exe = _find_python()
+    if not exe:
         return False
+    clean = name.split("[")[0].replace("-", "_")
+    r = subprocess.run([exe, "-c", f"import {clean}"],
+                       capture_output=True, timeout=5)
+    return r.returncode == 0
 
 
 def ollama_installed() -> bool:
@@ -83,27 +185,35 @@ def ollama_model_exists(model="llama3") -> bool:
 def read_config() -> dict:
     cfg_path = INSTALL_DIR / "core" / "config.yaml"
     try:
-        import yaml
-        with open(cfg_path, encoding="utf-8") as f:
-            return yaml.safe_load(f) or {}
+        exe = _find_python()
+        if exe:
+            r = subprocess.run([exe, "-c",
+                "import yaml, sys; print(__import__('json').dumps(yaml.safe_load(open(sys.argv[1]))))",
+                str(cfg_path)], capture_output=True, text=True)
+            if r.returncode == 0:
+                return json.loads(r.stdout)
     except Exception:
-        return {}
+        pass
+    return {}
 
 
 def write_config_values(values: dict):
     cfg_path = INSTALL_DIR / "core" / "config.yaml"
+    exe = _find_python()
+    if not exe:
+        return "Python não encontrado — não é possível salvar config."
+    script = (
+        "import yaml, json, sys\n"
+        "p = sys.argv[1]\n"
+        "v = json.loads(sys.argv[2])\n"
+        "d = yaml.safe_load(open(p)) or {}\n"
+        "[(d.update({s: {**d.get(s,{}), **sv}}) if isinstance(d.get(s), dict) else d.update({s: sv})) for s, sv in v.items()]\n"
+        "yaml.dump(d, open(p,'w',encoding='utf-8'), allow_unicode=True, default_flow_style=False)\n"
+    )
     try:
-        import yaml
-        with open(cfg_path, encoding="utf-8") as f:
-            data = yaml.safe_load(f) or {}
-        # Aplica recursivamente só as chaves enviadas
-        for section, subdict in values.items():
-            if section not in data or not isinstance(data[section], dict):
-                data[section] = {}
-            data[section].update(subdict)
-        with open(cfg_path, "w", encoding="utf-8") as f:
-            yaml.dump(data, f, allow_unicode=True, default_flow_style=False)
-        return True
+        r = subprocess.run([exe, "-c", script, str(cfg_path), json.dumps(values)],
+                           capture_output=True, text=True)
+        return True if r.returncode == 0 else r.stderr.strip()
     except Exception as e:
         return str(e)
 
@@ -112,25 +222,25 @@ def create_shortcut():
     if platform.system() != "Windows":
         return
     desktop = Path.home() / "Desktop"
+    python_exe = _find_python() or "python"
     bat = desktop / "Axiom.bat"
     bat.write_text(
         f'@echo off\ncd /d "{INSTALL_DIR}"\n'
-        f'"{sys.executable}" main.py\npause\n',
+        f'"{python_exe}" main.py\npause\n',
         encoding="utf-8",
     )
-    # Tenta criar .lnk se win32com disponível
     try:
         import win32com.client  # type: ignore
         shell = win32com.client.Dispatch("WScript.Shell")
         lnk = shell.CreateShortCut(str(desktop / "Axiom.lnk"))
-        lnk.TargetPath = sys.executable
+        lnk.TargetPath = python_exe
         lnk.Arguments = "main.py"
         lnk.WorkingDirectory = str(INSTALL_DIR)
         lnk.Description = "Axiom — Assistente pessoal inteligente"
         lnk.save()
-        bat.unlink(missing_ok=True)   # prefere .lnk
+        bat.unlink(missing_ok=True)
     except Exception:
-        pass  # .bat já criado como fallback
+        pass
 
 
 # ── Widgets reutilizáveis ─────────────────────────────────────────────
@@ -154,11 +264,6 @@ def body(parent, text, color=FG2) -> tk.Label:
                     font=("Segoe UI", 9), wraplength=480, justify="left")
 
 
-def sep(parent) -> ttk.Separator:
-    s = ttk.Separator(parent, orient="horizontal")
-    return s
-
-
 def btn(parent, text, command, color=ACCENT, width=14) -> tk.Button:
     return tk.Button(
         parent, text=text, command=command,
@@ -168,23 +273,23 @@ def btn(parent, text, command, color=ACCENT, width=14) -> tk.Button:
     )
 
 
-def status_dot(parent, ok: bool) -> tk.Label:
-    return tk.Label(parent, text="●", bg=BG,
-                    fg=GREEN if ok else RED,
-                    font=("Segoe UI", 10))
+def status_dot(parent, ok: bool | None = None) -> tk.Label:
+    color = GREEN if ok is True else (RED if ok is False else YELLOW)
+    return tk.Label(parent, text="●", bg=BG, fg=color, font=("Segoe UI", 10))
 
 
 # ── Janela principal ──────────────────────────────────────────────────
 
 class WizardApp(tk.Tk):
-    PAGES = ["Boas-vindas", "Dependências", "Ollama & IA", "Configuração", "Google", "Concluído"]
+    PAGES = ["Boas-vindas", "Dependências", "Ollama & IA",
+             "Configuração", "Google", "Concluído"]
 
     def __init__(self):
         super().__init__()
         self.title("Axiom — Assistente de instalação")
         self.configure(bg=BG)
         self.resizable(False, False)
-        self.geometry("540x560")
+        self.geometry("540x580")
         self._center()
 
         self._page_idx = 0
@@ -195,15 +300,14 @@ class WizardApp(tk.Tk):
 
     def _center(self):
         self.update_idletasks()
-        w, h = 540, 560
+        w, h = 540, 580
         x = (self.winfo_screenwidth() - w) // 2
         y = (self.winfo_screenheight() - h) // 2
         self.geometry(f"{w}x{h}+{x}+{y}")
 
-    # ── Cromo (header + nav) ──────────────────────────────────────────
+    # ── Cromo ─────────────────────────────────────────────────────────
 
     def _build_chrome(self):
-        # Header
         hdr = tk.Frame(self, bg=BG2, height=70)
         hdr.pack(fill="x")
         hdr.pack_propagate(False)
@@ -213,7 +317,6 @@ class WizardApp(tk.Tk):
                                    font=("Segoe UI", 9))
         self._step_lbl.pack(side="right", padx=20)
 
-        # Barra de progresso
         self._progress = ttk.Progressbar(self, length=540, mode="determinate",
                                           maximum=len(self.PAGES) - 1)
         style = ttk.Style()
@@ -222,11 +325,9 @@ class WizardApp(tk.Tk):
                         background=ACCENT, thickness=4)
         self._progress.pack(fill="x")
 
-        # Área de conteúdo
         self._content = tk.Frame(self, bg=BG)
         self._content.pack(fill="both", expand=True, padx=24, pady=16)
 
-        # Nav inferior
         nav = tk.Frame(self, bg=BG2, height=52)
         nav.pack(fill="x", side="bottom")
         nav.pack_propagate(False)
@@ -250,7 +351,6 @@ class WizardApp(tk.Tk):
             text="Fechar" if last else "Próximo →",
             command=self.destroy if last else self._go_next,
         )
-        # Inicialização sob demanda
         if hasattr(self._frames[idx], "_on_show"):
             self._frames[idx]._on_show()
 
@@ -277,53 +377,111 @@ class WizardApp(tk.Tk):
             f.pack(fill="both", expand=True)
             f.pack_forget()
 
-    # Página 1 — Boas-vindas
+    # ── Página 1 — Boas-vindas ────────────────────────────────────────
+
     def _page_welcome(self) -> tk.Frame:
         f = styled_frame(self._content)
 
         h1(f, "Bem-vindo ao Axiom").pack(anchor="w", pady=(0, 4))
         body(f, "Assistente pessoal de desktop — controle por voz ou texto, "
                 "100% local e gratuito.").pack(anchor="w")
-
         tk.Frame(f, bg=BORDER, height=1).pack(fill="x", pady=14)
         h2(f, "Verificação do sistema").pack(anchor="w", pady=(0, 8))
 
         info = tk.Frame(f, bg=BG2, padx=12, pady=10)
         info.pack(fill="x")
 
-        py_ok = sys.version_info >= (3, 9)
-        rows = [
-            (f"Python {sys.version.split()[0]}", py_ok),
-            (f"Sistema: {platform.system()} {platform.release()}", True),
+        # Sistema e diretório
+        for label, ok in [
+            (f"Sistema: {platform.system()} {platform.release()} "
+             f"({'64-bit' if platform.machine().endswith('64') else '32-bit'})", True),
             (f"Diretório: {INSTALL_DIR}", True),
-        ]
-        for label, ok in rows:
+        ]:
             row = tk.Frame(info, bg=BG2)
             row.pack(fill="x", pady=2)
             status_dot(row, ok).pack(side="left")
             tk.Label(row, text=f"  {label}", bg=BG2, fg=FG,
                      font=("Segoe UI", 9)).pack(side="left")
 
-        if not py_ok:
-            body(f, "⚠  Python 3.9+ é necessário. Instale em python.org",
-                 RED).pack(anchor="w", pady=(10, 0))
+        # Python — pode não estar instalado
+        py_row = tk.Frame(info, bg=BG2)
+        py_row.pack(fill="x", pady=2)
+        py_found = _find_python()
+        self._py_dot = status_dot(py_row, bool(py_found))
+        self._py_dot.pack(side="left")
+        self._py_lbl = tk.Label(
+            py_row,
+            text=f"  Python: {py_found}" if py_found else "  Python 3.9+ não encontrado",
+            bg=BG2, fg=FG, font=("Segoe UI", 9),
+        )
+        self._py_lbl.pack(side="left")
+
+        # Painel de instalação automática (visível só se Python ausente)
+        self._py_panel = tk.Frame(f, bg=BG3, padx=12, pady=10)
+        if not py_found:
+            self._py_panel.pack(fill="x", pady=(8, 0))
+            tk.Label(self._py_panel,
+                     text="Python não encontrado. Instalando automaticamente (sem admin)…",
+                     bg=BG3, fg=YELLOW, font=("Segoe UI", 8), wraplength=460,
+                     justify="left").pack(anchor="w")
+            self._py_prog = ttk.Progressbar(self._py_panel, length=460,
+                                             mode="determinate", maximum=100)
+            self._py_prog.pack(fill="x", pady=(6, 4))
+            self._py_status = tk.Label(self._py_panel, text="", bg=BG3,
+                                       fg=FG2, font=("Segoe UI", 8))
+            self._py_status.pack(anchor="w")
+            btn_row = tk.Frame(self._py_panel, bg=BG3)
+            btn_row.pack(anchor="w", pady=(4, 0))
+            btn(btn_row, "↺ Reinstalar Python 3.12",
+                self._install_python_auto, width=22).pack(side="left")
+            btn(btn_row, "Baixar manualmente",
+                lambda: webbrowser.open("https://www.python.org/downloads/"),
+                color=BG, width=17).pack(side="left", padx=8)
+            # Auto-inicia instalação se rodando como exe (sem Python no PC)
+            if getattr(sys, "frozen", False):
+                self.after(800, self._install_python_auto)
 
         tk.Frame(f, bg=BORDER, height=1).pack(fill="x", pady=14)
         body(f, "Este assistente irá:\n"
                 "  1. Instalar as dependências Python\n"
                 "  2. Configurar o Ollama (IA local)\n"
                 "  3. Ajustar suas preferências\n"
-                "  4. Criar um atalho na área de trabalho").pack(anchor="w")
+                "  4. Fazer login com o Google (Calendar + Drive)\n"
+                "  5. Criar um atalho na área de trabalho").pack(anchor="w")
         return f
 
-    # Página 2 — Dependências
+    def _install_python_auto(self):
+        if not hasattr(self, "_py_prog"):
+            return
+
+        def on_progress(msg, pct):
+            self.after(0, lambda m=msg, p=pct: [
+                self._py_status.config(text=m, fg=YELLOW),
+                self._py_prog.config(value=p),
+            ])
+
+        def on_done(ok, err=""):
+            def _update():
+                if ok:
+                    exe = _find_python()
+                    self._py_dot.config(fg=GREEN)
+                    self._py_lbl.config(text=f"  Python: {exe}")
+                    self._py_status.config(text="Python instalado com sucesso!", fg=GREEN)
+                    self._py_prog.config(value=100)
+                else:
+                    self._py_status.config(text=f"Erro: {err}", fg=RED)
+            self.after(0, _update)
+
+        _auto_install_python(on_progress, on_done)
+
+    # ── Página 2 — Dependências ───────────────────────────────────────
+
     def _page_deps(self) -> tk.Frame:
         f = styled_frame(self._content)
         h1(f, "Dependências Python").pack(anchor="w", pady=(0, 4))
         body(f, "Pacotes necessários para o Axiom funcionar.").pack(anchor="w")
         tk.Frame(f, bg=BORDER, height=1).pack(fill="x", pady=10)
 
-        # Lista com status
         list_frame = tk.Frame(f, bg=BG2)
         list_frame.pack(fill="x")
         self._dep_labels: dict[str, tk.Label] = {}
@@ -349,9 +507,8 @@ class WizardApp(tk.Tk):
             if any(pkg == p for p, _ in PACKAGES_OPTIONAL):
                 opt_desc = next(d for p, d in PACKAGES_OPTIONAL if p == pkg)
                 lbl_text += f"  ({opt_desc})"
-            lbl = tk.Label(row, text=lbl_text, bg=BG2, fg=FG if installed else FG2,
-                           font=("Segoe UI", 8))
-            lbl.pack(side="left")
+            tk.Label(row, text=lbl_text, bg=BG2, fg=FG if installed else FG2,
+                     font=("Segoe UI", 8)).pack(side="left")
             self._dep_labels[pkg] = dot
 
         tk.Frame(f, bg=BORDER, height=1).pack(fill="x", pady=8)
@@ -365,14 +522,18 @@ class WizardApp(tk.Tk):
         btn_row = tk.Frame(f, bg=BG)
         btn_row.pack(anchor="w")
         btn(btn_row, "Instalar tudo", self._install_deps, width=14).pack(side="left", pady=4)
-        btn(btn_row, "Só opcionais", lambda: self._install_deps(optional_only=True),
+        btn(btn_row, "Só opcionais",
+            lambda: self._install_deps(optional_only=True),
             color=BG3, width=13).pack(side="left", padx=8)
         return f
 
     def _install_deps(self, optional_only=False):
+        if not _find_python():
+            messagebox.showerror("Python não encontrado",
+                                 "Instale o Python primeiro (passo 1).")
+            return
         pkgs = (
-            [p for p, _ in PACKAGES_OPTIONAL]
-            if optional_only
+            [p for p, _ in PACKAGES_OPTIONAL] if optional_only
             else PACKAGES_REQUIRED + [p for p, _ in PACKAGES_OPTIONAL]
         )
         self._dep_progress["maximum"] = len(pkgs)
@@ -390,7 +551,8 @@ class WizardApp(tk.Tk):
 
         threading.Thread(target=run, daemon=True).start()
 
-    # Página 3 — Ollama
+    # ── Página 3 — Ollama ─────────────────────────────────────────────
+
     def _page_ollama(self) -> tk.Frame:
         f = styled_frame(self._content)
         h1(f, "Ollama & Modelo de IA").pack(anchor="w", pady=(0, 4))
@@ -398,7 +560,6 @@ class WizardApp(tk.Tk):
                 "Sem internet após o download.").pack(anchor="w")
         tk.Frame(f, bg=BORDER, height=1).pack(fill="x", pady=10)
 
-        # Status Ollama
         status_frame = tk.Frame(f, bg=BG2, padx=12, pady=10)
         status_frame.pack(fill="x")
         self._ollama_dot = status_dot(status_frame, ollama_installed())
@@ -406,7 +567,7 @@ class WizardApp(tk.Tk):
         self._ollama_lbl = tk.Label(
             status_frame,
             text=f"  Ollama {'encontrado' if ollama_installed() else 'não encontrado'}",
-            bg=BG2, fg=FG, font=("Segoe UI", 9)
+            bg=BG2, fg=FG, font=("Segoe UI", 9),
         )
         self._ollama_lbl.pack(side="left")
 
@@ -441,9 +602,7 @@ class WizardApp(tk.Tk):
         self._model_progress.pack(fill="x", pady=8)
         self._model_status = tk.Label(f, text="", bg=BG, fg=FG2, font=("Segoe UI", 8))
         self._model_status.pack(anchor="w")
-
         btn(f, "⬇  Baixar modelo selecionado (~4 GB)", self._pull_model, width=34).pack(anchor="w", pady=4)
-
         body(f, "Dica: llama3 é o mais capaz; phi3 é menor e mais rápido (~2 GB).",
              FG2).pack(anchor="w", pady=(4, 0))
         return f
@@ -451,15 +610,14 @@ class WizardApp(tk.Tk):
     def _pull_model(self):
         if not ollama_installed():
             messagebox.showerror("Ollama não encontrado",
-                                 "Instale o Ollama primeiro e reinicie o terminal.")
+                                 "Instale o Ollama primeiro e reinicie.")
             return
         model = self._model_var.get()
         self._model_status.config(text=f"Baixando {model}… pode levar vários minutos.", fg=YELLOW)
         self._model_progress.start(12)
 
         def run():
-            result = subprocess.run(["ollama", "pull", model],
-                                    capture_output=True, text=True)
+            result = subprocess.run(["ollama", "pull", model], capture_output=True, text=True)
             self._model_progress.stop()
             if result.returncode == 0:
                 self._model_status.config(text=f"✓ {model} pronto.", fg=GREEN)
@@ -468,7 +626,8 @@ class WizardApp(tk.Tk):
 
         threading.Thread(target=run, daemon=True).start()
 
-    # Página 4 — Configuração
+    # ── Página 4 — Configuração ───────────────────────────────────────
+
     def _page_config(self) -> tk.Frame:
         f = styled_frame(self._content)
         h1(f, "Configuração").pack(anchor="w", pady=(0, 4))
@@ -489,20 +648,17 @@ class WizardApp(tk.Tk):
             if placeholder and not var.get():
                 e.insert(0, placeholder)
                 e.config(fg=FG2)
-                def on_focus_in(ev, entry=e, v=var):
+                def on_in(ev, entry=e, v=var):
                     if entry.get() == placeholder:
-                        entry.delete(0, "end")
-                        entry.config(fg=FG)
-                def on_focus_out(ev, entry=e, ph=placeholder, v=var):
+                        entry.delete(0, "end"); entry.config(fg=FG)
+                def on_out(ev, entry=e, ph=placeholder):
                     if not entry.get():
-                        entry.insert(0, ph)
-                        entry.config(fg=FG2)
-                e.bind("<FocusIn>", on_focus_in)
-                e.bind("<FocusOut>", on_focus_out)
+                        entry.insert(0, ph); entry.config(fg=FG2)
+                e.bind("<FocusIn>", on_in)
+                e.bind("<FocusOut>", on_out)
             return e
 
         cfg = read_config()
-
         self._cfg_model    = tk.StringVar(value=cfg.get("ai", {}).get("model", "llama3"))
         self._cfg_password = tk.StringVar(value=cfg.get("web", {}).get("password", ""))
         self._cfg_obsidian = tk.StringVar(value=cfg.get("obsidian", {}).get("vault_path", ""))
@@ -511,7 +667,6 @@ class WizardApp(tk.Tk):
         field("Modelo LLM:", self._cfg_model, "llama3")
         field("Senha do dashboard:", self._cfg_password, "(vazio = sem senha)", show="*")
 
-        # Obsidian com botão de pasta
         obs_row = tk.Frame(f, bg=BG)
         obs_row.pack(fill="x", pady=4)
         tk.Label(obs_row, text="Vault Obsidian:", bg=BG, fg=FG2,
@@ -535,10 +690,10 @@ class WizardApp(tk.Tk):
 
     def _save_config(self):
         values = {
-            "ai": {"model": self._cfg_model.get() or "llama3"},
-            "web": {"password": self._cfg_password.get()},
+            "ai":       {"model": self._cfg_model.get() or "llama3"},
+            "web":      {"password": self._cfg_password.get()},
             "obsidian": {"vault_path": self._cfg_obsidian.get()},
-            "wake_word": {"access_key": self._cfg_wakekey.get()},
+            "wake_word":{"access_key": self._cfg_wakekey.get()},
         }
         result = write_config_values(values)
         if result is True:
@@ -546,7 +701,8 @@ class WizardApp(tk.Tk):
         else:
             self._cfg_status.config(text=f"Erro: {result}", fg=RED)
 
-    # Página 5 — Google Auth (opcional)
+    # ── Página 5 — Google Auth ────────────────────────────────────────
+
     def _page_google(self) -> tk.Frame:
         f = styled_frame(self._content)
         h1(f, "Integração Google (opcional)").pack(anchor="w", pady=(0, 4))
@@ -556,16 +712,16 @@ class WizardApp(tk.Tk):
 
         h2(f, "1. Criar credenciais OAuth").pack(anchor="w", pady=(0, 4))
         body(f,
-             "• Acesse console.cloud.google.com\n"
-             "• Crie um projeto → ative Calendar API e Drive API\n"
-             "• Credenciais → Criar → OAuth 2.0 → Aplicativo desktop\n"
-             "• Baixe o credentials.json").pack(anchor="w", padx=8)
+             "• console.cloud.google.com → APIs & Services → Credenciais\n"
+             "• Novo projeto → Ativar Calendar API e Drive API\n"
+             "• Criar credenciais → OAuth 2.0 → Aplicativo desktop → Baixar JSON").pack(
+             anchor="w", padx=8)
         btn(f, "Abrir Google Cloud Console",
             lambda: webbrowser.open("https://console.cloud.google.com/apis/credentials"),
             color=BG3, width=28).pack(anchor="w", pady=(6, 0))
 
         tk.Frame(f, bg=BORDER, height=1).pack(fill="x", pady=10)
-        h2(f, "2. Selecionar arquivo credentials.json").pack(anchor="w", pady=(0, 4))
+        h2(f, "2. Selecionar credentials.json").pack(anchor="w", pady=(0, 4))
 
         default_creds = INSTALL_DIR / "core" / "credentials.json"
         self._creds_var = tk.StringVar(
@@ -585,18 +741,18 @@ class WizardApp(tk.Tk):
         h2(f, "3. Autorizar conta Google").pack(anchor="w", pady=(0, 6))
 
         token_ok = (INSTALL_DIR / "core" / "google_token.json").exists()
-        status_grid = tk.Frame(f, bg=BG)
-        status_grid.pack(fill="x")
+        grid = tk.Frame(f, bg=BG)
+        grid.pack(fill="x")
 
-        self._google_cal_dot = status_dot(status_grid, token_ok)
+        self._google_cal_dot = status_dot(grid, token_ok)
         self._google_cal_dot.grid(row=0, column=0, sticky="w")
-        self._google_cal_lbl = tk.Label(status_grid, text="  Google Calendar",
+        self._google_cal_lbl = tk.Label(grid, text="  Google Calendar",
                                          bg=BG, fg=FG, font=("Segoe UI", 9))
         self._google_cal_lbl.grid(row=0, column=1, sticky="w")
 
-        self._google_drv_dot = status_dot(status_grid, token_ok)
+        self._google_drv_dot = status_dot(grid, token_ok)
         self._google_drv_dot.grid(row=1, column=0, sticky="w", pady=(2, 0))
-        self._google_drv_lbl = tk.Label(status_grid, text="  Google Drive",
+        self._google_drv_lbl = tk.Label(grid, text="  Google Drive",
                                          bg=BG, fg=FG, font=("Segoe UI", 9))
         self._google_drv_lbl.grid(row=1, column=1, sticky="w", pady=(2, 0))
 
@@ -621,6 +777,11 @@ class WizardApp(tk.Tk):
             self._google_status.config(
                 text="Selecione um arquivo credentials.json válido primeiro.", fg=RED)
             return
+        if not pkg_installed("google_auth_oauthlib"):
+            self._google_status.config(
+                text="google-auth-oauthlib não instalado — instale as dependências (passo 2) primeiro.",
+                fg=RED)
+            return
         self._google_status.config(text="Abrindo navegador para autorização…", fg=YELLOW)
 
         def run():
@@ -630,41 +791,48 @@ class WizardApp(tk.Tk):
             ]
             dest_creds = INSTALL_DIR / "core" / "credentials.json"
             token_path = INSTALL_DIR / "core" / "google_token.json"
+            exe = _find_python()
 
             try:
-                from google_auth_oauthlib.flow import InstalledAppFlow
-            except ImportError:
-                self.after(0, lambda: self._google_status.config(
-                    text="google-auth-oauthlib não instalado. Instale as dependências (passo 2) primeiro.",
-                    fg=RED))
-                return
+                if not exe:
+                    raise RuntimeError("Python não encontrado.")
 
-            try:
                 if Path(creds_src).resolve() != dest_creds.resolve():
-                    import shutil as _sh
-                    _sh.copy2(creds_src, dest_creds)
+                    shutil.copy2(creds_src, dest_creds)
 
-                flow = InstalledAppFlow.from_client_secrets_file(str(dest_creds), SCOPES)
-                creds = flow.run_local_server(port=0)
-                token_path.write_text(creds.to_json(), encoding="utf-8")
+                # Roda o fluxo OAuth via subprocesso para evitar conflito com tkinter mainloop
+                script = (
+                    "from google_auth_oauthlib.flow import InstalledAppFlow\n"
+                    "import json, sys\n"
+                    "flow = InstalledAppFlow.from_client_secrets_file(sys.argv[1], json.loads(sys.argv[2]))\n"
+                    "creds = flow.run_local_server(port=0)\n"
+                    "open(sys.argv[3],'w').write(creds.to_json())\n"
+                    "print('OK')\n"
+                )
+                r = subprocess.run(
+                    [exe, "-c", script,
+                     str(dest_creds), json.dumps(SCOPES), str(token_path)],
+                    capture_output=True, text=True, timeout=120,
+                )
+                if r.returncode != 0 or "OK" not in r.stdout:
+                    raise RuntimeError(r.stderr.strip() or "Autorização cancelada.")
 
-                def _update_ok():
+                def _ok():
                     self._google_cal_dot.config(fg=GREEN)
                     self._google_drv_dot.config(fg=GREEN)
                     self._google_cal_lbl.config(text="  Google Calendar  ✓")
                     self._google_drv_lbl.config(text="  Google Drive  ✓")
-                    self._google_status.config(
-                        text="Conta Google conectada com sucesso.", fg=GREEN)
+                    self._google_status.config(text="Conta Google conectada com sucesso.", fg=GREEN)
 
-                self.after(0, _update_ok)
+                self.after(0, _ok)
             except Exception as e:
                 err = str(e)
-                self.after(0, lambda: self._google_status.config(
-                    text=f"Erro: {err}", fg=RED))
+                self.after(0, lambda: self._google_status.config(text=f"Erro: {err}", fg=RED))
 
         threading.Thread(target=run, daemon=True).start()
 
-    # Página 6 — Concluído
+    # ── Página 6 — Concluído ──────────────────────────────────────────
+
     def _page_finish(self) -> tk.Frame:
         f = styled_frame(self._content)
         f._on_show = lambda: self._finish_init(f)
@@ -673,17 +841,20 @@ class WizardApp(tk.Tk):
     def _finish_init(self, f):
         for w in f.winfo_children():
             w.destroy()
-        h1(f, "Tudo pronto! 🎉").pack(anchor="w", pady=(0, 4))
+
+        h1(f, "Tudo pronto!").pack(anchor="w", pady=(0, 4))
         body(f, "O Axiom está configurado e pronto para usar.").pack(anchor="w")
         tk.Frame(f, bg=BORDER, height=1).pack(fill="x", pady=12)
 
+        py_exe = _find_python()
         checks = [
-            ("Python 3.9+",        sys.version_info >= (3, 9)),
-            ("pyyaml instalado",   pkg_installed("yaml")),
-            ("psutil instalado",   pkg_installed("psutil")),
-            ("faster-whisper",     pkg_installed("faster_whisper")),
-            ("FastAPI/uvicorn",    pkg_installed("fastapi")),
-            ("Ollama disponível",  ollama_installed()),
+            ("Python 3.9+",       bool(py_exe)),
+            ("pyyaml instalado",  pkg_installed("yaml")),
+            ("psutil instalado",  pkg_installed("psutil")),
+            ("faster-whisper",    pkg_installed("faster_whisper")),
+            ("FastAPI/uvicorn",   pkg_installed("fastapi")),
+            ("Ollama disponível", ollama_installed()),
+            ("Google autorizado", (INSTALL_DIR / "core" / "google_token.json").exists()),
         ]
         for label, ok in checks:
             row = tk.Frame(f, bg=BG)
@@ -702,34 +873,31 @@ class WizardApp(tk.Tk):
                 create_shortcut()
                 self._shortcut_status.config(text="✓ Atalho criado na área de trabalho.", fg=GREEN)
             except Exception as e:
-                self._shortcut_status.config(text=f"Erro ao criar atalho: {e}", fg=RED)
+                self._shortcut_status.config(text=f"Erro: {e}", fg=RED)
 
-        def launch():
+        def launch(extra_args=()):
+            exe = _find_python()
+            if not exe:
+                messagebox.showerror("Python não encontrado",
+                                     "Instale o Python (passo 1) e reinicie o wizard.")
+                return
+            flags = subprocess.CREATE_NEW_CONSOLE if platform.system() == "Windows" else 0
             subprocess.Popen(
-                [sys.executable, "main.py", "--mode", "text", "--no-tts"],
-                cwd=str(INSTALL_DIR),
-                creationflags=subprocess.CREATE_NEW_CONSOLE if platform.system() == "Windows" else 0,
-            )
-            self.destroy()
-
-        def launch_web():
-            subprocess.Popen(
-                [sys.executable, "main.py", "--mode", "text", "--no-tts", "--web"],
-                cwd=str(INSTALL_DIR),
-                creationflags=subprocess.CREATE_NEW_CONSOLE if platform.system() == "Windows" else 0,
+                [exe, "main.py", "--mode", "text", "--no-tts"] + list(extra_args),
+                cwd=str(INSTALL_DIR), creationflags=flags,
             )
             self.destroy()
 
         btn_row = tk.Frame(f, bg=BG)
         btn_row.pack(anchor="w", pady=4)
         btn(btn_row, "🖥  Criar atalho", make_shortcut, color=BG3, width=14).pack(side="left")
-        btn(btn_row, "▶  Iniciar Axiom", launch, width=14).pack(side="left", padx=8)
-        btn(btn_row, "🌐  Com dashboard", launch_web, color="#1f5f2e", width=16).pack(side="left")
+        btn(btn_row, "▶  Iniciar Axiom", lambda: launch(), width=14).pack(side="left", padx=8)
+        btn(btn_row, "🌐  Com dashboard", lambda: launch(["--web"]),
+            color="#1f5f2e", width=16).pack(side="left")
 
-        body(f, "\nPara iniciar manualmente:\n"
-                "  python main.py --mode text --no-tts\n"
-                "  python main.py --web          (com dashboard)\n"
-                "  python main.py                (modo completo com voz)",
+        body(f, "\npython main.py --mode text --no-tts\n"
+                "python main.py --web   (com dashboard)\n"
+                "python main.py         (modo completo com voz)",
              FG2).pack(anchor="w")
 
 
