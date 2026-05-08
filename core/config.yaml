@@ -76,6 +76,10 @@ calendar:
   token_path: core/calendar_token.json     # gerado automaticamente após primeira auth
   timezone: America/Sao_Paulo
 
+# ── Dashboard web ─────────────────────────────
+web:
+  password: ""              # Deixe vazio para sem autenticação
+
 # ── Obsidian ──────────────────────────────────
 obsidian:
   vault_path: ""            # ex: C:/Users/user/Documents/Obsidian/Axiom
