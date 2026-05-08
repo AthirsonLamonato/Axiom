@@ -31,10 +31,16 @@ RED     = "#f85149"
 YELLOW  = "#e3b341"
 BORDER  = "#30363d"
 
-if getattr(sys, "frozen", False):
-    INSTALL_DIR = Path(sys.executable).parent.resolve()
-else:
-    INSTALL_DIR = Path(__file__).parent.resolve()
+def _detect_install_dir() -> Path:
+    if getattr(sys, "frozen", False):
+        exe_dir = Path(sys.executable).parent.resolve()
+        # Se rodando de dist/ durante dev build, usa o pai (raiz do projeto)
+        if exe_dir.name == "dist" and (exe_dir.parent / "main.py").exists():
+            return exe_dir.parent
+        return exe_dir
+    return Path(__file__).parent.resolve()
+
+INSTALL_DIR = _detect_install_dir()
 
 PACKAGES_REQUIRED = [
     "pyyaml", "psutil", "requests", "duckduckgo-search",
@@ -273,7 +279,7 @@ def btn(parent, text, command, color=ACCENT, width=14) -> tk.Button:
     )
 
 
-def status_dot(parent, ok: bool | None = None) -> tk.Label:
+def status_dot(parent, ok=None) -> tk.Label:
     color = GREEN if ok is True else (RED if ok is False else YELLOW)
     return tk.Label(parent, text="●", bg=BG, fg=color, font=("Segoe UI", 10))
 
