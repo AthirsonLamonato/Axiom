@@ -73,7 +73,7 @@ plugins:
 # ── Google Calendar ───────────────────────────
 calendar:
   credentials_path: core/credentials.json  # OAuth 2.0 client secrets (baixe do Google Cloud)
-  token_path: core/calendar_token.json     # gerado automaticamente após primeira auth
+  token_path: core/google_token.json        # gerado automaticamente após primeira auth
   timezone: America/Sao_Paulo
 
 # ── Dashboard web ─────────────────────────────
@@ -92,6 +92,7 @@ backup:
     enabled: false           # true após configurar credenciais OAuth
     folder_name: Axiom Backups
     credentials_path: core/credentials.json
+    token_path: core/google_token.json
 
 # ── Logs ──────────────────────────────────────
 logging:

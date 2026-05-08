@@ -10,6 +10,11 @@ from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
+_DRIVE_SCOPES = [
+    "https://www.googleapis.com/auth/calendar",
+    "https://www.googleapis.com/auth/drive.file",
+]
+
 
 def _get_config():
     from core.config import Config
@@ -27,7 +32,6 @@ def backup_all(*_) -> str:
     os.makedirs(backup_path, exist_ok=True)
 
     results = []
-
     for folder in ("data/transcriptions", "data/summaries"):
         if os.path.exists(folder):
             dest = os.path.join(backup_path, os.path.basename(folder))
@@ -37,7 +41,6 @@ def backup_all(*_) -> str:
     msg = f"Backup local criado em {backup_path}."
     logger.info(msg)
 
-    # Google Drive (se habilitado)
     if config.get("backup.google_drive.enabled", False):
         drive_result = _upload_to_drive(backup_path, config)
         msg += f" {drive_result}"
@@ -45,29 +48,55 @@ def backup_all(*_) -> str:
     return msg
 
 
-def _upload_to_drive(local_path: str, config) -> str:
-    creds_path = config.get("backup.google_drive.credentials_path", "")
-    folder_name = config.get("backup.google_drive.folder_name", "Axiom Backups")
-
-    if not os.path.exists(creds_path):
-        return "Credenciais do Google Drive não encontradas."
-
+def _get_drive_service(config):
+    """Autentica e retorna o serviço Google Drive, reutilizando token salvo."""
     try:
         from google.oauth2.credentials import Credentials
         from google_auth_oauthlib.flow import InstalledAppFlow
+        from google.auth.transport.requests import Request
         from googleapiclient.discovery import build
+    except ImportError:
+        raise RuntimeError("Instale: pip install google-api-python-client google-auth-oauthlib")
+
+    creds_path = config.get("backup.google_drive.credentials_path", "core/credentials.json")
+    token_path = config.get("backup.google_drive.token_path", "core/google_token.json")
+
+    creds = None
+    if os.path.exists(token_path):
+        creds = Credentials.from_authorized_user_file(token_path, _DRIVE_SCOPES)
+
+    if not creds or not creds.valid:
+        if creds and creds.expired and creds.refresh_token:
+            creds.refresh(Request())
+        else:
+            if not os.path.exists(creds_path):
+                raise FileNotFoundError(
+                    f"Credenciais Google não encontradas: {creds_path}\n"
+                    "Execute o setup wizard para autorizar sua conta Google."
+                )
+            flow = InstalledAppFlow.from_client_secrets_file(creds_path, _DRIVE_SCOPES)
+            creds = flow.run_local_server(port=0)
+        with open(token_path, "w", encoding="utf-8") as f:
+            f.write(creds.to_json())
+        logger.info("Token Google Drive salvo em %s", token_path)
+
+    return build("drive", "v3", credentials=creds)
+
+
+def _upload_to_drive(local_path: str, config) -> str:
+    try:
         from googleapiclient.http import MediaFileUpload
+        service = _get_drive_service(config)
+    except (FileNotFoundError, RuntimeError) as e:
+        return str(e)
+    except Exception as e:
+        logger.error("Erro ao conectar Drive: %s", e, exc_info=True)
+        return f"Erro ao conectar com o Google Drive: {e}"
 
-        SCOPES = ["https://www.googleapis.com/auth/drive.file"]
+    folder_name = config.get("backup.google_drive.folder_name", "Axiom Backups")
 
-        flow = InstalledAppFlow.from_client_secrets_file(creds_path, SCOPES)
-        creds = flow.run_local_server(port=0)
-        service = build("drive", "v3", credentials=creds)
-
-        # Cria pasta no Drive se não existir
+    try:
         folder_id = _get_or_create_drive_folder(service, folder_name)
-
-        # Upload de cada arquivo do backup
         uploaded = 0
         for root, _, files in os.walk(local_path):
             for fname in files:
@@ -78,13 +107,9 @@ def _upload_to_drive(local_path: str, config) -> str:
                     media_body=media,
                 ).execute()
                 uploaded += 1
-
         return f"Google Drive: {uploaded} arquivos enviados para '{folder_name}'."
-
-    except ImportError:
-        return "Bibliotecas do Google não instaladas."
     except Exception as e:
-        logger.error(f"Erro no upload Drive: {e}")
+        logger.error("Erro no upload Drive: %s", e)
         return f"Erro no Drive: {e}"
 
 

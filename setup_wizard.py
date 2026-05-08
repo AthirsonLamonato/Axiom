@@ -28,7 +28,10 @@ RED     = "#f85149"
 YELLOW  = "#e3b341"
 BORDER  = "#30363d"
 
-INSTALL_DIR = Path(__file__).parent.resolve()
+if getattr(sys, "frozen", False):
+    INSTALL_DIR = Path(sys.executable).parent.resolve()
+else:
+    INSTALL_DIR = Path(__file__).parent.resolve()
 PACKAGES_REQUIRED = [
     "pyyaml", "psutil", "requests", "duckduckgo-search",
     "schedule", "keyboard", "plyer",
@@ -174,7 +177,7 @@ def status_dot(parent, ok: bool) -> tk.Label:
 # ── Janela principal ──────────────────────────────────────────────────
 
 class WizardApp(tk.Tk):
-    PAGES = ["Boas-vindas", "Dependências", "Ollama & IA", "Configuração", "Concluído"]
+    PAGES = ["Boas-vindas", "Dependências", "Ollama & IA", "Configuração", "Google", "Concluído"]
 
     def __init__(self):
         super().__init__()
@@ -267,6 +270,7 @@ class WizardApp(tk.Tk):
             self._page_deps(),
             self._page_ollama(),
             self._page_config(),
+            self._page_google(),
             self._page_finish(),
         ]
         for f in self._frames:
@@ -542,7 +546,125 @@ class WizardApp(tk.Tk):
         else:
             self._cfg_status.config(text=f"Erro: {result}", fg=RED)
 
-    # Página 5 — Concluído
+    # Página 5 — Google Auth (opcional)
+    def _page_google(self) -> tk.Frame:
+        f = styled_frame(self._content)
+        h1(f, "Integração Google (opcional)").pack(anchor="w", pady=(0, 4))
+        body(f, "Necessário para: ver agenda, criar eventos e backup no Google Drive. "
+                "Pode pular — configure depois com 'axiom, autoriza calendário'.").pack(anchor="w")
+        tk.Frame(f, bg=BORDER, height=1).pack(fill="x", pady=10)
+
+        h2(f, "1. Criar credenciais OAuth").pack(anchor="w", pady=(0, 4))
+        body(f,
+             "• Acesse console.cloud.google.com\n"
+             "• Crie um projeto → ative Calendar API e Drive API\n"
+             "• Credenciais → Criar → OAuth 2.0 → Aplicativo desktop\n"
+             "• Baixe o credentials.json").pack(anchor="w", padx=8)
+        btn(f, "Abrir Google Cloud Console",
+            lambda: webbrowser.open("https://console.cloud.google.com/apis/credentials"),
+            color=BG3, width=28).pack(anchor="w", pady=(6, 0))
+
+        tk.Frame(f, bg=BORDER, height=1).pack(fill="x", pady=10)
+        h2(f, "2. Selecionar arquivo credentials.json").pack(anchor="w", pady=(0, 4))
+
+        default_creds = INSTALL_DIR / "core" / "credentials.json"
+        self._creds_var = tk.StringVar(
+            value=str(default_creds) if default_creds.exists() else ""
+        )
+        creds_row = tk.Frame(f, bg=BG)
+        creds_row.pack(fill="x", pady=2)
+        tk.Label(creds_row, text="credentials.json:", bg=BG, fg=FG2,
+                 font=("Segoe UI", 8), width=18, anchor="w").pack(side="left")
+        tk.Entry(creds_row, textvariable=self._creds_var, bg=BG2, fg=FG,
+                 insertbackground=FG, relief="flat", font=("Segoe UI", 8),
+                 highlightthickness=1, highlightcolor=ACCENT,
+                 highlightbackground=BORDER).pack(side="left", fill="x", expand=True)
+        btn(creds_row, "…", self._pick_credentials, color=BG3, width=3).pack(side="left", padx=4)
+
+        tk.Frame(f, bg=BORDER, height=1).pack(fill="x", pady=10)
+        h2(f, "3. Autorizar conta Google").pack(anchor="w", pady=(0, 6))
+
+        token_ok = (INSTALL_DIR / "core" / "google_token.json").exists()
+        status_grid = tk.Frame(f, bg=BG)
+        status_grid.pack(fill="x")
+
+        self._google_cal_dot = status_dot(status_grid, token_ok)
+        self._google_cal_dot.grid(row=0, column=0, sticky="w")
+        self._google_cal_lbl = tk.Label(status_grid, text="  Google Calendar",
+                                         bg=BG, fg=FG, font=("Segoe UI", 9))
+        self._google_cal_lbl.grid(row=0, column=1, sticky="w")
+
+        self._google_drv_dot = status_dot(status_grid, token_ok)
+        self._google_drv_dot.grid(row=1, column=0, sticky="w", pady=(2, 0))
+        self._google_drv_lbl = tk.Label(status_grid, text="  Google Drive",
+                                         bg=BG, fg=FG, font=("Segoe UI", 9))
+        self._google_drv_lbl.grid(row=1, column=1, sticky="w", pady=(2, 0))
+
+        self._google_status = tk.Label(f, text="", bg=BG, fg=FG2, font=("Segoe UI", 8))
+        self._google_status.pack(anchor="w", pady=(8, 2))
+        btn(f, "Conectar conta Google", self._run_google_auth, width=22).pack(anchor="w")
+        body(f, "Uma janela do navegador abrirá para você fazer login e autorizar o Axiom.",
+             FG2).pack(anchor="w", pady=(6, 0))
+        return f
+
+    def _pick_credentials(self):
+        path = filedialog.askopenfilename(
+            title="Selecione credentials.json",
+            filetypes=[("JSON", "*.json"), ("Todos", "*.*")],
+        )
+        if path:
+            self._creds_var.set(path)
+
+    def _run_google_auth(self):
+        creds_src = self._creds_var.get().strip()
+        if not creds_src or not os.path.exists(creds_src):
+            self._google_status.config(
+                text="Selecione um arquivo credentials.json válido primeiro.", fg=RED)
+            return
+        self._google_status.config(text="Abrindo navegador para autorização…", fg=YELLOW)
+
+        def run():
+            SCOPES = [
+                "https://www.googleapis.com/auth/calendar",
+                "https://www.googleapis.com/auth/drive.file",
+            ]
+            dest_creds = INSTALL_DIR / "core" / "credentials.json"
+            token_path = INSTALL_DIR / "core" / "google_token.json"
+
+            try:
+                from google_auth_oauthlib.flow import InstalledAppFlow
+            except ImportError:
+                self.after(0, lambda: self._google_status.config(
+                    text="google-auth-oauthlib não instalado. Instale as dependências (passo 2) primeiro.",
+                    fg=RED))
+                return
+
+            try:
+                if Path(creds_src).resolve() != dest_creds.resolve():
+                    import shutil as _sh
+                    _sh.copy2(creds_src, dest_creds)
+
+                flow = InstalledAppFlow.from_client_secrets_file(str(dest_creds), SCOPES)
+                creds = flow.run_local_server(port=0)
+                token_path.write_text(creds.to_json(), encoding="utf-8")
+
+                def _update_ok():
+                    self._google_cal_dot.config(fg=GREEN)
+                    self._google_drv_dot.config(fg=GREEN)
+                    self._google_cal_lbl.config(text="  Google Calendar  ✓")
+                    self._google_drv_lbl.config(text="  Google Drive  ✓")
+                    self._google_status.config(
+                        text="Conta Google conectada com sucesso.", fg=GREEN)
+
+                self.after(0, _update_ok)
+            except Exception as e:
+                err = str(e)
+                self.after(0, lambda: self._google_status.config(
+                    text=f"Erro: {err}", fg=RED))
+
+        threading.Thread(target=run, daemon=True).start()
+
+    # Página 6 — Concluído
     def _page_finish(self) -> tk.Frame:
         f = styled_frame(self._content)
         f._on_show = lambda: self._finish_init(f)
