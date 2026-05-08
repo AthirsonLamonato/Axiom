@@ -2,10 +2,10 @@
 
 > Assistente pessoal inteligente de desktop — controle por voz ou texto, 100% open-source e gratuito.
 
-![Version](https://img.shields.io/badge/version-v0.4.0-blue)
+![Version](https://img.shields.io/badge/version-v0.5.0-blue)
 ![Python](https://img.shields.io/badge/python-3.9+-green)
 ![License](https://img.shields.io/badge/license-MIT-orange)
-![Tests](https://img.shields.io/badge/tests-36%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/tests-73%20passing-brightgreen)
 ![CI](https://github.com/AthirsonLamonato/Axiom/actions/workflows/tests.yml/badge.svg)
 
 Axiom é um assistente de desktop estilo Jarvis — modular, expansível e capaz de rodar completamente offline em hardware modesto (4 GB RAM, CPU sem GPU).
@@ -345,6 +345,15 @@ pip install fastapi "uvicorn[standard]"
 python main.py --web        # ou diga "abre o dashboard"
 ```
 
+Para proteger o dashboard com senha, defina em `config.yaml`:
+
+```yaml
+web:
+  password: "sua_senha"    # deixe vazio para sem autenticação
+```
+
+Acesse `/logout` para sair da sessão.
+
 ### Obsidian / exportação de notas (opcional)
 
 ```yaml
@@ -502,12 +511,19 @@ CI automático via GitHub Actions em cada push para `main` e `dev`.
 - [x] TTS profile-aware — rate e volume sincronizados ao trocar perfil por voz
 - [x] `--web` flag — inicia o dashboard ao subir o assistente
 
-### v0.5 — Próximo
-- [ ] Síntese de voz aprimorada — vozes neurais via Coqui TTS com modelo PT-BR
-- [ ] Editor visual de rotinas no dashboard web
-- [ ] Integração com Notion
-- [ ] Notificações push no browser via WebSocket (polling → streaming)
-- [ ] Autenticação básica no dashboard (senha local)
+### v0.5 — Concluído
+- [x] 73 testes — cobertura para dispatch_chain, reminders e context
+- [x] Dashboard WebSocket — resposta de comandos instantânea + push de eventos em tempo real
+- [x] Editor visual de rotinas no dashboard (htmx CRUD, persistido no config.yaml)
+- [x] Autenticação no dashboard — middleware + cookie + página de login (`web.password`)
+- [x] Scripts de instalação reescritos — `setup.bat` / `setup.sh` com requirements.txt
+- [x] Build como executável — `axiom.spec` + `build.bat` / `build.sh` (PyInstaller)
+
+### v0.6 — Próximo
+- [ ] Síntese de voz neural — Coqui TTS com modelo PT-BR
+- [ ] Integração com Notion — exportar notas/transcrições
+- [ ] Streaming de resposta do LLM — tokens em tempo real no dashboard
+- [ ] Testes para web/app.py (endpoints, WebSocket mockado, CRUD de rotinas)
 - [ ] Síntese de voz aprimorada — vozes neurais via Coqui TTS com modelo PT-BR
 
 ---
