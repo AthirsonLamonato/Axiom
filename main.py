@@ -4,8 +4,38 @@ Ponto de entrada principal
 """
 
 import argparse
+import os
+import shutil
 import sys
 import signal
+from pathlib import Path
+
+# ── Bootstrap para execução como exe PyInstaller ──────────────────────
+if getattr(sys, "frozen", False):
+    _EXE_DIR = Path(sys.executable).parent          # dist/Axiom/
+    _MEIPASS  = Path(getattr(sys, "_MEIPASS", _EXE_DIR))  # dist/Axiom/_internal/
+
+    # 1. CWD = diretório do exe → logs/, data/ ficam acessíveis ao usuário
+    os.chdir(_EXE_DIR)
+
+    # 2. Config.yaml: usa o da raiz (editável pelo wizard/usuário);
+    #    se não existir, copia do template bundled
+    _user_cfg = _EXE_DIR / "core" / "config.yaml"
+    if not _user_cfg.exists():
+        _user_cfg.parent.mkdir(parents=True, exist_ok=True)
+        _bundled_cfg = _MEIPASS / "core" / "config.yaml"
+        if _bundled_cfg.exists():
+            shutil.copy2(_bundled_cfg, _user_cfg)
+
+    # 3. Sinaliza o caminho do config para core/config.py
+    os.environ["AXIOM_CONFIG_PATH"] = str(_user_cfg)
+
+    # 4. Plugins: copia para local editável se ainda não existir
+    _user_plugins = _EXE_DIR / "plugins"
+    if not _user_plugins.exists():
+        _bundled_plugins = _MEIPASS / "plugins"
+        if _bundled_plugins.exists():
+            shutil.copytree(_bundled_plugins, _user_plugins)
 
 # Garante UTF-8 no terminal Windows para o banner e mensagens
 if sys.platform == "win32" and hasattr(sys.stdout, "reconfigure"):

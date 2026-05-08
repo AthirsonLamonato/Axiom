@@ -1,13 +1,11 @@
 # -*- mode: python ; coding: utf-8 -*-
-# axiom.spec — PyInstaller spec para empacotar o Axiom como executável
+# axiom.spec — Build completo: todas as deps bundled, sem pip install no usuário final
 # Uso: pyinstaller axiom.spec --clean
-#      ou via: build.bat (Windows) / build.sh (Linux)
 
 block_cipher = None
 
-# Módulos importados dinamicamente pelo orchestrator (não detectados pelo análise estática)
 _hidden = [
-    # Módulos do Axiom (imports lazy via importlib)
+    # ── Módulos Axiom (imports lazy via importlib) ─────────────────────
     "modules.system_control",
     "modules.transcription",
     "modules.summarizer",
@@ -27,40 +25,108 @@ _hidden = [
     "core.profiles",
     "core.plugin_loader",
     "input.stt",
+    "input.hotkeys",
+    "input.cli",
     "output.overlay",
     "output.tts",
     "output.notifier",
     "storage.context",
     "storage.db",
     "storage.file_store",
-    # uvicorn (não detectado porque é carregado como string "web.app:app")
+    "web.app",
+    # ── uvicorn (carregado como string "web.app:app") ──────────────────
     "uvicorn",
     "uvicorn.logging",
     "uvicorn.loops",
     "uvicorn.loops.auto",
+    "uvicorn.loops.asyncio",
+    "uvicorn.loops.uvloop",
     "uvicorn.protocols",
     "uvicorn.protocols.http",
     "uvicorn.protocols.http.auto",
+    "uvicorn.protocols.http.h11_impl",
+    "uvicorn.protocols.http.httptools_impl",
     "uvicorn.protocols.websockets",
     "uvicorn.protocols.websockets.auto",
     "uvicorn.protocols.websockets.websockets_impl",
+    "uvicorn.protocols.websockets.wsproto_impl",
     "uvicorn.lifespan",
     "uvicorn.lifespan.on",
     "uvicorn.lifespan.off",
+    # ── FastAPI / Starlette ────────────────────────────────────────────
     "fastapi",
+    "fastapi.middleware",
+    "fastapi.middleware.base",
     "starlette",
+    "starlette.middleware",
+    "starlette.middleware.base",
+    "starlette.responses",
+    "starlette.websockets",
     "anyio",
     "anyio._backends._asyncio",
     "anyio._backends._trio",
-    # pyttsx3 drivers (carregados dinamicamente)
-    "pyttsx3.drivers",
-    "pyttsx3.drivers.sapi5",    # Windows
-    "pyttsx3.drivers.nsss",     # macOS
-    "pyttsx3.drivers.espeak",   # Linux
-    # Outros
+    "anyio.streams.memory",
+    # ── WebSockets ────────────────────────────────────────────────────
     "websockets",
+    "websockets.legacy",
+    "websockets.legacy.server",
     "h11",
     "httptools",
+    # ── pyttsx3 drivers (carregados dinamicamente) ────────────────────
+    "pyttsx3",
+    "pyttsx3.drivers",
+    "pyttsx3.drivers.sapi5",
+    "pyttsx3.drivers.nsss",
+    "pyttsx3.drivers.espeak",
+    # ── PyQt6 (overlay) ───────────────────────────────────────────────
+    "PyQt6",
+    "PyQt6.QtCore",
+    "PyQt6.QtGui",
+    "PyQt6.QtWidgets",
+    # ── STT / faster-whisper ──────────────────────────────────────────
+    "faster_whisper",
+    "ctranslate2",
+    "pyaudio",
+    "pyaudiowpatch",
+    # ── Google Auth ───────────────────────────────────────────────────
+    "google.oauth2.credentials",
+    "google.oauth2",
+    "google.auth",
+    "google.auth.transport.requests",
+    "google_auth_oauthlib",
+    "google_auth_oauthlib.flow",
+    "googleapiclient",
+    "googleapiclient.discovery",
+    "googleapiclient.http",
+    "httplib2",
+    "uritemplate",
+    # ── Sistema / utilitários ─────────────────────────────────────────
+    "psutil",
+    "pynput",
+    "pynput.keyboard",
+    "pynput.mouse",
+    "keyboard",
+    "pyautogui",
+    "pyperclip",
+    "pytesseract",
+    "PIL",
+    "PIL.Image",
+    "PIL.ImageGrab",
+    "plyer",
+    "plyer.platforms",
+    "plyer.platforms.win",
+    "plyer.platforms.win.notification",
+    "schedule",
+    "duckduckgo_search",
+    "requests",
+    "multipart",
+    "python_multipart",
+    "yaml",
+    "sqlite3",
+    "win32com",
+    "win32com.client",
+    "pythoncom",
+    "pywintypes",
 ]
 
 a = Analysis(
@@ -68,9 +134,10 @@ a = Analysis(
     pathex=["."],
     binaries=[],
     datas=[
-        ("core/config.yaml", "core"),
-        ("plugins", "plugins"),
-        ("web", "web"),
+        ("core/config.yaml",   "core"),
+        ("plugins",            "plugins"),
+        ("web",                "web"),
+        ("hooks",              "hooks"),
     ],
     hiddenimports=_hidden,
     hookspath=["hooks"],
@@ -84,6 +151,7 @@ a = Analysis(
         "IPython",
         "jupyter",
         "notebook",
+        "pvporcupine",     # opcional; instalar separado se quiser wake word
     ],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
@@ -98,17 +166,17 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name="axiom",
+    name="Axiom",
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,
-    console=True,      # manter console para ver logs; mude para False para janela-only
+    console=True,
     disable_windowed_traceback=False,
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=None,         # adicione "assets/axiom.ico" quando tiver um ícone
+    icon=None,
 )
 
 coll = COLLECT(
@@ -119,5 +187,5 @@ coll = COLLECT(
     strip=False,
     upx=True,
     upx_exclude=[],
-    name="axiom",
+    name="Axiom",
 )
