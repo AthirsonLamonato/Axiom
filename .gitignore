@@ -1,3 +1,7 @@
+# ── Executáveis gerados ───────────────────────
+Axiom-Setup.exe
+Axiom.exe
+
 # ── Python ────────────────────────────────────
 __pycache__/
 *.py[cod]
