@@ -46,8 +46,20 @@ def _creds_file() -> Path:
     return INSTALL_DIR / "core" / "credentials.json"
 
 
+def _ollama_exe() -> str:
+    """Retorna o caminho do executável ollama, ou '' se não encontrado."""
+    w = shutil.which("ollama")
+    if w:
+        return w
+    # Windows: Ollama instala em %LOCALAPPDATA%\Programs\Ollama\ (fora do PATH padrão)
+    local = Path(os.environ.get("LOCALAPPDATA", "")) / "Programs" / "Ollama" / "ollama.exe"
+    if local.exists():
+        return str(local)
+    return ""
+
+
 def _ollama_ok() -> bool:
-    return shutil.which("ollama") is not None
+    return bool(_ollama_exe())
 
 
 def _token_ok() -> bool:
@@ -222,8 +234,13 @@ class Wizard(tk.Tk):
 
         def _refresh_ollama():
             ok = _ollama_ok()
-            self._ollama_dot.config(fg=GREEN if ok else RED)
-            self._ollama_lbl.config(text=f"  Ollama {'instalado' if ok else 'não encontrado'}")
+            color = GREEN if ok else RED
+            text  = f"  Ollama {'instalado' if ok else 'não encontrado'}"
+            try:
+                self._ollama_dot.config(fg=color)
+                self._ollama_lbl.config(text=text)
+            except tk.TclError:
+                pass
 
         or_ = tk.Frame(f, bg=BG)
         or_.pack(anchor="w", pady=(6, 0))
@@ -265,19 +282,26 @@ class Wizard(tk.Tk):
         return f
 
     def _pull_model(self):
-        if not _ollama_ok():
-            messagebox.showerror("Ollama não encontrado", "Instale o Ollama primeiro.")
+        exe = _ollama_exe()
+        if not exe:
+            messagebox.showerror("Ollama não encontrado",
+                                 "Instale o Ollama em ollama.com/download e tente novamente.")
             return
         model = self._model_var.get()
         self._model_status.config(text=f"Baixando {model}… pode levar vários minutos.", fg=YELLOW)
         self._model_bar.start(12)
+
         def run():
-            r = subprocess.run(["ollama", "pull", model], capture_output=True, text=True)
-            self._model_bar.stop()
-            ok = r.returncode == 0
-            self._model_status.config(
-                text=f"✓ {model} pronto." if ok else f"Erro ao baixar {model}.",
-                fg=GREEN if ok else RED)
+            try:
+                r = subprocess.run([exe, "pull", model], capture_output=True, text=True)
+                ok = r.returncode == 0
+                msg  = f"✓ {model} pronto." if ok else f"Erro: {r.stderr.strip() or 'falha ao baixar'}"
+                color = GREEN if ok else RED
+            except Exception as e:
+                msg, color = f"Erro: {e}", RED
+            self.after(0, lambda: self._model_bar.stop())
+            self.after(0, lambda: self._model_status.config(text=msg, fg=color))
+
         threading.Thread(target=run, daemon=True).start()
 
     def _google_login(self):
@@ -302,10 +326,10 @@ class Wizard(tk.Tk):
                 flow = InstalledAppFlow.from_client_config(cfg, SCOPES)
                 c = flow.run_local_server(port=0)
                 token_path.write_text(c.to_json(), encoding="utf-8")
-                self.after(0, lambda: (
-                    self._google_dot.config(fg=GREEN),
-                    self._google_status.config(text="✓ Conta Google conectada.", fg=GREEN),
-                ))
+                def _on_ok():
+                    self._google_dot.config(fg=GREEN)
+                    self._google_status.config(text="✓ Conta Google conectada.", fg=GREEN)
+                self.after(0, _on_ok)
             except Exception as e:
                 self.after(0, lambda: self._google_status.config(
                     text=f"Erro: {e}", fg=RED))
