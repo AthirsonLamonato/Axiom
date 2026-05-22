@@ -2,7 +2,7 @@
 
 > Assistente pessoal inteligente de desktop — controle por voz ou texto, 100% open-source e gratuito.
 
-![Version](https://img.shields.io/badge/version-v0.5.0-blue)
+![Version](https://img.shields.io/badge/version-v1.0.0-blue)
 ![Python](https://img.shields.io/badge/python-3.9+-green)
 ![License](https://img.shields.io/badge/license-MIT-orange)
 ![Tests](https://img.shields.io/badge/tests-73%20passing-brightgreen)
@@ -14,11 +14,11 @@ Paçoca é um assistente de desktop estilo Jarvis — modular, expansível e cap
 
 ## Download
 
-**[⬇ Pacoca-Setup.exe](https://github.com/AthirsonLamonato/Pacoca/releases/download/v0.5.0/Pacoca-Setup.exe)** — Windows 64-bit · 34 MB · sem Python, sem pip install
+**[⬇ Pacoca-Setup.exe](https://github.com/AthirsonLamonato/Pacoca/releases/download/v1.0.0/Pacoca-Setup.exe)** — Windows 64-bit · 34 MB · sem Python, sem pip install
 
 > Execute `Pacoca-Setup.exe` — o wizard baixa o app e configura tudo automaticamente.
 
-Também disponível: **[Pacoca-v0.5.0-Windows.zip](https://github.com/AthirsonLamonato/Pacoca/releases/download/v0.5.0/Pacoca-v0.5.0-Windows.zip)** (184 MB · inclui o app completo, para instalação offline)
+Também disponível: **[Pacoca-v1.0.0-Windows.zip](https://github.com/AthirsonLamonato/Pacoca/releases/download/v1.0.0/Pacoca-v1.0.0-Windows.zip)** (184 MB · inclui o app completo, para instalação offline)
 
 ---
 
@@ -26,7 +26,7 @@ Também disponível: **[Pacoca-v0.5.0-Windows.zip](https://github.com/AthirsonLa
 
 ### Opção 1 — Executável (recomendado, apenas Windows)
 
-1. Baixe `Pacoca-Setup.exe` (34 MB) na [página de releases](https://github.com/AthirsonLamonato/Pacoca/releases/tag/v0.5.0)
+1. Baixe `Pacoca-Setup.exe` (34 MB) na [página de releases](https://github.com/AthirsonLamonato/Pacoca/releases/tag/v1.0.0)
 2. Execute — o wizard cuida de tudo:
    - Baixa o app principal (~151 MB) automaticamente se necessário
    - Baixa e instala o Ollama + modelo de IA
@@ -503,7 +503,19 @@ CI automático via GitHub Actions em cada push para `main` e `dev`.
 - [x] **Setup wizard GUI** (`Pacoca-Setup.exe`) — instala Ollama, faz login Google, cria atalho; roda em qualquer PC Windows sem Python instalado
 - [x] Token Google unificado (`google_token.json`) — cobre Calendar + Drive em um único OAuth
 
-### v0.6 — Próximo
+### v0.6 — Concluído
+- [x] Substituição do Anthropic por **Groq** como fallback cloud (free tier, llama3)
+- [x] `credentials.json` OAuth embutido diretamente no `Pacoca-Setup.exe` via PyInstaller
+- [x] OAuth Google simplificado no wizard — fluxo unificado sem etapas manuais
+- [x] Wizard baixa `Pacoca.exe` automaticamente se não encontrado na pasta
+- [x] openWakeWord substituindo pvporcupine (sem API key, totalmente open-source)
+
+### v1.0.0 — Lançado
+- [x] Primeiro release estável — todos os módulos integrados e testados
+- [x] Build reproduzível via `pacoca.spec` + `wizard.spec`
+- [x] Documentação completa
+
+### v1.1 — Próximo
 - [ ] Síntese de voz neural — vozes PT-BR mais naturais
 - [ ] Streaming de resposta do LLM — tokens em tempo real no dashboard
 - [ ] Testes para `web/app.py` (endpoints, WebSocket, CRUD de rotinas)
