@@ -85,6 +85,12 @@ def parse_args():
     return parser.parse_args()
 
 
+def _ensure_directories():
+    """Cria diretórios de dados necessários caso não existam."""
+    for d in ["data", "data/transcriptions", "data/backups", "data/screenshots", "logs", "plugins"]:
+        Path(d).mkdir(parents=True, exist_ok=True)
+
+
 def shutdown(sig, frame):
     print("\n\n[Paçoca] Encerrando... até logo.")
     sys.exit(0)
@@ -156,6 +162,8 @@ def main():
 
     args = parse_args()
 
+    _ensure_directories()
+
     config = Config()
 
     # Logging deve ser o primeiro subsistema a iniciar
@@ -208,7 +216,7 @@ def main():
         from modules import web_server
         print(web_server.start())
 
-    notify("Paçoca iniciada", f"Modo {args.mode} ativo.")
+    notify("Paçoca iniciada", f"Modo {args.mode} ativo. Perfil: {config.get('profile.active', 'work')}")
 
     if args.mode == "text":
         orchestrator.run_text_loop()

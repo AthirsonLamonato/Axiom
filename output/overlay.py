@@ -204,8 +204,6 @@ def show_message(text: str, duration_ms: int = None):
     if _instance:
         ms = duration_ms or _instance.duration_ms
         _msg_queue.put(("message", text, ms))
-    else:
-        print(f"[Paçoca] {text}")
 
 
 def set_state(state: str):

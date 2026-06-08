@@ -21,7 +21,9 @@ class Config:
         if not os.path.exists(self._path):
             raise FileNotFoundError(
                 f"[Config] Arquivo não encontrado: {self._path}\n"
-                "Copie config.example.yaml para core/config.yaml"
+                "O arquivo core/config.yaml é necessário para iniciar o Paçoca.\n"
+                "Se você clonou o repositório, ele já deve estar presente.\n"
+                "Caso contrário, verifique se está rodando a partir do diretório correto."
             )
         with open(self._path, "r", encoding="utf-8") as f:
             self._data = yaml.safe_load(f) or {}

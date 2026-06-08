@@ -258,7 +258,8 @@ class Orchestrator:
     def run_text_loop(self):
         """Loop interativo via terminal."""
         overlay = _import_module("output.overlay")
-        print("[Paçoca] Modo texto ativo. Digite seu comando (ou 'sair' para encerrar):\n")
+        print("[Paçoca] Modo texto ativo. Digite seu comando (ou 'sair' para encerrar).")
+        print("         Dica: 'ajuda' lista todos os comandos disponíveis.\n")
         while True:
             try:
                 if overlay:
@@ -273,7 +274,7 @@ class Orchestrator:
                     overlay.set_state("processing")
                 response = self.dispatch_chain(command)
                 if response:
-                    print(f"\n  Axiom: {response}\n")
+                    print(f"\n  Paçoca: {response}\n")
                     if overlay:
                         overlay.show_message(response)
                         overlay.set_state("speaking")
@@ -289,6 +290,7 @@ class Orchestrator:
         stt_module = _import_module("input.stt")
         if not stt_module:
             print("[Paçoca] Módulo STT não disponível. Usando modo texto.")
+            print("         Instale as dependências de voz: pip install -r requirements-voice.txt\n")
             self.run_text_loop()
             return
 
@@ -296,15 +298,17 @@ class Orchestrator:
             voice = stt_module.init_voice(self.config)
         except Exception as e:
             logger.error(f"Falha ao inicializar STT: {e}", exc_info=True)
-            print(f"[Paçoca] Erro ao inicializar STT: {e}\n[Paçoca] Usando modo texto.")
+            print(f"[Paçoca] Erro ao inicializar STT: {e}")
+            print("[Paçoca] Usando modo texto como fallback.\n")
             self.run_text_loop()
             return
 
         mode = voice._mode
         if mode == "push_to_talk":
-            print("[Paçoca] Modo push-to-talk ativo. Use ctrl+shift+space para falar.\n")
+            print("[Paçoca] Modo push-to-talk ativo. Use Ctrl+Shift+Espaço para falar.\n")
         else:
-            print(f"[Paçoca] Aguardando wake word '{self.config.get('wake_word.keyword')}'...\n")
+            keyword = self.config.get("wake_word.keyword", "hey jarvis")
+            print(f"[Paçoca] Aguardando wake word '{keyword}'...\n")
         self.tts.speak("Paçoca online.")
 
         while True:
@@ -365,11 +369,11 @@ class Orchestrator:
             module_path, func_name = handler_path.rsplit(":", 1)
             module = _import_module(module_path)
             if module is None:
-                return f"[Paçoca] Módulo '{module_path}' não está disponível."
+                return f"Módulo '{module_path}' não está disponível (dependência ausente?)."
 
             func: Callable = getattr(module, func_name, None)
             if func is None:
-                return f"[Paçoca] Função '{func_name}' não encontrada em '{module_path}'."
+                return f"Função '{func_name}' não encontrada em '{module_path}'."
 
             # Passa o primeiro grupo capturado, se houver
             args = [g for g in match.groups() if g is not None]

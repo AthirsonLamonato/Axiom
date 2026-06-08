@@ -1,0 +1,35 @@
+# ── Paçoca — dependências de voz e ML ────────────────────────────────
+# Necessárias para o modo voz: python main.py --mode voice
+#
+# ATENÇÃO — leia antes de instalar:
+#
+# 1. pyaudio no Windows exige PortAudio. Instale com pipwin:
+#      pip install pipwin
+#      pipwin install pyaudio
+#    Ou baixe a wheel pré-compilada em:
+#      https://www.lfd.uci.edu/~gohlke/pythonlibs/#pyaudio
+#    (escolha a versão compatível com seu Python)
+#
+# 2. faster-whisper baixa modelos Whisper (~150 MB para "base") na primeira execução.
+#    Configure o tamanho do modelo em core/config.yaml: stt.model
+#
+# 3. openwakeword baixa modelos de wake word na primeira execução.
+#
+# Instale na ordem correta:
+#   pip install -r requirements.txt        (dependências base primeiro)
+#   pipwin install pyaudio                 (Windows — veja nota acima)
+#   pip install -r requirements-voice.txt  (ML/voz)
+
+# ── STT ───────────────────────────────────────────────────────────────
+faster-whisper>=0.10
+
+# ── Wake word (sem API key, roda 100% offline) ────────────────────────
+openwakeword>=0.6
+
+# ── Áudio ─────────────────────────────────────────────────────────────
+# pyaudio: instale separadamente conforme a nota acima (Windows)
+# Linux: sudo apt install portaudio19-dev && pip install pyaudio
+pyaudio>=0.2.13
+
+# ── Loopback de áudio do sistema (Windows — captura áudio do speaker) ─
+# pyaudiowpatch>=0.2

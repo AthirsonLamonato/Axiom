@@ -1,87 +1,68 @@
-# ── Paçoca — dependências principais ─────────────────────────────────
+# ── Paçoca — dependências principais ──────────────────────────────────
+# Modo texto completo: TTS, overlay, controle de sistema, plugins, busca.
+# NÃO inclui dependências de voz/ML (veja requirements-voice.txt).
+#
 # Instale com: pip install -r requirements.txt
+# Para modo mínimo (sem TTS/overlay): pip install -r requirements-minimal.txt
 
-# Speech-to-Text
-faster-whisper
-pyaudio
+# ── Core ──────────────────────────────────────────────────────────────
+pyyaml>=6.0
+requests>=2.28
+psutil>=5.9
+plyer>=2.1
+duckduckgo-search>=3.9
+schedule>=1.2
 
-# Wake word (sem API key, roda 100% local)
-openwakeword
+# ── Text-to-Speech (offline) ──────────────────────────────────────────
+pyttsx3>=2.90
 
-# Input
-keyboard
-pynput
+# ── Interface visual (overlay) ────────────────────────────────────────
+PyQt6>=6.4
 
-# Controle do sistema
-pyautogui
-psutil
+# ── Controle de sistema e input ───────────────────────────────────────
+pyautogui>=0.9
+keyboard>=0.13
+pynput>=1.7
 
-# Text-to-Speech
-pyttsx3
+# ── Google Drive / Calendar (opcional — configure credenciais OAuth) ───
+google-auth>=2.17
+google-auth-oauthlib>=1.0
+google-api-python-client>=2.80
 
-# Interface visual
-PyQt6
+# ── Opcionais — descomente conforme necessidade ───────────────────────
 
-# IA e NLP
-requests
-duckduckgo-search
-
-# Agendamento
-schedule
-
-# Notificações
-plyer
-
-# Configuração
-pyyaml
-
-# Backup Google Drive
-google-auth
-google-auth-oauthlib
-google-api-python-client
-
-# ── Opcionais ─────────────────────────────────────────────────────────
-
-# Dashboard web local (abre no browser em localhost:7755)
-# fastapi
-# uvicorn[standard]
-
-# Groq API (fallback cloud gratuito — sem biblioteca extra, usa requests)
-# Obtenha GROQ_API_KEY gratuitamente em console.groq.com
+# Dashboard web local (abre em localhost:7755)
+# fastapi>=0.100
+# uvicorn[standard]>=0.22
 
 # Clipboard (copiar/colar texto por voz)
-# pyperclip
+# pyperclip>=1.8
 
-# OCR de tela (leitura de texto na tela)
-# Instale também o Tesseract OCR: github.com/UB-Mannheim/tesseract/wiki (Windows)
-#                                  sudo apt install tesseract-ocr tesseract-ocr-por (Linux)
-# pytesseract
-# Pillow
-
-# Speaker diarization (identificação de falantes, ~2 GB de modelos)
-# Requer: token em huggingface.co/settings/tokens + aceitar termos em
-#   huggingface.co/pyannote/speaker-diarization-3.1
-# Instale: pip install pyannote.audio
-# Defina:  set HF_TOKEN=seu_token  (Windows) / export HF_TOKEN=seu_token (Linux/Mac)
-# pyannote.audio
-
-# Coqui TTS (voz mais natural, ~1.5 GB de modelos)
-# TTS
-
-# Loopback de áudio do sistema (Windows — captura áudio do speaker)
-# pyaudiowpatch
+# OCR de tela (requer também o Tesseract instalado no sistema)
+#   Windows: https://github.com/UB-Mannheim/tesseract/wiki
+#   Linux:   sudo apt install tesseract-ocr tesseract-ocr-por
+# pytesseract>=0.3
+# Pillow>=9.0
 
 # Controle de volume Windows
-# pycaw
-# comtypes
+# pycaw>=20181226
+# comtypes>=1.1
 
 # Controle de brilho Windows
-# wmi
+# wmi>=1.5
+
+# Coqui TTS (voz mais natural, ~1.5 GB de modelos)
+# TTS>=0.22
+
+# Speaker diarization (identificação de falantes, ~2 GB de modelos)
+#   Requer token HuggingFace e aceitar termos em:
+#   https://huggingface.co/pyannote/speaker-diarization-3.1
+# pyannote.audio>=3.1
 
 # ── Desenvolvimento ───────────────────────────────────────────────────
-# pytest
-# black
-# ruff
+# pytest>=7.0
+# black>=23.0
+# ruff>=0.1
 
-# Empacotamento como executável (build.bat / build.sh)
-# pyinstaller
+# Empacotamento como executável
+# pyinstaller>=5.0
