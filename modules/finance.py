@@ -32,14 +32,22 @@ _AMOUNT_RE = re.compile(
 
 
 def get_quote(currency_name: str) -> str:
-    """Retorna a cotação atual de uma moeda em reais."""
-    import requests
+    """Retorna a cotação atual de uma moeda em reais (cache 2 min)."""
+    from core.providers import _finance_cache, cached_get
 
     currency_name = currency_name.strip().lower()
     code = _resolve_code(currency_name)
     if not code:
         return f"Não reconheço a moeda '{currency_name}'. Tente: dólar, euro, bitcoin, libra."
 
+    def _fetch():
+        return _fetch_quote(currency_name, code)
+
+    return cached_get(_finance_cache, f"quote:{code}", _fetch) or f"Não consegui a cotação de {currency_name}."
+
+
+def _fetch_quote(currency_name: str, code: str) -> str:
+    import requests
     try:
         pair = f"{code}-BRL"
         resp = requests.get(

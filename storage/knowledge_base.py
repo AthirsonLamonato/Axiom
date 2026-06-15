@@ -249,10 +249,15 @@ def extract_and_learn(user_input: str, response: str):
 
 
 def _learn_worker(user_input: str, response: str):
-    import os, requests
+    """Extrai fatos aprendíveis em background via LLM. Opt-in via config."""
+    try:
+        from core.config import Config
+        config = Config()
+    except Exception:
+        return
 
-    api_key = os.environ.get("GROQ_API_KEY", "")
-    if not api_key:
+    # Opt-in: só aprende se habilitado explicitamente
+    if not config.get("ai.auto_learn", False):
         return
 
     prompt = (
@@ -264,29 +269,16 @@ def _learn_worker(user_input: str, response: str):
     )
 
     try:
-        resp = requests.post(
-            "https://api.groq.com/openai/v1/chat/completions",
-            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-            json={
-                "model": "llama-3.1-8b-instant",  # modelo rápido para extração
-                "messages": [
-                    {"role": "system", "content": "You extract learnable user facts from conversations. Always reply with valid JSON array only."},
-                    {"role": "user", "content": prompt},
-                ],
-                "max_tokens": 400,
-                "temperature": 0.1,
-            },
-            timeout=8,
+        from core.providers import get_client
+        client = get_client(config)
+        raw = client.chat(
+            [{"role": "user", "content": prompt}],
+            system="You extract learnable user facts from conversations. Always reply with valid JSON array only.",
+            max_tokens=400,
         )
-        if not resp.ok:
-            return
-
-        raw = resp.json()["choices"][0]["message"]["content"].strip()
-        # Extrai o JSON mesmo que venha com texto ao redor
         match = re.search(r"\[.*\]", raw, re.DOTALL)
         if not match:
             return
-
         items = json.loads(match.group())
         for item in items:
             if isinstance(item, dict) and item.get("key") and item.get("content"):
@@ -307,39 +299,27 @@ def remember(statement: str) -> str:
     Usuário diz 'lembra que X' — salva como fato/preferência.
     Usa LLM para classificar o tipo e extrair o key.
     """
-    import os, requests
-
-    api_key = os.environ.get("GROQ_API_KEY", "")
-    if api_key:
-        try:
-            resp = requests.post(
-                "https://api.groq.com/openai/v1/chat/completions",
-                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-                json={
-                    "model": "llama-3.1-8b-instant",
-                    "messages": [
-                        {"role": "system", "content": "Classify this user statement. Reply JSON: {\"type\":\"preference|habit|project|correction|fact\",\"key\":\"short_id\",\"importance\":0.5}"},
-                        {"role": "user", "content": statement},
-                    ],
-                    "max_tokens": 80,
-                    "temperature": 0,
-                },
-                timeout=6,
+    try:
+        from core.config import Config
+        from core.providers import get_client
+        client = get_client(Config())
+        raw = client.chat(
+            [{"role": "user", "content": statement}],
+            system='Classify this user statement. Reply JSON only: {"type":"preference|habit|project|correction|fact","key":"short_id","importance":0.5}',
+            max_tokens=80,
+        )
+        m = re.search(r"\{.*\}", raw, re.DOTALL)
+        if m:
+            meta = json.loads(m.group())
+            save_memory(
+                mem_type=meta.get("type", "facts"),
+                key=meta.get("key", "user_note"),
+                content=statement,
+                importance=float(meta.get("importance", 0.7)),
             )
-            if resp.ok:
-                raw = resp.json()["choices"][0]["message"]["content"]
-                m = re.search(r"\{.*\}", raw, re.DOTALL)
-                if m:
-                    meta = json.loads(m.group())
-                    save_memory(
-                        mem_type=meta.get("type", "facts"),
-                        key=meta.get("key", "user_note"),
-                        content=statement,
-                        importance=float(meta.get("importance", 0.7)),
-                    )
-                    return f"Memorizado: {statement}"
-        except Exception:
-            pass
+            return f"Memorizado: {statement}"
+    except Exception:
+        pass
 
     # Fallback sem LLM
     save_memory("facts", "user_note", statement, importance=0.7)

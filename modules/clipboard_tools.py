@@ -31,7 +31,7 @@ def copy_text(text: str, *_) -> str:
 
 def copy_last(*_) -> str:
     if not _last_response:
-        return "Nenhuma resposta recente do Axiom para copiar."
+        return "Nenhuma resposta recente do Paçoca para copiar."
     return copy_text(_last_response)
 
 

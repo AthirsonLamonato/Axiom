@@ -1,16 +1,12 @@
 """
-modules/summarizer.py — Integração com IA local (Ollama) e cloud (Groq)
-Geração de resumos, explicações e respostas livres.
+modules/summarizer.py — Integração com IA via cliente central (core/providers.py)
+Online-first: Groq com fallback automático para Ollama.
 """
 
 import logging
-import requests
-import json
-import os
 
 logger = logging.getLogger(__name__)
 
-# Instância lazy da config (injetada pelo orchestrator via módulo)
 _config = None
 
 
@@ -22,91 +18,49 @@ def _get_config():
     return _config
 
 
+def _client():
+    from core.providers import get_client
+    return get_client(_get_config())
+
+
 def ask_ai(prompt: str, system: str = None, use_context: bool = True) -> str:
     """
-    Envia um prompt ao LLM configurado e retorna a resposta.
-    Usa Ollama por padrão; fallback para Anthropic se configurado.
-    use_context=True injeta o histórico da sessão no prompt.
+    Envia um prompt ao LLM e retorna a resposta.
+    Online-first: Groq → Ollama (via core/providers.py).
     """
     config = _get_config()
-    provider = config.get("ai.provider", "ollama")
 
     if system is None:
-        from core.profiles import _get_manager
-        system = _get_manager().system_prompt()
+        try:
+            from core.profiles import _get_manager
+            system = _get_manager().system_prompt()
+        except Exception:
+            system = "Você é Paçoca, um assistente pessoal útil. Responda em português."
 
     if use_context and config.get("ai.use_context", True):
-        from storage.context import build_context_prompt
-        prompt = build_context_prompt(prompt)
+        try:
+            from storage.context import build_context_prompt
+            prompt = build_context_prompt(prompt)
+        except Exception:
+            pass
 
-    if provider == "ollama":
-        return _ask_ollama(prompt, system, config)
-    elif provider == "groq":
-        return _ask_groq(prompt, system, config)
-    return "Provedor de IA não configurado."
-
-
-def _ask_ollama(prompt: str, system: str, config) -> str:
-    url = config.get("ai.ollama_url", "http://localhost:11434") + "/api/generate"
-    model = config.get("ai.model", "llama3")
-    max_tokens = config.get("ai.max_tokens", 1024)
-
-    try:
-        resp = requests.post(
-            url,
-            json={
-                "model": model,
-                "prompt": prompt,
-                "system": system,
-                "stream": False,
-                "options": {"num_predict": max_tokens},
-            },
-            timeout=60,
-        )
-        resp.raise_for_status()
-        return resp.json().get("response", "").strip()
-    except requests.ConnectionError:
-        return (
-            "Ollama não está rodando. "
-            "Inicie com: ollama serve"
-        )
-    except requests.Timeout:
-        return "Timeout: o modelo demorou muito para responder."
-    except Exception as e:
-        logger.error(f"Erro Ollama: {e}")
-        return f"Erro ao consultar IA: {e}"
+    messages = [{"role": "user", "content": prompt}]
+    result = _client().chat(messages, system=system, max_tokens=config.get("ai.max_tokens", 1024))
+    return result or "Não consegui processar isso. Tente novamente."
 
 
-def _ask_groq(prompt: str, system: str, config) -> str:
-    api_key = config.get("ai.groq_api_key", "") or os.environ.get("GROQ_API_KEY", "")
-    if not api_key:
-        return "GROQ_API_KEY não definida. Obtenha gratuitamente em console.groq.com"
-    model = os.environ.get("GROQ_MODEL") or config.get("ai.groq_model", "llama-3.1-8b-instant")
-    max_tokens = config.get("ai.max_tokens", 1024)
-    try:
-        resp = requests.post(
-            "https://api.groq.com/openai/v1/chat/completions",
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-            },
-            json={
-                "model": model,
-                "messages": [
-                    {"role": "system", "content": system},
-                    {"role": "user", "content": prompt},
-                ],
-                "max_tokens": max_tokens,
-            },
-            timeout=30,
-        )
-        resp.raise_for_status()
-        return resp.json()["choices"][0]["message"]["content"].strip()
-    except requests.Timeout:
-        return "Não entendi o comando. Pode repetir?"
-    except Exception as e:
-        logger.error(f"Erro Groq: {e}")
-        return "Não consegui processar isso. Pode tentar de novo?"
+def ask_ai_stream(prompt: str, system: str = None):
+    """Versão streaming de ask_ai. Retorna Generator[str]."""
+    config = _get_config()
+    if system is None:
+        try:
+            from core.profiles import _get_manager
+            system = _get_manager().system_prompt()
+        except Exception:
+            system = "Você é Paçoca, um assistente pessoal útil. Responda em português."
+    messages = [{"role": "user", "content": prompt}]
+    return _client().chat(messages, system=system,
+                          max_tokens=config.get("ai.max_tokens", 1024), stream=True)
 
 
 # ── Funções de alto nível ──────────────────────────────────────────────
@@ -144,17 +98,14 @@ def summarize(text: str, detailed: bool = False) -> str:
 
 
 def explain(topic: str, *_) -> str:
-    """Explica um conceito de forma clara e objetiva."""
     return ask_ai(f"Explique de forma clara e objetiva: {topic}")
 
 
 def summarize_meeting(*_) -> str:
-    """Gera um sumário estruturado da última reunião transcrita."""
     from storage.file_store import load_last_transcription
     text = load_last_transcription()
     if not text:
         return "Nenhuma transcrição disponível. Grave uma reunião com 'começa a transcrever'."
-
     prompt = (
         "Analise a transcrição de reunião abaixo e gere um sumário estruturado em português. "
         "Organize obrigatoriamente nas seguintes seções:\n\n"
@@ -169,7 +120,6 @@ def summarize_meeting(*_) -> str:
 
 
 def summarize_session(*_) -> str:
-    """Resumo do que foi feito na sessão atual (baseado no contexto)."""
     from storage.context import get_turns
     turns = get_turns()
     if not turns:

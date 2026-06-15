@@ -91,7 +91,7 @@ class TranscriptionSession:
             capture_secs = 10
             num_chunks = int(sample_rate / chunk_size * capture_secs)
 
-            print(f"[Axiom] Transcrevendo ({self.source})... fale normalmente")
+            print(f"[Paçoca] Transcrevendo ({self.source})... fale normalmente")
 
             while self._running:
                 frames = [stream.read(chunk_size, exception_on_overflow=False)
@@ -219,7 +219,7 @@ class TranscriptionSession:
                 path = self._save(label="autosave")
                 logger.info(f"Auto-save: {path}")
                 from output.notifier import notify
-                notify("Axiom", f"Transcrição salva automaticamente.")
+                notify("Paçoca", f"Transcrição salva automaticamente.")
 
     def _save(self, label: str = "") -> str:
         from storage.file_store import save_transcription
@@ -326,7 +326,7 @@ def _run_diarization(audio_path: str) -> str:
 
     try:
         logger.info("Iniciando diarização: %s", audio_path)
-        print("[Axiom] Carregando modelo de diarização (pode demorar na primeira vez)...")
+        print("[Paçoca] Carregando modelo de diarização (pode demorar na primeira vez)...")
         pipeline = Pipeline.from_pretrained(
             "pyannote/speaker-diarization-3.1",
             use_auth_token=hf_token,

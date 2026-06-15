@@ -1,5 +1,5 @@
 """
-plugins/_template.py — Template para criar novos plugins do Axiom
+plugins/_template.py — Template para criar novos plugins do Paçoca
 
 Copie este arquivo para plugins/meu_plugin.py e ajuste conforme necessário.
 Regras:

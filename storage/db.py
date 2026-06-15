@@ -9,7 +9,7 @@ from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
-DB_PATH = "data/axiom.db"
+DB_PATH = "data/pacoca.db"
 
 
 def _connect() -> sqlite3.Connection:

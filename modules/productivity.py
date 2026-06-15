@@ -105,7 +105,7 @@ class PomodoroTimer:
             return
         self._running = False
         from output.notifier import notify
-        notify("Axiom — Pomodoro", f"Sessão de {self.minutes} minutos concluída! Descanse.")
+        notify("Paçoca — Pomodoro", f"Sessão de {self.minutes} minutos concluída! Descanse.")
         try:
             from output import overlay
             overlay.show_message(f"Pomodoro concluído! {self.minutes} min de foco.", duration_ms=8000)

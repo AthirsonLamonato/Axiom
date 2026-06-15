@@ -64,7 +64,7 @@ def export_transcription(*_) -> str:
         f"---\n"
         f"date: {ts.strftime('%Y-%m-%d')}\n"
         f"time: {ts.strftime('%H:%M')}\n"
-        f"tags: [axiom, transcrição]\n"
+        f"tags: [pacoca, transcrição]\n"
         f"---\n\n"
     )
     _write_note(filepath, frontmatter + text)
@@ -91,7 +91,7 @@ def export_summary(*_) -> str:
         f"---\n"
         f"date: {ts.strftime('%Y-%m-%d')}\n"
         f"time: {ts.strftime('%H:%M')}\n"
-        f"tags: [axiom, reunião, sumário]\n"
+        f"tags: [pacoca, reunião, sumário]\n"
         f"---\n\n"
     )
     _write_note(filepath, frontmatter + summary)
@@ -115,7 +115,7 @@ def daily_note(*_) -> str:
     today_rows = [r for r in rows if r["ts"].startswith(today_str)]
 
     lines = [
-        f"---\ndate: {today_str}\ntags: [axiom, diário]\n---\n",
+        f"---\ndate: {today_str}\ntags: [pacoca, diário]\n---\n",
         f"# {today.strftime('%d/%m/%Y')} — Nota Diária Axiom\n",
     ]
 

@@ -125,38 +125,24 @@ def _resolve_with_ai(name: str) -> str:
         return cached
 
     try:
-        import os, requests
-        api_key = os.environ.get("GROQ_API_KEY", "")
-        if not api_key:
-            return ""
-        resp = requests.post(
-            "https://api.groq.com/openai/v1/chat/completions",
-            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-            json={
-                "model": os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile"),
-                "messages": [
-                    {
-                        "role": "system",
-                        "content": (
-                            "You resolve Windows application/tool names to their executable commands. "
-                            "Reply with ONLY the executable or .msc file, nothing else. "
-                            "Examples: devmgmt.msc, regedit.exe, taskmgr.exe, control.exe, "
-                            "msconfig.exe, eventvwr.msc, compmgmt.msc, mstsc.exe"
-                        ),
-                    },
-                    {"role": "user", "content": f"Windows command to open: {name}"},
-                ],
-                "max_tokens": 30,
-                "temperature": 0,
-            },
-            timeout=8,
+        from core.providers import get_client
+        from core.config import Config
+        client = get_client(Config())
+        raw = client.chat(
+            [{"role": "user", "content": f"Windows command to open: {name}"}],
+            system=(
+                "You resolve Windows application/tool names to their executable commands. "
+                "Reply with ONLY the executable or .msc file, nothing else. "
+                "Examples: devmgmt.msc, regedit.exe, taskmgr.exe, control.exe, "
+                "msconfig.exe, eventvwr.msc, compmgmt.msc, mstsc.exe"
+            ),
+            max_tokens=30,
         )
-        if resp.ok:
-            cmd = resp.json()["choices"][0]["message"]["content"].strip().split()[0]
-            if cmd and len(cmd) < 50:
-                _cache_command(name, cmd)
-                logger.info("AI resolveu '%s' → '%s'", name, cmd)
-                return cmd
+        cmd = (raw or "").strip().split()[0] if raw else ""
+        if cmd and len(cmd) < 50:
+            _cache_command(name, cmd)
+            logger.info("AI resolveu '%s' → '%s'", name, cmd)
+            return cmd
     except Exception as e:
         logger.debug("AI resolution falhou: %s", e)
     return ""

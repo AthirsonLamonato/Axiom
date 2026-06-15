@@ -126,7 +126,7 @@ def _on_meeting_start(app_name: str) -> None:
 
     try:
         from output.notifier import notify
-        notify("Axiom", f"Reunião detectada ({app_name}). Transcrição iniciada.")
+        notify("Paçoca", f"Reunião detectada ({app_name}). Transcrição iniciada.")
     except Exception:
         pass
     try:
@@ -135,7 +135,7 @@ def _on_meeting_start(app_name: str) -> None:
     except Exception:
         pass
 
-    print(f"\n[Axiom] Reunião detectada: {app_name}. Perfil → meeting, transcrição iniciada.")
+    print(f"\n[Paçoca] Reunião detectada: {app_name}. Perfil → meeting, transcrição iniciada.")
 
 
 def _on_meeting_end() -> None:
@@ -157,7 +157,7 @@ def _on_meeting_end() -> None:
 
     try:
         from output.notifier import notify
-        notify("Axiom", "Reunião encerrada. Transcrição salva.")
+        notify("Paçoca", "Reunião encerrada. Transcrição salva.")
     except Exception:
         pass
     try:
@@ -166,7 +166,7 @@ def _on_meeting_end() -> None:
     except Exception:
         pass
 
-    print("\n[Axiom] Reunião encerrada. Transcrição salva. Perfil restaurado.")
+    print("\n[Paçoca] Reunião encerrada. Transcrição salva. Perfil restaurado.")
 
 
 def _monitor_loop() -> None:

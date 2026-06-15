@@ -1,6 +1,6 @@
 """
 plugins/notes.py — Anotações rápidas por voz
-Plugin de exemplo funcional que acompanha o Axiom.
+Plugin de exemplo funcional que acompanha o Paçoca.
 """
 
 import os

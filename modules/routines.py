@@ -106,7 +106,7 @@ def _execute_step(action: str, target: str = "", message: str = "") -> "str | No
             return set_volume(target)
         elif action == "notify":
             from output.notifier import notify
-            notify("Axiom", message)
+            notify("Paçoca", message)
             return message
         elif action == "save_transcriptions":
             from storage.file_store import save_all_pending

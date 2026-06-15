@@ -5,7 +5,7 @@ from web import app as web_app
 
 class _WebSocket:
     def __init__(self, token="", origin="http://127.0.0.1:7755", host="127.0.0.1:7755"):
-        self.cookies = {"axiom_token": token} if token else {}
+        self.cookies = {"pacoca_token": token} if token else {}
         self.headers = {"origin": origin, "host": host}
 
 

@@ -46,7 +46,7 @@ def _fire(rid: int, message: str) -> None:
             _reminders[rid]["fired"] = True
     try:
         from output.notifier import notify
-        notify("Axiom — Lembrete", message)
+        notify("Paçoca — Lembrete", message)
     except Exception:
         pass
     try:
@@ -60,7 +60,7 @@ def _fire(rid: int, message: str) -> None:
     except Exception:
         pass
     logger.info("Lembrete #%d disparado: %s", rid, message)
-    print(f"\n[Axiom] ⏰ Lembrete: {message}")
+    print(f"\n[Paçoca] ⏰ Lembrete: {message}")
 
 
 def _parse_fire_time(raw: str) -> Optional[datetime]:

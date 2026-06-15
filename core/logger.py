@@ -13,7 +13,7 @@ def setup_logging(config: Config):
     level_str = config.get("logging.level", "INFO")
     level = getattr(logging, level_str.upper(), logging.INFO)
 
-    log_file = config.get("logging.file", "logs/axiom.log")
+    log_file = config.get("logging.file", "logs/pacoca.log")
     max_mb = config.get("logging.max_mb", 10)
 
     os.makedirs(os.path.dirname(log_file), exist_ok=True)

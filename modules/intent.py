@@ -774,8 +774,13 @@ _MAX_AGENTIC_TURNS = 4  # proteção contra loop infinito
 
 
 def _groq_messages_base(command: str, config) -> tuple[str, str, list[dict]]:
-    """Monta api_key, model e lista de messages iniciais para o Groq."""
-    api_key = config.get("ai.groq_api_key", "") or os.environ.get("GROQ_API_KEY", "")
+    """
+    Monta api_key, model e lista de messages iniciais para o Groq.
+    api_key e model são retornados para compatibilidade, mas o envio
+    real agora é feito via core.providers._groq_call().
+    """
+    from core.providers import _resolve_key
+    api_key = _resolve_key("ai.groq_api_key", "GROQ_API_KEY", config)
     model = os.environ.get("GROQ_MODEL") or config.get("ai.groq_model", "llama-3.3-70b-versatile")
 
     safe_cmd = command.encode("utf-8", errors="ignore").decode("utf-8").strip()
@@ -794,7 +799,6 @@ def _groq_messages_base(command: str, config) -> tuple[str, str, list[dict]]:
     if kb_ctx:
         system_parts.append(kb_ctx)
 
-    # Injeta histórico de conversa da sessão como mensagens anteriores
     messages: list[dict] = [{"role": "system", "content": "\n\n".join(system_parts)}]
     try:
         from storage.context import get_turns
@@ -809,22 +813,16 @@ def _groq_messages_base(command: str, config) -> tuple[str, str, list[dict]]:
 
 
 def _groq_call(api_key: str, model: str, messages: list[dict], tool_choice="auto") -> dict:
-    """Chama a API Groq e retorna o JSON parsed da resposta."""
-    import requests
-    resp = requests.post(
-        "https://api.groq.com/openai/v1/chat/completions",
-        headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-        json={
-            "model": model,
-            "messages": messages,
-            "tools": TOOLS,
-            "tool_choice": tool_choice,
-            "max_tokens": 512,
-        },
-        timeout=12,
+    """Chama a API Groq via cliente central e retorna o JSON parsed da resposta."""
+    from core.providers import get_client
+    from core.config import Config
+    client = get_client(Config())
+    return client.chat_raw(
+        messages,
+        tools=TOOLS,
+        tool_choice=tool_choice,
+        max_tokens=512,
     )
-    resp.raise_for_status()
-    return resp.json()
 
 
 def _parse_with_groq(command: str, config) -> list[dict]:
@@ -867,12 +865,17 @@ def run_agentic_loop(command: str) -> str:
     except Exception:
         return ""
 
-    if config.get("ai.provider", "ollama") != "groq":
+    # Loop agentivo é exclusivo do Groq (provider=groq ou auto)
+    if config.get("ai.provider", "groq") not in ("groq", "auto"):
         return ""
 
-    api_key = config.get("ai.groq_api_key", "") or os.environ.get("GROQ_API_KEY", "")
+    from core.providers import _resolve_key, _circuit_is_open
+    api_key = _resolve_key("ai.groq_api_key", "GROQ_API_KEY", config)
     if not api_key:
         logger.warning("run_agentic_loop: GROQ_API_KEY não configurado — loop agentivo desabilitado")
+        return ""
+    if _circuit_is_open():
+        logger.info("run_agentic_loop: circuit breaker aberto — pulando Groq")
         return ""
 
     api_key, model, messages = _groq_messages_base(command, config)

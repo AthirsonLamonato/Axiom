@@ -51,5 +51,5 @@ def show(*_) -> str:
     for i, (cmd, resp) in enumerate(_memory, 1):
         short = resp[:120] + "..." if len(resp) > 120 else resp
         lines.append(f"\n  {i}. Você:  {cmd}")
-        lines.append(f"     Axiom: {short}")
+        lines.append(f"     Paçoca: {short}")
     return "\n".join(lines)

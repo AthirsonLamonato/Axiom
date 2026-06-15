@@ -503,9 +503,12 @@ class Orchestrator:
     # ── Despachante central ────────────────────────────────────────────
 
     def dispatch(self, command: str) -> Optional[str]:
+        import time as _time
         command_lower = command.lower().strip()
         logger.debug("Despachando: %s", command_lower)
 
+        _t0 = _time.monotonic()
+        _route_matched = ""
         response: Optional[str] = None
 
         for pattern, handler_path, needs_confirm in self._all_routes:
@@ -514,14 +517,31 @@ class Orchestrator:
                 if needs_confirm and self.config.get("security.confirm_critical"):
                     if not self._confirm(command):
                         return "Ação cancelada."
+                _route_matched = handler_path
                 response = self._call_handler(handler_path, match)
                 break
 
         if response is None:
             response = self._intent_dispatch(command)
+            if response:
+                _route_matched = "intent"
 
         if response is None:
             response = self._fallback_ai(command)
+            if response:
+                _route_matched = "fallback_ai"
+
+        # Telemetria
+        try:
+            from core.telemetry import record_command
+            record_command(
+                command=command,
+                route=_route_matched,
+                latency_s=_time.monotonic() - _t0,
+                success=bool(response and "Erro" not in (response or "")[:20]),
+            )
+        except Exception:
+            pass
 
         # Registra no contexto e expõe para clipboard
         if response:

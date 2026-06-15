@@ -10,14 +10,23 @@ logger = logging.getLogger(__name__)
 
 
 def get_weather(location: str = "") -> str:
-    """Retorna previsão do tempo para a cidade informada."""
+    """Retorna previsão do tempo para a cidade informada (cache 10 min)."""
     import requests
+    from core.providers import _weather_cache, cached_get
 
     location = re.sub(r'\s*\b(?:hoje|amanhã|amanha|agora|essa?\s+semana|nessa?\s+semana)\b.*$', '', location, flags=re.IGNORECASE)
     location = location.strip().rstrip("?.,!")
     if not location:
         location = _get_default_location()
 
+    def _fetch():
+        return _fetch_weather(location)
+
+    return cached_get(_weather_cache, f"weather:{location}", _fetch) or f"Não consegui obter o clima de {location}."
+
+
+def _fetch_weather(location: str) -> str:
+    import requests
     try:
         # Formato completo (3 linhas) para resposta falada
         url = f"https://wttr.in/{urllib.parse.quote(location)}?format=j1&lang=pt"

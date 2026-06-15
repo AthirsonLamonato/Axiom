@@ -1,1 +1,1 @@
-# Pacote de plugins externos do Axiom
+# Pacote de plugins externos do Paçoca

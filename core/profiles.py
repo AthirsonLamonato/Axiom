@@ -98,7 +98,7 @@ class ProfileManager:
         return desc
 
     def system_prompt(self) -> str:
-        base = self.config.get("ai.system_prompt", "Você é Axiom, assistente pessoal técnico.")
+        base = self.config.get("ai.system_prompt", "Você é Paçoca, assistente pessoal técnico.")
         addons = {
             "casual":  "\nResponda de forma descontraída e amigável.",
             "focus":   "\nSeja extremamente conciso. Máximo 2 frases por resposta.",

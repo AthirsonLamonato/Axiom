@@ -1,5 +1,5 @@
 """
-web/app.py — Dashboard web local do Axiom
+web/app.py — Dashboard web local do Paçoca
 Inicie com: python -m uvicorn web.app:app --host 127.0.0.1 --port 7755
 Ou via voz: 'abre o dashboard' / 'python main.py --web'
 """
@@ -62,7 +62,7 @@ def _valid_token(token: str) -> bool:
 
 
 def _valid_websocket(websocket) -> bool:
-    token = websocket.cookies.get("axiom_token", "")
+    token = websocket.cookies.get("pacoca_token", "")
     if not _valid_token(token):
         return False
 
@@ -85,7 +85,7 @@ def _make_app():
     except ImportError:
         return None
 
-    app = FastAPI(title="Axiom Dashboard", docs_url=None, redoc_url=None)
+    app = FastAPI(title="Paçoca Dashboard", docs_url=None, redoc_url=None)
 
     # ── Middleware de autenticação ─────────────────────────────────────
     class AuthMiddleware(BaseHTTPMiddleware):
@@ -95,7 +95,7 @@ def _make_app():
             skip = {"/login", "/favicon.ico"}
             if request.url.path in skip or request.url.path.startswith("/ws"):
                 return await call_next(request)
-            token = request.cookies.get("axiom_token", "")
+            token = request.cookies.get("pacoca_token", "")
             if not _valid_token(token):
                 return RedirectResponse("/login")
             return await call_next(request)
@@ -107,7 +107,7 @@ def _make_app():
     _LOGIN_HTML = """<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-<meta charset="UTF-8"><title>Axiom — Login</title>
+<meta charset="UTF-8"><title>Paçoca — Login</title>
 <style>
   *{{box-sizing:border-box;margin:0;padding:0}}
   body{{background:#0d1117;color:#c9d1d9;font-family:'Segoe UI',monospace;
@@ -139,7 +139,7 @@ def _make_app():
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Axiom Dashboard</title>
+<title>Paçoca Dashboard</title>
 <script src="https://unpkg.com/htmx.org@1.9.10"></script>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -293,7 +293,7 @@ def _make_app():
 </div>
 
 <p style="color:#8b949e;font-size:0.72em;text-align:center;margin-top:8px;">
-  Axiom Dashboard — <a href="/api/status">JSON</a>
+  Paçoca Dashboard — <a href="/api/status">JSON</a>
 </p>
 
 <script>
@@ -379,7 +379,7 @@ connectEvtWs();
     async def login_post(password: str = Form(...)):
         if _valid_token(_token_for(password)):
             resp = RedirectResponse("/", status_code=303)
-            resp.set_cookie("axiom_token", _token_for(password), httponly=True)
+            resp.set_cookie("pacoca_token", _token_for(password), httponly=True)
             return resp
         return HTMLResponse(
             _LOGIN_HTML.format(error='<p class="err">Senha incorreta.</p>'),
@@ -389,7 +389,7 @@ connectEvtWs();
     @app.get("/logout")
     async def logout():
         resp = RedirectResponse("/login")
-        resp.delete_cookie("axiom_token")
+        resp.delete_cookie("pacoca_token")
         return resp
 
     # ── Dashboard principal ───────────────────────────────────────────
@@ -670,6 +670,26 @@ connectEvtWs();
         except Exception:
             return JSONResponse([])
 
+    @app.get("/api/metrics")
+    async def api_metrics():
+        try:
+            from core.telemetry import get_summary, get_recent
+            return JSONResponse({
+                "summary": get_summary(),
+                "recent": get_recent(20),
+            })
+        except Exception as e:
+            return JSONResponse({"error": str(e)})
+
+    @app.get("/api/integrations")
+    async def api_integrations():
+        return JSONResponse(_check_integrations())
+
+    @app.post("/api/integrations/test/{name}")
+    async def test_integration(name: str):
+        result = _test_integration(name)
+        return JSONResponse(result)
+
     return app
 
 
@@ -733,6 +753,89 @@ def _get_status_data() -> dict:
         "in_meeting": in_meeting,
         "detector_on": detector_on,
     }
+
+
+def _check_integrations() -> dict:
+    """Verifica status de cada integração: chave, token, conectividade."""
+    import os
+    results: dict[str, dict] = {}
+
+    # Groq
+    groq_key = os.environ.get("GROQ_API_KEY", "")
+    results["groq"] = {
+        "configured": bool(groq_key),
+        "key_hint": f"***{groq_key[-4:]}" if len(groq_key) > 4 else ("ok" if groq_key else ""),
+    }
+
+    # Ollama
+    try:
+        import requests as _req
+        r = _req.get("http://localhost:11434/api/tags", timeout=2)
+        results["ollama"] = {"configured": True, "reachable": r.ok,
+                             "models": [m["name"] for m in r.json().get("models", [])[:5]] if r.ok else []}
+    except Exception:
+        results["ollama"] = {"configured": False, "reachable": False}
+
+    # Spotify
+    from pathlib import Path
+    token_path = Path(".spotify_token.json")
+    results["spotify"] = {
+        "configured": token_path.exists(),
+        "token_file": str(token_path) if token_path.exists() else None,
+    }
+
+    # Google Calendar
+    cal_token = Path("core/google_token.json")
+    results["google_calendar"] = {
+        "configured": cal_token.exists(),
+        "token_file": str(cal_token) if cal_token.exists() else None,
+    }
+
+    # Circuit breaker status
+    try:
+        from core.providers import _groq_failures, _groq_open_until
+        import time
+        results["groq"]["circuit_breaker"] = {
+            "failures": _groq_failures,
+            "open": time.monotonic() < _groq_open_until,
+        }
+    except Exception:
+        pass
+
+    return results
+
+
+def _test_integration(name: str) -> dict:
+    """Testa conectividade de uma integração específica."""
+    import time
+    t0 = time.monotonic()
+    try:
+        if name == "groq":
+            from core.providers import get_client
+            from core.config import Config
+            client = get_client(Config())
+            resp = client.chat([{"role": "user", "content": "ping"}], max_tokens=5)
+            return {"ok": bool(resp), "latency_ms": round((time.monotonic()-t0)*1000, 1), "response": resp[:50]}
+
+        if name == "ollama":
+            import requests as _req
+            r = _req.get("http://localhost:11434/api/tags", timeout=4)
+            return {"ok": r.ok, "latency_ms": round((time.monotonic()-t0)*1000, 1)}
+
+        if name == "spotify":
+            from modules.spotify_ctrl import current_track
+            resp = current_track()
+            return {"ok": "Erro" not in resp, "response": resp[:80]}
+
+        if name == "weather":
+            from modules.weather import get_weather
+            resp = get_weather("São Paulo")
+            return {"ok": "Não consegui" not in resp, "latency_ms": round((time.monotonic()-t0)*1000, 1), "sample": resp[:80]}
+
+        return {"ok": False, "error": f"Integração desconhecida: {name}"}
+
+    except Exception as e:
+        return {"ok": False, "error": str(e), "latency_ms": round((time.monotonic()-t0)*1000, 1)}
 
 
 # Instância global do app (para uvicorn)

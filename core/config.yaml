@@ -33,6 +33,8 @@ ai:
   groq_api_key: ""                   # sobrescrito por GROQ_API_KEY no .env
   max_tokens: 1024
   use_context: true     # injeta histórico da sessão no prompt (memória contextual)
+  auto_learn: false     # extrai fatos de cada conversa e salva na KB (opt-in)
+                        # quando true, cada troca é enviada ao LLM configurado
   system_prompt: |
     Você é Paçoca, um assistente pessoal técnico e objetivo.
     Responda sempre em português, de forma direta e sem rodeios.
