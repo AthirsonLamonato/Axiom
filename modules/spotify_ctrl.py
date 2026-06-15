@@ -340,20 +340,31 @@ def _api_request(method: str, endpoint: str, **kwargs):
 
 
 def _ensure_active_device() -> bool:
-    """Garante que há um device ativo. Trata o caso de Spotify recém-aberto."""
+    """
+    Garante que há um device ativo (is_active=True).
+    Se há devices mas nenhum ativo, transfere a reprodução para o primeiro disponível.
+    """
     for delay in (0, 2, 3):
         if delay:
             time.sleep(delay)
         resp = _api_request("GET", "/me/player/devices")
         if resp and resp.ok:
             devices = [d for d in resp.json().get("devices", []) if not d.get("is_restricted")]
-            if devices:
+            active = [d for d in devices if d.get("is_active")]
+            if active:
                 return True
-    # Ainda sem device — abre o Spotify e aguarda
+            # Há devices mas nenhum ativo — transfere reprodução
+            if devices:
+                _api_request("PUT", "/me/player", json={"device_ids": [devices[0]["id"]], "play": False})
+                time.sleep(1)
+    # Último recurso: abre o Spotify e re-verifica
     _open_spotify_uri("spotify:")
     time.sleep(5)
     resp = _api_request("GET", "/me/player/devices")
-    return bool(resp and resp.ok and resp.json().get("devices"))
+    if resp and resp.ok:
+        devices = [d for d in resp.json().get("devices", []) if not d.get("is_restricted")]
+        return any(d.get("is_active") for d in devices)
+    return False
 
 
 _LEADING_ARTICLES = re.compile(
@@ -545,7 +556,8 @@ def _api_play_playlist(name: str) -> str:
     uri = match["uri"]
     pl_name = match["name"]
 
-    _ensure_active_device()
+    if not _ensure_active_device():
+        return "Por favor, abra o Spotify em algum dispositivo primeiro."
     play_resp = _api_request("PUT", "/me/player/play", json={"context_uri": uri})
     if play_resp and play_resp.status_code in (200, 204):
         return f"Tocando playlist '{pl_name}'."
@@ -554,23 +566,33 @@ def _api_play_playlist(name: str) -> str:
 
 
 def _api_pause() -> str:
-    _api_request("PUT", "/me/player/pause")
-    return "Spotify pausado."
+    resp = _api_request("PUT", "/me/player/pause")
+    if resp and resp.status_code in (200, 204):
+        return "Spotify pausado."
+    if resp and resp.status_code == 403:
+        return "Nada está tocando para pausar."
+    return "Não foi possível pausar. Verifique se o Spotify está ativo."
 
 
 def _api_resume() -> str:
-    _api_request("PUT", "/me/player/play")
-    return "Spotify retomado."
+    resp = _api_request("PUT", "/me/player/play")
+    if resp and resp.status_code in (200, 204):
+        return "Spotify retomado."
+    return "Não foi possível retomar. Abra o Spotify em algum dispositivo primeiro."
 
 
 def _api_next() -> str:
-    _api_request("POST", "/me/player/next")
-    return "Próxima música."
+    resp = _api_request("POST", "/me/player/next")
+    if resp and resp.status_code in (200, 204):
+        return "Próxima música."
+    return "Não foi possível avançar. Verifique se o Spotify está ativo."
 
 
 def _api_previous() -> str:
-    _api_request("POST", "/me/player/previous")
-    return "Música anterior."
+    resp = _api_request("POST", "/me/player/previous")
+    if resp and resp.status_code in (200, 204):
+        return "Música anterior."
+    return "Não foi possível voltar. Verifique se o Spotify está ativo."
 
 
 def _api_current() -> str:

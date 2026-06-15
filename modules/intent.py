@@ -185,6 +185,8 @@ def _cache_get(command: str) -> Optional[list[dict]]:
 
 
 def _cache_set(command: str, calls: list[dict]):
+    if not calls:  # não cacheia falhas — permite nova tentativa
+        return
     _intent_cache[command.lower().strip()] = (calls, time.time())
 
 
@@ -227,6 +229,10 @@ _FEW_SHOT: list[tuple[str, str]] = [
      '[{"name":"control_media","arguments":{"action":"play","query":"trabalho"}}]'),
     ('play Coldplay',
      '[{"name":"control_media","arguments":{"action":"play","query":"Coldplay"}}]'),
+    ('quero escutar Queen',
+     '[{"name":"control_media","arguments":{"action":"play","query":"Queen"}}]'),
+    ('escuta Daft Punk',
+     '[{"name":"control_media","arguments":{"action":"play","query":"Daft Punk"}}]'),
     # Música — controle
     ('para a música',
      '[{"name":"control_media","arguments":{"action":"pause"}}]'),
@@ -261,6 +267,10 @@ _FEW_SHOT: list[tuple[str, str]] = [
      '[{"name":"close_application","arguments":{"name":"discord"}}]'),
     ('encerra o notepad',
      '[{"name":"close_application","arguments":{"name":"notepad"}}]'),
+    ('encerre o chrome',
+     '[{"name":"close_application","arguments":{"name":"chrome"}}]'),
+    ('mata o processo discord',
+     '[{"name":"close_application","arguments":{"name":"discord"}}]'),
     # Volume
     ('volume 60',
      '[{"name":"set_volume","arguments":{"level":60}}]'),
@@ -310,8 +320,38 @@ _NLU_SYSTEM = (
 
 # ── Camada 2: Classificador TF-IDF local ──────────────────────────────
 
-_CONFIDENCE_THRESHOLD = 0.50  # abaixo disso → cai para LLM
+_CONFIDENCE_THRESHOLD = 0.70  # abaixo disso → cai para LLM
 _clf_state: dict = {}         # singleton lazy
+
+# Ações que requerem confirmação mesmo vindas do NLU
+_NEEDS_CONFIRM: set[tuple] = {
+    ('close_application',),
+    ('git_operation', 'push'),
+    ('git_operation', 'commit'),
+}
+
+
+def _needs_confirmation(name: str, args: dict) -> bool:
+    operation = args.get('operation')
+    return (name, operation) in _NEEDS_CONFIRM or (name,) in _NEEDS_CONFIRM
+
+
+def _confirm_action(name: str, args: dict) -> bool:
+    """Pede confirmação no terminal para ações críticas vindas do NLU."""
+    try:
+        from core.config import Config
+        if not Config().get("security.confirm_critical", True):
+            return True
+    except Exception:
+        pass
+    op     = args.get('operation') or args.get('action') or ''
+    target = args.get('name') or args.get('message') or args.get('branch_name') or ''
+    detail = f"{op} {target}".strip()
+    try:
+        resp = input(f"\n  [!] Confirmar: {name}({detail})? (s/N): ").strip().lower()
+        return resp == "s"
+    except (EOFError, KeyboardInterrupt):
+        return False
 
 
 def _normalize_for_clf(text: str) -> str:
@@ -340,14 +380,14 @@ def _normalize_for_clf(text: str) -> str:
 
     # 4. Verbo de play + conteúdo → [QUERY]  (só se não há "volume" — já tratado acima)
     t = re.sub(
-        r'^(bota[r]?|coloca[r]?|toca[r]?|play|quero\s+ouvir)'
+        r'^(bota[r]?|coloca[r]?|toca[r]?|play|quero\s+(?:ouvir|escutar)|escuta[r]?)'
         r'(?:\s+(?:uma?\s+)?(?:m[úu]sica|faixa|playlist|artista|banda))?'
         r'(?:\s+(?:do|da|de))?\s*.+$',
         r'\1 [QUERY]', t, flags=re.I,
     )
 
-    # 5. App name após "abre/fecha o/a"
-    t = re.sub(r'\b(abre[a]?|fecha[r]?|encerra[r]?)\s+(o|a)\s+\S+', r'\1 \2 [APP]', t)
+    # 5. App name após "abre/fecha/encerra/encerre o/a"
+    t = re.sub(r'\b(abre[a]?|fecha[r]?|encerra[r]?|encerre)\s+(o|a)\s+\S+', r'\1 \2 [APP]', t)
 
     # 6. Pesquisa/busca (depois de tratar [BROWSER])
     t = re.sub(r'^(pesquisa[r]?|busca[r]?(?:\s+por)?)\s+(?:sobre\s+)?.+?(\s+no\s+\[BROWSER\])?$',
@@ -447,7 +487,7 @@ def _extract_slots(command: str, intent: str) -> dict:
             return {'action': 'current'}
         # play: remove o prefixo verbal e retorna a query limpa
         query = re.sub(
-            r'^(?:bota[r]?|coloca[r]?|toca[r]?|play|quero\s+ouvir)\s+',
+            r'^(?:bota[r]?|coloca[r]?|toca[r]?|play|quero\s+(?:ouvir|escutar)|escuta[r]?)\s+',
             '', command, flags=re.I,
         ).strip()
         query = re.sub(
@@ -480,9 +520,10 @@ def _extract_slots(command: str, intent: str) -> dict:
     if intent == 'open_browser':
         browser_m = re.search(r'\b(chrome|firefox|brave|edge)\b', cmd_lower)
         browser = browser_m.group(1) if browser_m else 'chrome'
-        dest_m = re.search(r'(?:no|em|na)\s+(\w+)\s*$', cmd_lower)
-        dest = dest_m.group(1) if dest_m else re.sub(r'^.+(?:abre|pesquisa)\s+', '', cmd_lower).strip()
-        return {'browser': browser, 'destination': dest}
+        # Remove o nome do browser e "no/em/na" do final para extrair destino limpo
+        dest = re.sub(r'\s+(?:no|em|na)\s+(?:chrome|firefox|brave|edge)\b.*$', '', cmd_lower, flags=re.I).strip()
+        dest = re.sub(r'^(?:pesquisa[r]?|busca[r]?|abre[a]?|abrir)\s+(?:o\s+|a\s+)?(?:site\s+)?', '', dest, flags=re.I).strip()
+        return {'browser': browser, 'destination': dest or 'google'}
 
     if intent == 'web_search':
         m = re.search(r'(?:pesquisa[r]?|busca[r]?(?:\s+por)?)\s+(?:sobre\s+)?(.+)', cmd_lower)
@@ -499,7 +540,7 @@ def _extract_slots(command: str, intent: str) -> dict:
             return {'operation': 'push'}
         if 'pull' in cmd_lower:
             return {'operation': 'pull'}
-        if re.search(r'\b(log|commits?|hist[oó]rico)\b', cmd_lower):
+        if re.search(r'\b(log|commits?|hist[oó]rico)\b', cmd_lower) and 'login' not in cmd_lower:
             return {'operation': 'log'}
         if 'commit' in cmd_lower:
             m = re.search(r'mensagem\s+(.+)', cmd_lower)
@@ -755,6 +796,11 @@ def execute_actions(actions: list[dict]) -> list[str]:
         name = act.get("name", "")
         args = act.get("arguments", {})
         try:
+            # Confirmação para ações destrutivas vindas do NLU (issue de segurança)
+            if _needs_confirmation(name, args) and not _confirm_action(name, args):
+                responses.append("Ação cancelada.")
+                continue
+
             if name == "open_application" and args.get("name", "").lower() == "spotify":
                 spotify_just_opened = True
 

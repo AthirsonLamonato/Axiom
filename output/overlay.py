@@ -4,6 +4,8 @@ Thread-safe via queue + QTimer. Suporta fade, estado e histórico.
 """
 
 import logging
+import os
+import platform
 import threading
 import queue
 import sys
@@ -19,6 +21,22 @@ def _is_wsl() -> bool:
         return False
 
 _NO_OPACITY = _is_wsl()  # WSL X11 não suporta opacidade de janela
+
+
+def _has_display() -> bool:
+    """Verifica se há display disponível ANTES de tentar criar QApplication."""
+    if platform.system() == "Windows":
+        return True
+    # Wayland
+    if os.environ.get("WAYLAND_DISPLAY"):
+        return True
+    # X11
+    if os.environ.get("DISPLAY"):
+        return True
+    # QT_QPA_PLATFORM=offscreen é usado em CI — não tem display real
+    if os.environ.get("QT_QPA_PLATFORM") == "offscreen":
+        return False
+    return False
 
 _instance: "PacocaOverlay | None" = None
 _msg_queue: queue.Queue = queue.Queue()
@@ -212,6 +230,11 @@ class PacocaOverlay:
 
 def init(config):
     global _instance
+    # Verifica display ANTES de instanciar QApplication para evitar abort nativo
+    if not _has_display():
+        logger.info("Overlay desabilitado: sem display disponível (DISPLAY=%s, WAYLAND=%s)",
+                    os.environ.get("DISPLAY", ""), os.environ.get("WAYLAND_DISPLAY", ""))
+        return
     try:
         _instance = PacocaOverlay(config)
         logger.info("Overlay inicializado (aguardando run_main_loop)")
