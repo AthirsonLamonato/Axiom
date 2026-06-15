@@ -1,11 +1,13 @@
 """
-modules/intent.py — NLU via LLM (Groq function calling / Ollama few-shot JSON)
+modules/intent.py — Pipeline de NLU em 3 camadas
 
-Funciona como o sistema de Intents da Alexa:
-  1. Classifica a intenção (qual ferramenta usar)
-  2. Extrai slots (parâmetros: artista, app, volume…)
-  3. Mantém contexto de diálogo para comandos de seguimento ("próxima", "para")
-  4. Cache de TTL para comandos repetidos (evita round-trip ao LLM)
+  Camada 1 (orchestrator.py) — Regex          <1ms   padrões fixos e previsíveis
+  Camada 2 (este módulo)     — TF-IDF clf     <5ms   intent + slots para comandos variáveis
+  Camada 3 (este módulo)     — LLM fallback   1-3s   perguntas abertas e casos ambíguos
+
+A Camada 2 funciona como o NLU da Alexa: normaliza o texto (remove valores de slot),
+classifica por similaridade de cosseno, e extrai os slots com regex focado por intent.
+O LLM só entra quando a confiança do classificador fica abaixo do limiar.
 """
 
 import json
@@ -306,18 +308,234 @@ _NLU_SYSTEM = (
 )
 
 
+# ── Camada 2: Classificador TF-IDF local ──────────────────────────────
+
+_CONFIDENCE_THRESHOLD = 0.50  # abaixo disso → cai para LLM
+_clf_state: dict = {}         # singleton lazy
+
+
+def _normalize_for_clf(text: str) -> str:
+    """
+    Remove valores de slot antes de vetorizar, mantendo só a estrutura do comando.
+      'bota uma música do Eminem' → 'bota [QUERY]'
+      'volume 60'                 → 'volume [NUM]'
+      'abre o chrome'             → 'abre o [APP]'
+      'pesquisa X no firefox'     → 'pesquisa [QUERY] no [BROWSER]'
+      'pesquisa sobre X'          → 'pesquisa [QUERY]'
+
+    Ordem importa: padrões específicos antes dos genéricos.
+    """
+    t = text.lower().strip()
+
+    # 1. Números
+    t = re.sub(r'\b\d+(?:[.,]\d+)?\b', '[NUM]', t)
+
+    # 2. Volume: detecta ANTES do padrão de play para "coloca o volume em X"
+    if re.search(r'\bvolume\b', t):
+        t = re.sub(r'\b(volume)\s+.+', r'\1 [NUM]', t)
+        return t
+
+    # 3. Navegador: mantém token [BROWSER] para distinguir open_browser de web_search
+    t = re.sub(r'\bno\s+(chrome|firefox|brave|edge)\b', 'no [BROWSER]', t)
+
+    # 4. Verbo de play + conteúdo → [QUERY]  (só se não há "volume" — já tratado acima)
+    t = re.sub(
+        r'^(bota[r]?|coloca[r]?|toca[r]?|play|quero\s+ouvir)'
+        r'(?:\s+(?:uma?\s+)?(?:m[úu]sica|faixa|playlist|artista|banda))?'
+        r'(?:\s+(?:do|da|de))?\s*.+$',
+        r'\1 [QUERY]', t, flags=re.I,
+    )
+
+    # 5. App name após "abre/fecha o/a"
+    t = re.sub(r'\b(abre[a]?|fecha[r]?|encerra[r]?)\s+(o|a)\s+\S+', r'\1 \2 [APP]', t)
+
+    # 6. Pesquisa/busca (depois de tratar [BROWSER])
+    t = re.sub(r'^(pesquisa[r]?|busca[r]?(?:\s+por)?)\s+(?:sobre\s+)?.+?(\s+no\s+\[BROWSER\])?$',
+               lambda m: f'{m.group(1)} [QUERY]{m.group(2) or ""}', t)
+
+    # 7. "do/da/de X" no final → slot de artista/destino
+    t = re.sub(r'\b(do|da|de|pelo|pela|por)\s+\S+(?:\s+\S+)?$', r'\1 [SLOT]', t)
+
+    # 8. Git — branch e mensagem
+    t = re.sub(r'\b(branch|ramo)\s+\S+', r'\1 [SLOT]', t)
+    t = re.sub(r'mensagem\s+.+', 'mensagem [SLOT]', t)
+
+    # 9. Perguntas abertas
+    t = re.sub(r'^(o\s+que\s+[ée]|me\s+explica|como\s+funciona[m]?|explica)\s+.+', r'\1 [SLOT]', t)
+
+    return t
+
+
+def _build_classifier() -> None:
+    """Treina o vetorizador TF-IDF nos _FEW_SHOT (lazy, uma vez por processo)."""
+    if 'vectorizer' in _clf_state or 'unavailable' in _clf_state:
+        return
+    try:
+        from sklearn.feature_extraction.text import TfidfVectorizer
+
+        texts, labels = [], []
+        for user_text, assistant_json in _FEW_SHOT:
+            try:
+                calls = json.loads(assistant_json)
+                if calls:
+                    texts.append(_normalize_for_clf(user_text))
+                    labels.append((calls[0]['name'], calls[0].get('arguments', {})))
+            except Exception:
+                continue
+
+        vec = TfidfVectorizer(analyzer='char_wb', ngram_range=(2, 4), min_df=1)
+        X = vec.fit_transform(texts)
+
+        _clf_state['vectorizer'] = vec
+        _clf_state['X'] = X
+        _clf_state['labels'] = labels
+        logger.debug("Classificador NLU treinado: %d exemplos", len(texts))
+
+    except ImportError:
+        _clf_state['unavailable'] = True
+        logger.warning("scikit-learn não instalado — camada 2 desabilitada.")
+
+
+def _parse_with_classifier(command: str) -> tuple[list[dict], float]:
+    """
+    Classifica o comando via similaridade de cosseno TF-IDF (<5ms).
+    Retorna (tool_calls, confidence). Retorna ([], 0.0) se indisponível ou
+    confiança abaixo do limiar.
+    """
+    _build_classifier()
+    if _clf_state.get('unavailable'):
+        return [], 0.0
+
+    try:
+        from sklearn.metrics.pairwise import cosine_similarity
+        import numpy as np
+
+        norm = _normalize_for_clf(command)
+        X_q = _clf_state['vectorizer'].transform([norm])
+        sims = cosine_similarity(X_q, _clf_state['X'])[0]
+        best_idx = int(np.argmax(sims))
+        confidence = float(sims[best_idx])
+
+        if confidence < _CONFIDENCE_THRESHOLD:
+            logger.debug("Classificador baixa confiança (%.2f) para %r", confidence, command)
+            return [], confidence
+
+        intent_name, _ = _clf_state['labels'][best_idx]
+        slots = _extract_slots(command, intent_name)
+        logger.debug("Classificador (conf=%.2f): %s %s", confidence, intent_name, slots)
+        return [{'name': intent_name, 'arguments': slots}], confidence
+
+    except Exception as e:
+        logger.warning("Erro no classificador NLU: %s", e)
+        return [], 0.0
+
+
+def _extract_slots(command: str, intent: str) -> dict:
+    """Extrai valores de slot do texto original, sabendo o intent."""
+    cmd_lower = command.lower().strip()
+
+    if intent == 'control_media':
+        if re.search(r'\b(pausa|silencia|para\s+(?:a\s+)?m[úu]sica|para\s+o\s+spotify)\b', cmd_lower):
+            return {'action': 'pause'}
+        if re.search(r'\b(continua|retoma|resume)\b', cmd_lower):
+            return {'action': 'resume'}
+        if re.search(r'\b(pr[oó]xima|pula|avan[çc]a)\b', cmd_lower):
+            return {'action': 'next'}
+        if re.search(r'\b(anterior|volta)\b', cmd_lower):
+            return {'action': 'previous'}
+        if re.search(r'\b(que\s+m[úu]sica|que\s+artista|tocando|est[aá]\s+tocando)\b', cmd_lower):
+            return {'action': 'current'}
+        # play: remove o prefixo verbal e retorna a query limpa
+        query = re.sub(
+            r'^(?:bota[r]?|coloca[r]?|toca[r]?|play|quero\s+ouvir)\s+',
+            '', command, flags=re.I,
+        ).strip()
+        query = re.sub(
+            r'^(?:uma?\s+)?(?:m[úu]sica|faixa|playlist|artista|banda)\s+(?:do|da|de)?\s*',
+            '', query, flags=re.I,
+        ).strip()
+        return {'action': 'play', 'query': query}
+
+    if intent == 'open_application':
+        m = re.search(r'(?:abre[a]?|abrir)\s+(?:o\s+|a\s+)?(.+)', cmd_lower)
+        return {'name': m.group(1).strip() if m else command}
+
+    if intent == 'close_application':
+        m = re.search(r'(?:fecha[r]?|encerra[r]?)\s+(?:o\s+|a\s+)?(.+)', cmd_lower)
+        return {'name': m.group(1).strip() if m else command}
+
+    if intent == 'set_volume':
+        m = re.search(r'\b(\d+)\b', cmd_lower)
+        base = int(m.group(1)) if m else 50
+        if 'aumenta' in cmd_lower or 'sobe' in cmd_lower:
+            return {'level': min(100, base + 20) if m else 75}
+        if 'diminui' in cmd_lower or 'baixa' in cmd_lower:
+            return {'level': max(0, base - 20) if m else 30}
+        return {'level': base}
+
+    if intent == 'open_folder':
+        m = re.search(r'(?:pasta\s+(?:de\s+)?|meus?\s+)(.+)', cmd_lower)
+        return {'path': m.group(1).strip() if m else command}
+
+    if intent == 'open_browser':
+        browser_m = re.search(r'\b(chrome|firefox|brave|edge)\b', cmd_lower)
+        browser = browser_m.group(1) if browser_m else 'chrome'
+        dest_m = re.search(r'(?:no|em|na)\s+(\w+)\s*$', cmd_lower)
+        dest = dest_m.group(1) if dest_m else re.sub(r'^.+(?:abre|pesquisa)\s+', '', cmd_lower).strip()
+        return {'browser': browser, 'destination': dest}
+
+    if intent == 'web_search':
+        m = re.search(r'(?:pesquisa[r]?|busca[r]?(?:\s+por)?)\s+(?:sobre\s+)?(.+)', cmd_lower)
+        return {'query': m.group(1).strip() if m else command}
+
+    if intent == 'answer_question':
+        m = re.search(r'(?:o\s+que\s+[ée]|me\s+explica|como\s+funciona[m]?|explica)\s+(.+)', cmd_lower)
+        return {'question': m.group(1).strip() if m else command}
+
+    if intent == 'git_operation':
+        if re.search(r'\b(status|mudou|alterou)\b', cmd_lower):
+            return {'operation': 'status'}
+        if 'push' in cmd_lower:
+            return {'operation': 'push'}
+        if 'pull' in cmd_lower:
+            return {'operation': 'pull'}
+        if re.search(r'\b(log|commits?|hist[oó]rico)\b', cmd_lower):
+            return {'operation': 'log'}
+        if 'commit' in cmd_lower:
+            m = re.search(r'mensagem\s+(.+)', cmd_lower)
+            return {'operation': 'commit', 'message': m.group(1).strip() if m else 'update'}
+        if re.search(r'\b(branch|ramo)\b', cmd_lower):
+            m = re.search(r'(?:branch|ramo)\s+(\S+)', cmd_lower)
+            return {'operation': 'branch', 'branch_name': m.group(1) if m else ''}
+        return {'operation': 'status'}
+
+    return {}
+
+
 # ── Parser principal ───────────────────────────────────────────────────
 
 def parse_intent(command: str) -> list[dict]:
     """
-    Retorna lista de {"name": str, "arguments": dict} prontos para execução.
-    Fluxo: cache → NLU local (Ollama) ou Groq → validação → atualiza contexto.
+    Pipeline de NLU em 3 camadas:
+      1. Cache TTL         — retorno imediato se comando já foi visto
+      2. Classificador     — TF-IDF local <5ms para intents com alta confiança
+      3. LLM fallback      — Groq/Ollama para perguntas abertas e casos ambíguos
     """
+    # Camada 0: cache
     cached = _cache_get(command)
     if cached is not None:
-        logger.debug("Intent cache hit: %r", command)
+        logger.debug("Cache hit: %r", command)
         return cached
 
+    # Camada 2: classificador TF-IDF local
+    calls, confidence = _parse_with_classifier(command)
+    if calls:
+        calls = _validate(calls)
+        _cache_set(command, calls)
+        _update_dialog_ctx(command, calls)
+        return calls
+
+    # Camada 3: LLM (Groq function calling ou Ollama few-shot)
     try:
         from core.config import Config
         config = Config()
