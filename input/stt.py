@@ -271,3 +271,63 @@ class VoiceInput:
     def close(self):
         if self._pa:
             self._pa.terminate()
+
+
+# ── Confirmação por voz ────────────────────────────────────────────────
+
+def register_voice_confirmation_callback(voice_instance: "VoiceInput", tts_speak_fn) -> None:
+    """
+    Registra um callback de confirmação baseado em TTS+STT:
+      1. Fala a pergunta de confirmação para o usuário
+      2. Ouve a resposta por voz
+      3. Retorna True se o usuário confirmar ("sim", "pode", "confirma", etc.)
+
+    tts_speak_fn: callable(text: str) — fala o texto (ex: tts.speak)
+    Chame esta função em main.py após inicializar STT e TTS em modo voz.
+    """
+    import threading
+
+    _CONFIRM_WORDS = {"sim", "pode", "confirma", "ok", "yes", "certo", "claro"}
+    _DENY_WORDS    = {"não", "nao", "cancela", "nega", "no", "para", "para aí"}
+
+    def voice_confirm(action_name: str, detail: str) -> bool:
+        question = f"Confirmar {action_name} {detail}? Diga sim ou não."
+        try:
+            tts_speak_fn(question)
+        except Exception:
+            pass
+
+        # Ouve com timeout de 6 segundos
+        result: list[bool] = []
+        done = threading.Event()
+
+        def listen():
+            try:
+                text = (voice_instance.listen_once(timeout=6) or "").lower().strip()
+                words = set(text.split())
+                if words & _CONFIRM_WORDS:
+                    result.append(True)
+                elif words & _DENY_WORDS:
+                    result.append(False)
+                else:
+                    result.append(False)  # sem resposta clara → nega por segurança
+            except Exception:
+                result.append(False)
+            finally:
+                done.set()
+
+        t = threading.Thread(target=listen, daemon=True)
+        t.start()
+        done.wait(timeout=8)
+
+        decision = result[0] if result else False
+        try:
+            msg = "Confirmado." if decision else "Cancelado."
+            tts_speak_fn(msg)
+        except Exception:
+            pass
+        return decision
+
+    from modules.intent import set_confirmation_callback
+    set_confirmation_callback(voice_confirm)
+    logger.info("Callback de confirmação por voz registrado")

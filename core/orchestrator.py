@@ -56,7 +56,7 @@ ROUTES: list[tuple[str, str, bool]] = [
     (r"vai\s+para\s+a?\s*linha\s+(\d+)",  "modules.dev_tools:goto_line",        False),
     (r"novo\s+terminal",                  "modules.dev_tools:open_terminal",    False),
     (r"cria\s+(arquivo|file)\s+(.+)",     "modules.dev_tools:create_file",      False),
-    (r"explica\s+o\s+(arquivo|file)\s+(.+)", "modules.dev_tools:explain_file",  False),
+    (r"explica\s+o\s+(?:arquivo|file)\s+(.+)", "modules.dev_tools:explain_file", False),
     # Git
     (r"commit\s+[\"']?(.+)[\"']?",        "modules.dev_tools:git_commit",       True),
     (r"git\s+push",                       "modules.dev_tools:git_push",         True),
@@ -87,11 +87,12 @@ ROUTES: list[tuple[str, str, bool]] = [
     (r"(diminui|baixa)\s+o\s+brilho",     "modules.system_control:brightness_down", False),
     (r"(muta|silencia)\s+o?\s*(som|áudio)","modules.system_control:mute",       False),
     (r"(lista|mostra)\s+processos",       "modules.system_control:list_processes", False),
+    (r"abr[ae]?\s+(https?://\S+)",        "modules.system_control:open_url",    False),
     (r"abr[ae]?\s+(.+)",                     "modules.system_control:open_app",    False),
     (r"fech[ae]?\s+(.+)",                    "modules.system_control:close_app",   True),
 
     # Transcrição
-    (r"(começa|inicia|start)\s+transcri(.+)?",   "modules.transcription:start",    False),
+    (r"(?:começa|inicia|start)\s+transcri(?:ção|cao|crever)?(?:\s+(.*))?", "modules.transcription:start", False),
     (r"(para|stop)\s+transcri",                  "modules.transcription:stop",     False),
     (r"mostra\s+(o\s+que\s+foi\s+falado|a\s+transcrição)", "modules.transcription:show_last", False),
     (r"(identifica|diariz[ae])\s+(os\s+)?falantes?",       "modules.transcription:diarize",   False),
@@ -107,7 +108,7 @@ ROUTES: list[tuple[str, str, bool]] = [
     # Resumo / IA
     (r"(resume|resumo)\s+(o\s+que\s+foi\s+falado|a\s+reunião|a\s+transcrição)", "modules.summarizer:summarize_last", False),
     (r"resumo\s+detalhado",               "modules.summarizer:summarize_detailed", False),
-    (r"(explica?|o\s+que\s+é)\s+(.+)",   "modules.summarizer:explain",         False),
+    (r"(?:explica?|o\s+que\s+é)\s+(.+)", "modules.summarizer:explain",         False),
 
     # Cotações financeiras
     (r"(?:qual\s+(?:é\s+)?(?:o\s+)?(?:valor|cotação|preço|cotacao)\s+(?:do|da|de)\s+|quanto\s+(?:está?|custa?|vale)\s+(?:o\s+|a\s+)?)(.+?)(?:\s+(?:hoje|agora|atualmente))?$",
@@ -125,7 +126,6 @@ ROUTES: list[tuple[str, str, bool]] = [
     # Pesquisa / abrir URL direta
     (r"pesquis[ae]\w*\s+(.+)",             "modules.system_control:open_search", False),
     (r"busca\w*\s+(.+)",                  "modules.system_control:open_search", False),
-    (r"abr[ae]?\s+(https?://\S+)",           "modules.system_control:open_url",    False),
     (r"busca\s+por\s+ia\s+(.+)",          "modules.search:search_ai",           False),
 
     # Rotinas
@@ -141,7 +141,7 @@ ROUTES: list[tuple[str, str, bool]] = [
 
     # Pomodoro / foco
     (r"foco\s+por\s+(\d+)\s*min",         "modules.productivity:focus_start",   False),
-    (r"foco\s+por\s+(\d+)\s*h",           "modules.productivity:focus_start",   False),
+    (r"foco\s+por\s+(\d+)\s*h",           "modules.productivity:focus_start_hours", False),
     (r"(cancela|para)\s+o\s+timer",       "modules.productivity:focus_stop",    False),
     (r"(quanto\s+tempo|status)\s+(do\s+)?timer", "modules.productivity:focus_status", False),
 
@@ -154,18 +154,18 @@ ROUTES: list[tuple[str, str, bool]] = [
                                                           "modules.meeting_detector:status",           False),
 
     # Perfis dinâmicos por voz
-    (r"(muda|ativa)\s+(para\s+)?perfil\s+(.+)",  "core.profiles:switch_profile",   False),
+    (r"(?:muda|ativa)\s+(?:para\s+)?perfil\s+(.+)", "core.profiles:switch_profile", False),
     (r"perfil\s+(work|casual|focus|foco|meeting|reunião|reuniao|noturno|noite|trabalho)",
                                                   "core.profiles:switch_profile",   False),
     (r"(qual|mostra)\s+(o\s+)?perfil(\s+atual)?", "core.profiles:current_profile",  False),
     (r"(lista|quais)\s+(os\s+)?perfis",           "core.profiles:list_profiles",    False),
 
     # Google Calendar
-    (r"(o\s+que\s+tenho|agenda)\s+(hoje|amanhã|amanha)",
-                                                  "modules.calendar_integration:get_today_events", False),
+    (r"(?:o\s+que\s+tenho|agenda)\s+(hoje|amanhã|amanha)",
+                                                  "modules.calendar_integration:get_day_events", False),
     (r"(próximo|proximo)\s+(evento|compromisso|reunião|reuniao)",
                                                   "modules.calendar_integration:get_next_event",   False),
-    (r"(adiciona|marca|cria)\s+(no\s+calendário|no\s+calendario|evento|reunião|reuniao)\s+(.+)",
+    (r"(?:adiciona|marca|cria)\s+(?:no\s+calendário|no\s+calendario|evento|reunião|reuniao)\s+(.+)",
                                                   "modules.calendar_integration:add_event",        False),
     (r"autoriza\s+(calendário|calendario|google\s+calendar)",
                                                   "modules.calendar_integration:auth_calendar",    False),
@@ -173,14 +173,14 @@ ROUTES: list[tuple[str, str, bool]] = [
     # Calibração de microfone + idioma STT
     (r"(calibra|recalibra)\s+(o\s+)?(microfone|mic|ruído|ruido)",
                                                   "input.stt:calibrar_microfone",                  False),
-    (r"(muda|troca|altera)\s+(para\s+)?(inglês|ingles|espanhol|francês|frances|alemão|alemao|português|portugues|italiano|japonês|japones|english|spanish|french|german|italian|japanese)\b",
+    (r"(?:muda|troca|altera)\s+(?:para\s+)?(inglês|ingles|espanhol|francês|frances|alemão|alemao|português|portugues|italiano|japonês|japones|english|spanish|french|german|italian|japanese)\b",
                                                   "input.stt:switch_language",                     False),
     (r"idioma\s+atual",                           "input.stt:current_language",                    False),
 
     # Lembretes
-    (r"me\s+lembra?\s+.+",                       "modules.reminders:add",                         False),
+    (r"(me\s+lembra?\s+.+)",                     "modules.reminders:add",                         False),
     (r"(lista|mostra)\s+(os\s+)?lembretes",       "modules.reminders:list_reminders",              False),
-    (r"cancela\s+(o\s+)?lembrete[s]?(\s+\d+)?",  "modules.reminders:cancel",                      False),
+    (r"cancela\s+(?:o\s+)?lembrete[s]?(?:\s+(\d+))?", "modules.reminders:cancel",                  False),
 
     # Clipboard
     (r"copia\s+o\s+(último|ultimo)\s+resultado",  "modules.clipboard_tools:copy_last",             False),
@@ -527,10 +527,37 @@ class Orchestrator:
             return f"Erro ao executar o comando: {e}"
 
     def _intent_dispatch(self, command: str) -> Optional[str]:
-        """Usa LLM para interpretar o comando e executar ações estruturadas."""
+        """
+        Interpreta o comando via NLU e executa ações.
+        Ordem de prioridade:
+          1. TF-IDF local (<5ms, sem rede) — se confiante, executa diretamente.
+          2. Loop agentivo Groq — se provider=groq e chave configurada.
+          3. Ollama few-shot — fallback local sem internet.
+        O registro de contexto é feito por dispatch() depois que este método retorna.
+        """
         intent = _import_module("modules.intent")
         if not intent:
             return None
+
+        # 1. Classificador local (cache + TF-IDF) — sem chamada de rede
+        local_calls = intent.classify_local(command)
+        if local_calls:
+            responses = intent.execute_actions(local_calls)
+            return " | ".join(responses) if responses else None
+
+        # 2. Loop agentivo Groq — executa e produz resposta natural
+        import os as _os
+        provider = self.config.get("ai.provider", "ollama")
+        api_key  = self.config.get("ai.groq_api_key", "") or _os.environ.get("GROQ_API_KEY", "")
+        if provider == "groq" and api_key:
+            try:
+                response = intent.run_agentic_loop(command)
+                if response:
+                    return response
+            except Exception as e:
+                logger.warning("run_agentic_loop falhou, usando Ollama: %s", e)
+
+        # 3. Pipeline Ollama (few-shot NLU → execute)
         actions = intent.parse_intent(command)
         if not actions:
             return None
@@ -589,7 +616,11 @@ class Orchestrator:
             pass
 
     def _confirm(self, action: str) -> bool:
-        """Solicita confirmação para ações críticas."""
+        """Solicita confirmação para ações críticas. Nega automaticamente fora do terminal."""
+        import sys
+        if not sys.stdin.isatty():
+            logger.warning("Ação crítica '%s' bloqueada fora do modo texto.", action)
+            return False
         print(f"\n  [!] Ação crítica: '{action}'")
         resp = input("      Confirmar? (s/N): ").strip().lower()
         return resp == "s"

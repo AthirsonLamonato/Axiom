@@ -24,18 +24,37 @@ _NO_OPACITY = _is_wsl()  # WSL X11 não suporta opacidade de janela
 
 
 def _has_display() -> bool:
-    """Verifica se há display disponível ANTES de tentar criar QApplication."""
-    if platform.system() == "Windows":
-        return True
-    # Wayland
-    if os.environ.get("WAYLAND_DISPLAY"):
-        return True
-    # X11
-    if os.environ.get("DISPLAY"):
-        return True
-    # QT_QPA_PLATFORM=offscreen é usado em CI — não tem display real
+    """
+    Verifica se há display REALMENTE disponível antes de criar QApplication.
+    Checa a existência do socket, não só a variável de ambiente.
+    """
     if os.environ.get("QT_QPA_PLATFORM") == "offscreen":
         return False
+    if os.environ.get("CI") or os.environ.get("GITHUB_ACTIONS"):
+        return False
+
+    if platform.system() == "Windows":
+        # Windows sem sessão de desktop (serviço/CI): sem SESSIONNAME ou DISPLAY
+        return bool(os.environ.get("SESSIONNAME") or os.environ.get("DISPLAY"))
+
+    # Wayland: verifica socket no XDG_RUNTIME_DIR
+    wayland = os.environ.get("WAYLAND_DISPLAY", "")
+    if wayland:
+        runtime = os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}")
+        socket_path = wayland if wayland.startswith("/") else os.path.join(runtime, wayland)
+        if os.path.exists(socket_path):
+            return True
+
+    # X11: verifica lock file do X server (/tmp/.X{n}-lock)
+    display = os.environ.get("DISPLAY", "")
+    if display:
+        try:
+            num = display.lstrip(":").split(".")[0]
+            if os.path.exists(f"/tmp/.X{num}-lock"):
+                return True
+        except Exception:
+            pass
+
     return False
 
 _instance: "PacocaOverlay | None" = None

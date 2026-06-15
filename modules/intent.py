@@ -14,6 +14,7 @@ import json
 import logging
 import os
 import re
+import sys
 import time
 from collections import deque
 from typing import Optional
@@ -164,6 +165,48 @@ TOOLS = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "remember",
+            "description": "Memoriza um fato, preferência ou hábito que o usuário quer que o assistente lembre. Use quando o usuário disser 'lembra que', 'guarda que', 'não esquece que', etc.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "statement": {"type": "string", "description": "O que deve ser memorizado, em linguagem natural"}
+                },
+                "required": ["statement"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "forget",
+            "description": "Remove uma memória específica. Use quando o usuário disser 'esquece que', 'apaga a memória sobre', etc.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "topic": {"type": "string", "description": "O tópico ou frase a esquecer"}
+                },
+                "required": ["topic"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "list_memories",
+            "description": "Lista o que o assistente tem memorizado sobre o usuário.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "filter": {"type": "string", "description": "Filtro opcional (preferences, habits, projects, facts)"}
+                },
+                "required": [],
+            },
+        },
+    },
 ]
 
 _VALID_TOOLS = {t["function"]["name"] for t in TOOLS}
@@ -188,6 +231,21 @@ def _cache_set(command: str, calls: list[dict]):
     if not calls:  # não cacheia falhas — permite nova tentativa
         return
     _intent_cache[command.lower().strip()] = (calls, time.time())
+
+
+# ── Callback de confirmação (por canal: texto, voz, dashboard) ────────
+# Assinatura: (action_name: str, detail: str) -> bool
+# None = usa input() no terminal se estiver em TTY.
+_confirmation_callback = None
+
+
+def set_confirmation_callback(fn):
+    """
+    Registra uma função para solicitar confirmação via o canal ativo.
+    Exemplo: overlay.ask_confirm, ou uma fila de resposta no módulo de voz.
+    """
+    global _confirmation_callback
+    _confirmation_callback = fn
 
 
 # ── Contexto de diálogo (últimas N intents para seguimento) ───────────
@@ -288,6 +346,13 @@ _FEW_SHOT: list[tuple[str, str]] = [
      '[{"name":"open_folder","arguments":{"path":"downloads"}}]'),
     ('abre meus documentos',
      '[{"name":"open_folder","arguments":{"path":"documentos"}}]'),
+    ('abre o desktop',
+     '[{"name":"open_folder","arguments":{"path":"desktop"}}]'),
+    # Apps multi-word
+    ('abre o gerenciador de tarefas',
+     '[{"name":"open_application","arguments":{"name":"gerenciador de tarefas"}}]'),
+    ('abre o bloco de notas',
+     '[{"name":"open_application","arguments":{"name":"bloco de notas"}}]'),
     # Busca web
     ('pesquisa sobre machine learning',
      '[{"name":"web_search","arguments":{"query":"machine learning"}}]'),
@@ -332,26 +397,61 @@ _NEEDS_CONFIRM: set[tuple] = {
 
 
 def _needs_confirmation(name: str, args: dict) -> bool:
+    """
+    Verifica se a ação requer confirmação.
+    Combina a flag do ToolRegistry com a lista de operações específicas
+    (ex: git push/commit são destrutivos mas git status não é).
+    """
+    try:
+        from modules.tools import needs_confirmation as registry_needs_confirm
+        if registry_needs_confirm(name):
+            return True
+    except Exception:
+        pass
+    # Operações git destrutivas (push/commit) requerem confirmação mesmo sem flag no registry
     operation = args.get('operation')
-    return (name, operation) in _NEEDS_CONFIRM or (name,) in _NEEDS_CONFIRM
+    return (name, operation) in _NEEDS_CONFIRM
 
 
 def _confirm_action(name: str, args: dict) -> bool:
-    """Pede confirmação no terminal para ações críticas vindas do NLU."""
+    """
+    Pede confirmação para ações críticas.
+    Prioridade de canal: callback registrado → TTY input() → bloqueia.
+    """
     try:
         from core.config import Config
         if not Config().get("security.confirm_critical", True):
             return True
     except Exception:
         pass
+
     op     = args.get('operation') or args.get('action') or ''
     target = args.get('name') or args.get('message') or args.get('branch_name') or ''
     detail = f"{op} {target}".strip()
-    try:
-        resp = input(f"\n  [!] Confirmar: {name}({detail})? (s/N): ").strip().lower()
-        return resp == "s"
-    except (EOFError, KeyboardInterrupt):
-        return False
+
+    # Canal 1: callback registrado (voz, dashboard, overlay)
+    if _confirmation_callback is not None:
+        try:
+            return bool(_confirmation_callback(name, detail))
+        except Exception as e:
+            logger.warning("Callback de confirmação falhou: %s", e)
+            return False
+
+    # Canal 2: terminal interativo
+    if sys.stdin.isatty():
+        try:
+            resp = input(f"\n  [!] Confirmar: {name}({detail})? (s/N): ").strip().lower()
+            return resp == "s"
+        except (EOFError, KeyboardInterrupt):
+            return False
+
+    # Canal 3: nenhum canal disponível → bloqueia por segurança
+    logger.warning(
+        "Ação crítica '%s(%s)' bloqueada: sem canal de confirmação disponível. "
+        "Registre set_confirmation_callback() ou use modo texto.",
+        name, detail,
+    )
+    return False
 
 
 def _normalize_for_clf(text: str) -> str:
@@ -370,9 +470,9 @@ def _normalize_for_clf(text: str) -> str:
     # 1. Números
     t = re.sub(r'\b\d+(?:[.,]\d+)?\b', '[NUM]', t)
 
-    # 2. Volume: detecta ANTES do padrão de play para "coloca o volume em X"
-    if re.search(r'\bvolume\b', t):
-        t = re.sub(r'\b(volume)\s+.+', r'\1 [NUM]', t)
+    # 2. Volume/som: detecta ANTES do padrão de play
+    if re.search(r'\b(volume|som)\b', t):
+        t = re.sub(r'\b(volume|som)\s+.+', r'volume [NUM]', t)
         return t
 
     # 3. Navegador: mantém token [BROWSER] para distinguir open_browser de web_search
@@ -386,8 +486,15 @@ def _normalize_for_clf(text: str) -> str:
         r'\1 [QUERY]', t, flags=re.I,
     )
 
-    # 5. App name após "abre/fecha/encerra/encerre o/a"
-    t = re.sub(r'\b(abre[a]?|fecha[r]?|encerra[r]?|encerre)\s+(o|a)\s+\S+', r'\1 \2 [APP]', t)
+    # 5a. Pasta conhecida → [FOLDER] (antes de [APP] para o classificador distinguir open_folder)
+    _FOLDER_KW = r'(downloads?|documentos?|desktop|imagens?|m[úu]sicas?|v[íi]deos?|[aá]rea\s+de\s+trabalho)'
+    if re.search(_FOLDER_KW, t):
+        t = re.sub(r'\b(abre[a]?|abrir|pasta)\s+.+', r'\1 [FOLDER]', t)
+        return t
+
+    # 5b. App name após "abre/fecha/encerra/encerre o/a" — captura também multi-word apps
+    #     mas para antes de "no [BROWSER]" para não engolir padrão open_browser
+    t = re.sub(r'\b(abre[a]?|fecha[r]?|encerr[ae][r]?|mata[r]?(?:\s+o\s+processo)?)\s+(o|a)\s+(?!.*\[BROWSER\]).+', r'\1 \2 [APP]', t)
 
     # 6. Pesquisa/busca (depois de tratar [BROWSER])
     t = re.sub(r'^(pesquisa[r]?|busca[r]?(?:\s+por)?)\s+(?:sobre\s+)?.+?(\s+no\s+\[BROWSER\])?$',
@@ -498,10 +605,15 @@ def _extract_slots(command: str, intent: str) -> dict:
 
     if intent == 'open_application':
         m = re.search(r'(?:abre[a]?|abrir)\s+(?:o\s+|a\s+)?(.+)', cmd_lower)
-        return {'name': m.group(1).strip() if m else command}
+        if m:
+            return {'name': m.group(1).strip()}
+        return {'name': command}
 
     if intent == 'close_application':
-        m = re.search(r'(?:fecha[r]?|encerra[r]?)\s+(?:o\s+|a\s+)?(.+)', cmd_lower)
+        m = re.search(
+            r'(?:fecha[r]?|encerr[ae][r]?|mata[r]?(?:\s+o\s+processo)?)\s+(?:o\s+|a\s+)?(.+)',
+            cmd_lower,
+        )
         return {'name': m.group(1).strip() if m else command}
 
     if intent == 'set_volume':
@@ -514,8 +626,17 @@ def _extract_slots(command: str, intent: str) -> dict:
         return {'level': base}
 
     if intent == 'open_folder':
+        # "abre o desktop" / "abre o X" onde X é nome de pasta conhecida
+        known_folders = {'desktop', 'downloads', 'documentos', 'imagens', 'músicas', 'videos', 'área de trabalho'}
         m = re.search(r'(?:pasta\s+(?:de\s+)?|meus?\s+)(.+)', cmd_lower)
-        return {'path': m.group(1).strip() if m else command}
+        if m:
+            return {'path': m.group(1).strip()}
+        m2 = re.search(r'(?:abre[a]?|abrir)\s+(?:o\s+|a\s+)?(.+)', cmd_lower)
+        if m2:
+            candidate = m2.group(1).strip()
+            if candidate in known_folders:
+                return {'path': candidate}
+        return {'path': cmd_lower}
 
     if intent == 'open_browser':
         browser_m = re.search(r'\b(chrome|firefox|brave|edge)\b', cmd_lower)
@@ -540,11 +661,11 @@ def _extract_slots(command: str, intent: str) -> dict:
             return {'operation': 'push'}
         if 'pull' in cmd_lower:
             return {'operation': 'pull'}
-        if re.search(r'\b(log|commits?|hist[oó]rico)\b', cmd_lower) and 'login' not in cmd_lower:
-            return {'operation': 'log'}
         if 'commit' in cmd_lower:
             m = re.search(r'mensagem\s+(.+)', cmd_lower)
             return {'operation': 'commit', 'message': m.group(1).strip() if m else 'update'}
+        if re.search(r'\b(log|hist[oó]rico)\b', cmd_lower) and 'login' not in cmd_lower:
+            return {'operation': 'log'}
         if re.search(r'\b(branch|ramo)\b', cmd_lower):
             m = re.search(r'(?:branch|ramo)\s+(\S+)', cmd_lower)
             return {'operation': 'branch', 'branch_name': m.group(1) if m else ''}
@@ -554,6 +675,23 @@ def _extract_slots(command: str, intent: str) -> dict:
 
 
 # ── Parser principal ───────────────────────────────────────────────────
+
+def classify_local(command: str) -> list[dict]:
+    """
+    Roda apenas cache + TF-IDF (sem LLM). Retorna lista de tool calls se
+    a confiança estiver acima do limiar, lista vazia caso contrário.
+    Chamado pelo orchestrator para verificar se o LLM é necessário.
+    """
+    cached = _cache_get(command)
+    if cached is not None:
+        return cached
+    calls, _ = _parse_with_classifier(command)
+    if calls:
+        calls = _validate(calls)
+        _cache_set(command, calls)
+        _update_dialog_ctx(command, calls)
+    return calls
+
 
 def parse_intent(command: str) -> list[dict]:
     """
@@ -602,44 +740,74 @@ def parse_intent(command: str) -> list[dict]:
         return []
 
 
-# ── Groq: function calling nativo ─────────────────────────────────────
+# ── Groq: loop agentivo completo ──────────────────────────────────────
 
-def _parse_with_groq(command: str, config) -> list[dict]:
-    """Usa Groq function calling — chamada única, sem loop agentivo."""
-    import requests
+_MAX_AGENTIC_TURNS = 4  # proteção contra loop infinito
 
+
+def _groq_messages_base(command: str, config) -> tuple[str, str, list[dict]]:
+    """Monta api_key, model e lista de messages iniciais para o Groq."""
     api_key = config.get("ai.groq_api_key", "") or os.environ.get("GROQ_API_KEY", "")
     model = os.environ.get("GROQ_MODEL") or config.get("ai.groq_model", "llama-3.3-70b-versatile")
 
-    safe_command = command.encode("utf-8", errors="ignore").decode("utf-8").strip()
+    safe_cmd = command.encode("utf-8", errors="ignore").decode("utf-8").strip()
 
-    kb_ctx = _build_kb_context(safe_command)
+    kb_ctx = _build_kb_context(safe_cmd)
     dialog_ctx = _dialog_context_prompt()
 
-    system_parts = ["You are Paçoca, a desktop assistant. Use the provided tools to execute user requests."]
+    system_parts = [
+        "You are Paçoca, a helpful personal desktop assistant. "
+        "Reply in the same language the user used. "
+        "Use the provided tools to execute requests. "
+        "After executing a tool, produce a natural, concise response in the user's language."
+    ]
     if dialog_ctx:
         system_parts.append(dialog_ctx)
     if kb_ctx:
         system_parts.append(kb_ctx)
 
+    # Injeta histórico de conversa da sessão como mensagens anteriores
+    messages: list[dict] = [{"role": "system", "content": "\n\n".join(system_parts)}]
+    try:
+        from storage.context import get_turns
+        for user_turn, assistant_turn in get_turns()[-3:]:
+            messages.append({"role": "user",      "content": user_turn})
+            messages.append({"role": "assistant", "content": assistant_turn})
+    except Exception:
+        pass
+    messages.append({"role": "user", "content": safe_cmd})
+
+    return api_key, model, messages
+
+
+def _groq_call(api_key: str, model: str, messages: list[dict], tool_choice="auto") -> dict:
+    """Chama a API Groq e retorna o JSON parsed da resposta."""
+    import requests
     resp = requests.post(
         "https://api.groq.com/openai/v1/chat/completions",
         headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
         json={
             "model": model,
-            "messages": [
-                {"role": "system", "content": "\n\n".join(system_parts)},
-                {"role": "user", "content": safe_command},
-            ],
+            "messages": messages,
             "tools": TOOLS,
-            "tool_choice": "auto",
+            "tool_choice": tool_choice,
             "max_tokens": 512,
         },
-        timeout=10,
+        timeout=12,
     )
     resp.raise_for_status()
+    return resp.json()
 
-    tool_calls = resp.json()["choices"][0]["message"].get("tool_calls") or []
+
+def _parse_with_groq(command: str, config) -> list[dict]:
+    """
+    Classifica o comando via Groq — retorna lista de tool calls para o pipeline
+    de classificação (parse_intent). Não executa, não produz resposta final.
+    """
+    api_key, model, messages = _groq_messages_base(command, config)
+    data = _groq_call(api_key, model, messages)
+
+    tool_calls = data["choices"][0]["message"].get("tool_calls") or []
     logger.debug("Groq NLU: %d tool(s) → %s",
                  len(tool_calls), [tc.get("function", {}).get("name") for tc in tool_calls])
 
@@ -653,6 +821,96 @@ def _parse_with_groq(command: str, config) -> list[dict]:
         result.append({"name": fn.get("name", ""), "arguments": args})
 
     return result
+
+
+def run_agentic_loop(command: str) -> str:
+    """
+    Loop agentivo completo com Groq:
+      1. LLM seleciona ferramenta(s)
+      2. Python executa cada ferramenta
+      3. Resultados voltam ao LLM como tool messages
+      4. LLM produz resposta final em linguagem natural
+    Repete até _MAX_AGENTIC_TURNS ou até o LLM parar de chamar ferramentas.
+    Retorna a resposta final em texto.
+    """
+    try:
+        from core.config import Config
+        config = Config()
+    except Exception:
+        return ""
+
+    if config.get("ai.provider", "ollama") != "groq":
+        return ""
+
+    api_key = config.get("ai.groq_api_key", "") or os.environ.get("GROQ_API_KEY", "")
+    if not api_key:
+        logger.warning("run_agentic_loop: GROQ_API_KEY não configurado — loop agentivo desabilitado")
+        return ""
+
+    api_key, model, messages = _groq_messages_base(command, config)
+
+    for turn in range(_MAX_AGENTIC_TURNS):
+        try:
+            data = _groq_call(api_key, model, messages)
+        except Exception as e:
+            logger.warning("run_agentic_loop: chamada Groq falhou (turn %d): %s", turn, e)
+            break
+
+        choice = data["choices"][0]
+        msg    = choice["message"]
+        finish = choice.get("finish_reason", "")
+
+        # Nenhuma ferramenta chamada → resposta final em texto
+        if finish != "tool_calls" or not msg.get("tool_calls"):
+            final = (msg.get("content") or "").strip()
+            logger.debug("run_agentic_loop: resposta final após %d turn(s)", turn + 1)
+            return final
+
+        # Adiciona a mensagem do assistente (com as tool_calls) ao histórico
+        messages.append({"role": "assistant", "content": msg.get("content") or "", "tool_calls": msg["tool_calls"]})
+
+        # Executa cada ferramenta e adiciona resultado como tool message
+        for tc in msg["tool_calls"]:
+            fn   = tc.get("function", {})
+            name = fn.get("name", "")
+            try:
+                args = json.loads(fn.get("arguments", "{}"))
+            except Exception:
+                args = {}
+                logger.warning("run_agentic_loop: JSON inválido em '%s' — args zerados; abortando execução", name)
+                messages.append({"role": "tool", "tool_call_id": tc.get("id", ""),
+                                 "content": f"Erro: argumentos inválidos para '{name}'. Ação não executada."})
+                continue
+
+            # Valida args obrigatórios antes de executar (evita close_app(""))
+            arg_error = _check_required_args(name, args)
+            if arg_error:
+                logger.warning("run_agentic_loop: %s", arg_error)
+                messages.append({"role": "tool", "tool_call_id": tc.get("id", ""),
+                                 "content": arg_error})
+                continue
+
+            # Confirmação para ações destrutivas
+            if _needs_confirmation(name, args) and not _confirm_action(name, args):
+                messages.append({"role": "tool", "tool_call_id": tc.get("id", ""),
+                                 "content": f"Ação '{name}' cancelada pelo usuário."})
+                continue
+
+            tool_result = _execute_tool(name, args)
+            logger.debug("run_agentic_loop: %s(%s) → %r", name, args, tool_result[:80])
+
+            messages.append({
+                "role":         "tool",
+                "tool_call_id": tc.get("id", ""),
+                "content":      tool_result,
+            })
+
+    # Se chegou ao limite de turns, pede resposta final sem ferramentas
+    try:
+        data = _groq_call(api_key, model, messages, tool_choice="none")
+        return (data["choices"][0]["message"].get("content") or "").strip()
+    except Exception:
+        return ""
 
 
 # ── Ollama: NLU few-shot via /api/chat ────────────────────────────────
@@ -756,10 +1014,15 @@ def _extract_json(raw: str) -> Optional[list[dict]]:
 
 def _validate(calls: list[dict]) -> list[dict]:
     """Descarta calls com ferramenta desconhecida ou argumentos inválidos."""
+    try:
+        from modules.tools import known_tools
+        valid_names = known_tools()
+    except Exception:
+        valid_names = _VALID_TOOLS
     valid = []
     for call in calls:
         name = call.get("name", "")
-        if name not in _VALID_TOOLS:
+        if name not in valid_names:
             logger.warning("NLU gerou ferramenta desconhecida ignorada: %r", name)
             continue
         args = call.get("arguments", {})
@@ -790,24 +1053,14 @@ def _build_kb_context(command: str) -> str:
 
 def execute_actions(actions: list[dict]) -> list[str]:
     responses = []
-    spotify_just_opened = False
-
     for act in actions:
         name = act.get("name", "")
         args = act.get("arguments", {})
         try:
-            # Confirmação para ações destrutivas vindas do NLU (issue de segurança)
             if _needs_confirmation(name, args) and not _confirm_action(name, args):
                 responses.append("Ação cancelada.")
                 continue
-
-            if name == "open_application" and args.get("name", "").lower() == "spotify":
-                spotify_just_opened = True
-
-            if name == "control_media":
-                args = {**args, "_spotify_just_opened": spotify_just_opened}
-
-            result = _execute(name, args)
+            result = _execute_tool(name, args)
             if result:
                 responses.append(result)
         except Exception as e:
@@ -816,70 +1069,33 @@ def execute_actions(actions: list[dict]) -> list[str]:
     return responses
 
 
-def _execute(name: str, args: dict) -> str:
-    from modules import system_control
-
-    if name == "open_application":
-        return system_control.open_app(args.get("name", ""))
-
-    if name == "open_folder":
-        return system_control.open_folder(args.get("path", ""))
-
-    if name == "open_browser":
-        return system_control.open_browser_with_search(
-            args.get("browser", "chrome"), args.get("destination", "")
-        )
-
-    if name == "close_application":
-        return system_control.close_app(args.get("name", ""))
-
-    if name == "set_volume":
-        return system_control.set_volume(str(args.get("level", 50)))
-
-    if name == "web_search":
-        from modules.search import search_web
-        return search_web(args.get("query", ""))
-
-    if name == "answer_question":
-        from modules.summarizer import ask_ai
-        return ask_ai(args.get("question", ""))
-
-    if name == "git_operation":
-        return _git(args)
-
-    if name == "control_media":
-        return _media(args)
-
-    return f"Ferramenta desconhecida: {name}"
+def _check_required_args(name: str, args: dict) -> str:
+    """
+    Valida args via ToolRegistry (Pydantic).
+    Retorna mensagem de erro ou string vazia se OK.
+    """
+    try:
+        from modules.tools import validate
+        _, err = validate(name, args)
+        return err
+    except Exception as e:
+        return f"Erro de validação para '{name}': {e}"
 
 
-def _media(args: dict) -> str:
-    from modules import spotify_ctrl
-    action = args.get("action", "play")
-    query = args.get("query", "")
-    just_opened = args.get("_spotify_just_opened", False)
-    if action == "play":
-        return spotify_ctrl.play_search(query, spotify_just_opened=just_opened)
-    if action == "pause":
-        return spotify_ctrl.pause()
-    if action == "resume":
-        return spotify_ctrl.resume()
-    if action == "next":
-        return spotify_ctrl.next_track()
-    if action == "previous":
-        return spotify_ctrl.previous_track()
-    if action == "current":
-        return spotify_ctrl.current_track()
-    return "Ação de mídia desconhecida."
+def _execute_tool(name: str, args: dict) -> str:
+    """
+    Valida args via Pydantic e executa a ferramenta via ToolRegistry.
+    Ponto único de execução — usado por run_agentic_loop e execute_actions.
+    """
+    try:
+        from modules.tools import validate, execute
+        validated, err = validate(name, args)
+        if err:
+            logger.warning("_execute_tool: %s", err)
+            return err
+        return execute(name, validated)
+    except Exception as e:
+        logger.error("_execute_tool '%s' falhou: %s", name, e, exc_info=True)
+        return f"Erro ao executar '{name}': {e}"
 
 
-def _git(args: dict) -> str:
-    from modules import dev_tools
-    op = args.get("operation", "status")
-    if op == "status":  return dev_tools.git_status()
-    if op == "log":     return dev_tools.git_log()
-    if op == "push":    return dev_tools.git_push()
-    if op == "pull":    return dev_tools.git_pull()
-    if op == "commit":  return dev_tools.git_commit(args.get("message", "update"))
-    if op == "branch":  return dev_tools.git_create_branch(args.get("branch_name", ""))
-    return "Operação git desconhecida."
