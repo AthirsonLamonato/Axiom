@@ -224,6 +224,8 @@ def init(config):
 
     except ImportError:
         logger.warning("PyQt6 não instalado. Overlay desabilitado.")
+    except Exception as e:
+        logger.warning("Overlay desabilitado (plugin Qt não carregou): %s", e)
 
 
 def run_main_loop():

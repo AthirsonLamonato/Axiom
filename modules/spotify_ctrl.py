@@ -84,8 +84,18 @@ def _parse_query(raw: str) -> tuple[str, str]:
       'Rap God do Eminem'        → ('Rap God', 'Eminem')
       'uma música do Eminem'     → ('', 'Eminem')
       'Bohemian Rhapsody'        → ('Bohemian Rhapsody', '')
+      'o artista Eminem'         → ('', 'Eminem')
+      'toca Linkin Park'         → ('Linkin Park', '')
     """
     raw = raw.strip().rstrip(".,!")
+
+    # Remove verbos iniciais que possam ter escapado das rotas ("toca", "play", etc.)
+    raw = _LEADING_VERBS_Q.sub("", raw).strip()
+
+    # "o artista X" / "a banda X" / "cantor X" etc. → artist
+    leading_artist = _ARTIST_LEADING.match(raw)
+    if leading_artist:
+        return "", leading_artist.group(1).strip()
 
     # Padrão: "[track] do/de [artista]"
     artist_match = _ARTIST_PREFIXES.search(raw)
@@ -350,6 +360,16 @@ _LEADING_ARTICLES = re.compile(
     r'^(?:o|a|os|as|um|uma|the|an?)\s+', re.IGNORECASE
 )
 
+_LEADING_VERBS_Q = re.compile(
+    r'^(?:toca[r]?|toque|play|coloca[r]?|bota[r]?|quero\s+ouvir)\s+',
+    re.IGNORECASE
+)
+
+_ARTIST_LEADING = re.compile(
+    r'^(?:(?:o|a)\s+)?(?:artista|cantor[a]?|banda|grupo|álbum|album)\s+(.+)$',
+    re.IGNORECASE
+)
+
 
 def _best_artist_match(candidates: list[dict], query: str) -> dict | None:
     """
@@ -383,7 +403,8 @@ def _api_play_search(query: str) -> str:
         if _fuzzy_match_playlist(clean, user_playlists):
             return _api_play_playlist(clean)
 
-    _ensure_active_device()
+    if not _ensure_active_device():
+        return "Por favor, abra o Spotify em algum dispositivo primeiro."
 
     # Caso 1: "Rap God do Eminem" → track + artist
     if track and artist:

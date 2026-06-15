@@ -34,8 +34,11 @@ ROUTES: list[tuple[str, str, bool]] = [
     (r"toca?\s+(?:a\s+)?playlist\s+(.+)",                 "modules.spotify_ctrl:play_playlist",  False),
     (r"toca?\s+(?:a\s+)?m[úu]sica\s+(.+)",               "modules.spotify_ctrl:play_search",    False),
     (r"toca?\s+(?:o\s+artista\s+)?(.+)\s+no\s+spotify",  "modules.spotify_ctrl:play_search",    False),
-    (r"to(?:ca?|qu?e?)\s+(.+)",                            "modules.spotify_ctrl:play_search",    False),
-    (r"play\s+(.+)",                                      "modules.spotify_ctrl:play_search",    False),
+    # Rota genérica: exclui palavras que claramente não são música (resumo, reunião, etc.)
+    (r"to(?:ca?|qu?e?)\s+(?!(?:o\s+|a\s+)?(?:resumo|relat[oó]rio|transcri[çc][aã]o|sess[aã]o|reuni[aã]o|resultado|backup|config)\b)(.+)",
+                                                           "modules.spotify_ctrl:play_search",    False),
+    (r"play\s+(?!(?:o\s+|a\s+)?(?:resumo|relat[oó]rio|transcri[çc][aã]o|sess[aã]o|reuni[aã]o)\b)(.+)",
+                                                           "modules.spotify_ctrl:play_search",    False),
     (r"(pausa|para|silencia)\s*(?:a\s+)?m[úu]sica",      "modules.spotify_ctrl:pause",          False),
     (r"(pausa|para)\s*(?:o\s+)?spotify",                  "modules.spotify_ctrl:pause",          False),
     (r"(retoma|continua|play)\s*(?:a\s+)?m[úu]sica",     "modules.spotify_ctrl:resume",         False),
