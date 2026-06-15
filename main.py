@@ -42,6 +42,20 @@ if sys.platform == "win32" and hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
     sys.stderr.reconfigure(encoding="utf-8")
 
+def _load_dotenv():
+    """Carrega variáveis do .env sem depender de python-dotenv."""
+    env_path = Path(__file__).parent / ".env"
+    if not env_path.exists():
+        return
+    with open(env_path) as f:
+        for line in f:
+            line = line.strip()
+            if line and not line.startswith("#") and "=" in line:
+                key, _, value = line.partition("=")
+                os.environ.setdefault(key.strip(), value.strip())
+
+_load_dotenv()
+
 from core.orchestrator import Orchestrator
 from core.config import Config
 from core.logger import setup_logging
@@ -181,16 +195,30 @@ def main():
     if args.profile:
         config.set("profile.active", args.profile)
 
-    # Inicializa banco de dados SQLite
+    # Inicializa banco de dados SQLite e memória de longo prazo
     from storage import db
     db.init()
+    try:
+        from storage import memory as _mem
+        _mem.init()
+    except Exception as _e:
+        import logging
+        logging.getLogger(__name__).warning("Memória não inicializada: %s", _e)
+
+    try:
+        from storage import knowledge_base as _kb
+        _kb.init()
+    except Exception as _e:
+        import logging
+        logging.getLogger(__name__).warning("Knowledge base não inicializada: %s", _e)
 
     # Rastreamento de produtividade em background
     from modules import productivity
     productivity.start_tracking()
 
     # Overlay visual (se habilitado)
-    if config.get("overlay.enabled", True):
+    _overlay_enabled = config.get("overlay.enabled", True)
+    if _overlay_enabled:
         from output import overlay
         overlay.init(config)
 
@@ -218,10 +246,24 @@ def main():
 
     notify("Paçoca iniciada", f"Modo {args.mode} ativo. Perfil: {config.get('profile.active', 'work')}")
 
-    if args.mode == "text":
-        orchestrator.run_text_loop()
+    import threading
+
+    def _run_orchestrator():
+        if args.mode == "text":
+            orchestrator.run_text_loop()
+        else:
+            orchestrator.run_voice_loop()
+
+    if _overlay_enabled:
+        from output import overlay as _overlay_mod
+        if _overlay_mod._instance:
+            t = threading.Thread(target=_run_orchestrator, daemon=True)
+            t.start()
+            _overlay_mod.run_main_loop()  # Qt event loop na main thread
+        else:
+            _run_orchestrator()
     else:
-        orchestrator.run_voice_loop()
+        _run_orchestrator()
 
 
 if __name__ == "__main__":

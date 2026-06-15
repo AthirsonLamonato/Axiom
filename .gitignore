@@ -29,6 +29,7 @@ core/credentials.json
 core/token.json
 .env
 *.env
+.spotify_token.json
 
 # ── Config local (use config.yaml como base) ──
 # core/config.yaml  ← versionado propositalmente

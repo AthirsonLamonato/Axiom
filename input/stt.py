@@ -186,16 +186,9 @@ class VoiceInput:
     # ── Push-to-talk ───────────────────────────────────────────────────
 
     def _listen_push_to_talk(self) -> str:
-        """Aguarda ctrl+shift+space, captura e transcreve."""
-        import keyboard
-
-        print("[Paçoca] Pressione ctrl+shift+space para falar...", end=" ", flush=True)
-
-        event = threading.Event()
-        keyboard.add_hotkey("ctrl+shift+space", event.set, suppress=True)
-        event.wait()
-        keyboard.remove_hotkey("ctrl+shift+space")
-
+        """Aguarda Enter no terminal, captura áudio e transcreve."""
+        print("[Paçoca] Pressione Enter para falar...", end=" ", flush=True)
+        input()
         print("gravando...", end=" ", flush=True)
         return self._capture_and_transcribe()
 

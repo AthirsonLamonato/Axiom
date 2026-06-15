@@ -78,10 +78,10 @@ def _ask_ollama(prompt: str, system: str, config) -> str:
 
 
 def _ask_groq(prompt: str, system: str, config) -> str:
-    api_key = os.environ.get("GROQ_API_KEY", "")
+    api_key = config.get("ai.groq_api_key", "") or os.environ.get("GROQ_API_KEY", "")
     if not api_key:
         return "GROQ_API_KEY não definida. Obtenha gratuitamente em console.groq.com"
-    model = config.get("ai.groq_model", "llama3-8b-8192")
+    model = os.environ.get("GROQ_MODEL") or config.get("ai.groq_model", "llama-3.1-8b-instant")
     max_tokens = config.get("ai.max_tokens", 1024)
     try:
         resp = requests.post(
@@ -103,10 +103,10 @@ def _ask_groq(prompt: str, system: str, config) -> str:
         resp.raise_for_status()
         return resp.json()["choices"][0]["message"]["content"].strip()
     except requests.Timeout:
-        return "Timeout: Groq demorou muito para responder."
+        return "Não entendi o comando. Pode repetir?"
     except Exception as e:
         logger.error(f"Erro Groq: {e}")
-        return f"Erro ao consultar Groq: {e}"
+        return "Não consegui processar isso. Pode tentar de novo?"
 
 
 # ── Funções de alto nível ──────────────────────────────────────────────

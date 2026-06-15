@@ -17,7 +17,7 @@ wake_word:
 
 # ── Speech-to-Text ────────────────────────────
 stt:
-  model: base           # tiny | base | small | medium | large
+  model: small          # tiny | base | small | medium | large
   language: pt          # código do idioma
   device: cpu           # cpu | cuda (GPU Nvidia)
   auto_calibrate: true  # calibrar ruído ambiente na inicialização do modo voz
@@ -25,10 +25,11 @@ stt:
 
 # ── IA local (Ollama) ─────────────────────────
 ai:
-  provider: ollama      # ollama | groq
+  provider: groq        # ollama | groq
   model: llama3         # llama3 | mistral | phi3 (modelos Ollama)
   ollama_url: http://localhost:11434
-  groq_model: llama3-8b-8192   # modelo Groq (llama3-8b-8192 | mixtral-8x7b-32768)
+  groq_model: llama-3.1-8b-instant  # sobrescrito por GROQ_MODEL no .env
+  groq_api_key: ""                   # sobrescrito por GROQ_API_KEY no .env
   max_tokens: 1024
   use_context: true     # injeta histórico da sessão no prompt (memória contextual)
   system_prompt: |
@@ -39,8 +40,9 @@ ai:
 # ── Text-to-Speech ────────────────────────────
 tts:
   enabled: true
-  engine: pyttsx3       # pyttsx3
-  rate: 175             # palavras por minuto
+  engine: edge          # edge | pyttsx3 | coqui
+  edge_voice: pt-BR-FranciscaNeural  # pt-BR-FranciscaNeural | pt-BR-AntonioNeural
+  rate: 175             # palavras por minuto (só pyttsx3)
   volume: 0.9
 
 # ── Overlay visual ────────────────────────────

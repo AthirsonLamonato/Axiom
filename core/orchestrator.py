@@ -29,10 +29,27 @@ def _import_module(name: str):
 # ── Tabela de rotas ────────────────────────────────────────────────────
 # (padrão regex, handler, requer_confirmação)
 ROUTES: list[tuple[str, str, bool]] = [
+    # Spotify — rotas diretas (não passam pelo LLM)
+    (r"autoriza\w*.*spotify",                             "modules.spotify_ctrl:authorize",      False),
+    (r"toca?\s+(?:a\s+)?playlist\s+(.+)",                 "modules.spotify_ctrl:play_playlist",  False),
+    (r"toca?\s+(?:a\s+)?m[úu]sica\s+(.+)",               "modules.spotify_ctrl:play_search",    False),
+    (r"toca?\s+(?:o\s+artista\s+)?(.+)\s+no\s+spotify",  "modules.spotify_ctrl:play_search",    False),
+    (r"to(?:ca?|qu?e?)\s+(.+)",                            "modules.spotify_ctrl:play_search",    False),
+    (r"play\s+(.+)",                                      "modules.spotify_ctrl:play_search",    False),
+    (r"(pausa|para|silencia)\s*(?:a\s+)?m[úu]sica",      "modules.spotify_ctrl:pause",          False),
+    (r"(pausa|para)\s*(?:o\s+)?spotify",                  "modules.spotify_ctrl:pause",          False),
+    (r"(retoma|continua|play)\s*(?:a\s+)?m[úu]sica",     "modules.spotify_ctrl:resume",         False),
+    (r"pr[oó]xima\s*(?:m[úu]sica|faixa)?",               "modules.spotify_ctrl:next_track",     False),
+    (r"(anterior|volta)\s*(?:m[úu]sica|faixa)?",         "modules.spotify_ctrl:previous_track", False),
+    (r"o\s+que\s+(est[áa]\s+tocando|toca\s+agora)",      "modules.spotify_ctrl:current_track",  False),
+    (r"que\s+m[úu]sica\s+[ée]\s+essa",                   "modules.spotify_ctrl:current_track",  False),
+    # Browser + pesquisa combinado (deve vir antes das rotas genéricas de "abre")
+    (r"abr[ae]\s+(?:o\s+)?(\w+)\s+(?:e\s+(?:pesquisa|busca|vai\s+(?:para|pro|pra))|no|na|em|n[oa]\s+(?:site|página|pagina)\s+(?:do|da|de)?)\s+(.+)",
+                                              "modules.system_control:open_browser_with_search", False),
     # Dev tools específicos (antes das rotas genéricas de "abre/fecha")
-    (r"abre\s+o\s+(vs\s?code|vscode|editor)", "modules.dev_tools:open_vscode",  False),
-    (r"abre\s+o\s+arquivo\s+(.+)",        "modules.dev_tools:open_file",        False),
-    (r"abre\s+o\s+file\s+(.+)",           "modules.dev_tools:open_file",        False),
+    (r"abr[ae]\s+o\s+(vs\s?code|vscode|editor)", "modules.dev_tools:open_vscode",  False),
+    (r"abr[ae]\s+o\s+arquivo\s+(.+)",        "modules.dev_tools:open_file",        False),
+    (r"abr[ae]\s+o\s+file\s+(.+)",           "modules.dev_tools:open_file",        False),
     (r"vai\s+para\s+a?\s*linha\s+(\d+)",  "modules.dev_tools:goto_line",        False),
     (r"novo\s+terminal",                  "modules.dev_tools:open_terminal",    False),
     (r"cria\s+(arquivo|file)\s+(.+)",     "modules.dev_tools:create_file",      False),
@@ -49,7 +66,7 @@ ROUTES: list[tuple[str, str, bool]] = [
     (r"(roda|executa)\s+(os\s+)?testes",  "modules.dev_tools:run_tests",        False),
 
     # Overlay específico (antes de "abre/fecha" genérico)
-    (r"abre\s+o\s+overlay",               "output.overlay:show",                False),
+    (r"abr[ae]\s+o\s+overlay",               "output.overlay:show",                False),
     (r"fecha\s+o\s+overlay",              "output.overlay:hide",                False),
 
     # Dashboard web (antes de "abre/fecha" genérico)
@@ -57,14 +74,18 @@ ROUTES: list[tuple[str, str, bool]] = [
     (r"(inicia|sobe)\s+(a\s+)?interface\s+web",     "modules.web_server:start",  False),
     (r"(para|fecha)\s+o\s+(servidor\s+web|dashboard)", "modules.web_server:stop", False),
 
+    # Pastas
+    (r"abr[ae]?\s+(?:a\s+)?pasta\s+(?:de\s+)?(.+)",  "modules.system_control:open_folder", False),
+    (r"abr[ae]?\s+(?:o\s+)?explorador(?:\s+(?:de\s+)?(.+))?", "modules.system_control:open_folder", False),
+
     # Sistema (rotas genéricas por último)
     (r"volume\s+(\d+)",                   "modules.system_control:set_volume",  False),
     (r"(aumenta|sobe)\s+o\s+brilho",      "modules.system_control:brightness_up",   False),
     (r"(diminui|baixa)\s+o\s+brilho",     "modules.system_control:brightness_down", False),
     (r"(muta|silencia)\s+o?\s*(som|áudio)","modules.system_control:mute",       False),
     (r"(lista|mostra)\s+processos",       "modules.system_control:list_processes", False),
-    (r"abre?\s+(.+)",                     "modules.system_control:open_app",    False),
-    (r"fecha?\s+(.+)",                    "modules.system_control:close_app",   True),
+    (r"abr[ae]?\s+(.+)",                     "modules.system_control:open_app",    False),
+    (r"fech[ae]?\s+(.+)",                    "modules.system_control:close_app",   True),
 
     # Transcrição
     (r"(começa|inicia|start)\s+transcri(.+)?",   "modules.transcription:start",    False),
@@ -85,8 +106,23 @@ ROUTES: list[tuple[str, str, bool]] = [
     (r"resumo\s+detalhado",               "modules.summarizer:summarize_detailed", False),
     (r"(explica?|o\s+que\s+é)\s+(.+)",   "modules.summarizer:explain",         False),
 
-    # Pesquisa
-    (r"(pesquisa|busca\s+na\s+internet)\s+(.+)", "modules.search:route",       False),
+    # Cotações financeiras
+    (r"(?:qual\s+(?:é\s+)?(?:o\s+)?(?:valor|cotação|preço|cotacao)\s+(?:do|da|de)\s+|quanto\s+(?:está?|custa?|vale)\s+(?:o\s+|a\s+)?)(.+?)(?:\s+(?:hoje|agora|atualmente))?$",
+                                          "modules.finance:get_quote",           False),
+    (r"converte?\s+(.+)",                 "modules.finance:convert",             False),
+    (r"([\d]+(?:[.,]\d+)?\s*(?:dólar(?:es)?|dolar(?:es)?|euro[s]?|bitcoin|btc|usd|eur)(?:\s+em\s+reais?)?)",
+                                          "modules.finance:convert",             False),
+
+    # Clima
+    (r"(?:como\s+(?:está|ta|tá)\s+o\s+(?:clima|tempo)|previsão\s+(?:do\s+)?tempo|que\s+tempo\s+(?:faz|está))\s+(?:em\s+|n[ao]\s+)?(.+)",
+                                          "modules.weather:get_weather",         False),
+    (r"(?:como\s+(?:está|ta|tá)\s+o\s+(?:clima|tempo)|previsão\s+(?:do\s+)?tempo)$",
+                                          "modules.weather:get_weather",         False),
+
+    # Pesquisa / abrir URL direta
+    (r"pesquis[ae]\w*\s+(.+)",             "modules.system_control:open_search", False),
+    (r"busca\w*\s+(.+)",                  "modules.system_control:open_search", False),
+    (r"abr[ae]?\s+(https?://\S+)",           "modules.system_control:open_url",    False),
     (r"busca\s+por\s+ia\s+(.+)",          "modules.search:search_ai",           False),
 
     # Rotinas
@@ -170,14 +206,79 @@ ROUTES: list[tuple[str, str, bool]] = [
                                                   "core.plugin_loader:list_loaded",                False),
     (r"(recarrega|reload)\s+(os\s+)?plugins",     "core.plugin_loader:reload_all",                 False),
 
+    # Memória / knowledge base
+    (r"lembra\s+que\s+(.+)",              "core.orchestrator:kb_remember",       False),
+    (r"esquece?\s+(?:que\s+)?(.+)",       "core.orchestrator:kb_forget",         False),
+    (r"o\s+que\s+você\s+(sabe|lembra|conhece)\s+(sobre\s+)?mim",
+                                          "core.orchestrator:kb_show",           False),
+    (r"mostra\s+(?:as\s+)?memórias?",     "core.orchestrator:kb_show",           False),
+    (r"mostra\s+(?:as\s+)?prefer[eê]ncias?","core.orchestrator:kb_show_prefs",   False),
+
+    # Vocabulário e aprendizado
+    (r"aprende\s+que\s+(.+?)\s+(?:significa|é|quer dizer)\s+(.+)",
+                                          "core.orchestrator:teach_vocabulary",  False),
+    (r"(relatório|relatorio)\s+de\s+aprendizado", "core.orchestrator:learning_report", False),
+    (r"o\s+que\s+você\s+(aprendeu|sabe)",  "core.orchestrator:learning_report",  False),
+
     # Meta
-    (r"ajuda|help|\?",                    "core.orchestrator:list_commands",    False),
+    (r"^(ajuda|help|\?)$",                 "core.orchestrator:list_commands",    False),
 ]
 
 _CHAIN_SEP = re.compile(
     r'\s+(?:e depois|depois disso|em seguida|então|entao)\s+', re.IGNORECASE
 )
 _CHAIN_AND = re.compile(r'\s+e\s+', re.IGNORECASE)
+
+
+def kb_remember(statement: str) -> str:
+    try:
+        from storage.knowledge_base import remember
+        return remember(statement.strip())
+    except Exception as e:
+        return f"Erro ao memorizar: {e}"
+
+
+def kb_forget(key: str) -> str:
+    try:
+        from storage.knowledge_base import forget
+        return forget(key.strip())
+    except Exception as e:
+        return f"Erro ao esquecer: {e}"
+
+
+def kb_show(*_) -> str:
+    try:
+        from storage.knowledge_base import show_memories
+        return show_memories()
+    except Exception as e:
+        return f"Erro ao listar memórias: {e}"
+
+
+def kb_show_prefs(*_) -> str:
+    try:
+        from storage.knowledge_base import show_memories
+        return show_memories("preferences")
+    except Exception as e:
+        return f"Erro: {e}"
+
+
+def teach_vocabulary(heard: str, intended: str) -> str:
+    """Ensina o Paçoca que `heard` deve ser interpretado como `intended`."""
+    try:
+        from modules.learner import learn_vocabulary_from_correction
+        learn_vocabulary_from_correction(heard.strip(), intended.strip())
+        return f"Entendido! Quando eu escutar '{heard}', vou interpretar como '{intended}'."
+    except Exception as e:
+        return f"Erro ao aprender vocabulário: {e}"
+
+
+def learning_report(*_) -> str:
+    """Retorna relatório de aprendizado acumulado."""
+    try:
+        from modules.learner import analyze_and_optimize
+        return analyze_and_optimize()
+    except Exception as e:
+        return f"Erro ao gerar relatório: {e}"
 
 
 def list_commands(*_) -> str:
@@ -272,13 +373,24 @@ class Orchestrator:
                     break
                 if overlay:
                     overlay.set_state("processing")
-                response = self.dispatch_chain(command)
+
+                learner = _import_module("modules.learner")
+                corrected = learner.correct_transcription(command) if learner else command
+
+                response = self.dispatch_chain(corrected)
                 if response:
                     print(f"\n  Paçoca: {response}\n")
                     if overlay:
                         overlay.show_message(response)
                         overlay.set_state("speaking")
                     self.tts.speak(response)
+
+                if learner:
+                    success = bool(response and "não entendi" not in response.lower()
+                                   and "não consegui" not in response.lower())
+                    learner.record(command, response or "", resolved=corrected, source="text",
+                                   success=success)
+
                 if overlay:
                     overlay.set_state("idle")
             except (EOFError, KeyboardInterrupt):
@@ -319,12 +431,26 @@ class Orchestrator:
                 logger.info(f"Comando recebido: {command}")
                 if overlay:
                     overlay.set_state("processing")
-                response = self.dispatch_chain(command)
+
+                # Aplica vocabulário aprendido antes de despachar
+                learner = _import_module("modules.learner")
+                corrected = learner.correct_transcription(command) if learner else command
+
+                response = self.dispatch_chain(corrected)
                 if response:
+                    print(f"\n  Paçoca: {response}\n")
                     if overlay:
                         overlay.show_message(response)
                         overlay.set_state("speaking")
                     self.tts.speak(response)
+
+                # Registra interação para aprendizado
+                if learner:
+                    success = bool(response and "não entendi" not in response.lower()
+                                   and "não consegui" not in response.lower())
+                    learner.record(command, response or "", resolved=corrected, source="voice",
+                                   success=success)
+
                 if overlay:
                     overlay.set_state("idle")
 
@@ -346,6 +472,9 @@ class Orchestrator:
                 break
 
         if response is None:
+            response = self._intent_dispatch(command)
+
+        if response is None:
             response = self._fallback_ai(command)
 
         # Registra no contexto e expõe para clipboard
@@ -357,6 +486,15 @@ class Orchestrator:
                 set_last_response(response)
             except Exception:
                 pass
+
+        # Log na KB e extração de aprendizado em background
+        try:
+            from storage.knowledge_base import log_conversation, extract_and_learn
+            log_conversation(command, response or "")
+            if response:
+                extract_and_learn(command, response)
+        except Exception:
+            pass
 
         self._sync_tts_profile()
         return response
@@ -384,6 +522,17 @@ class Orchestrator:
         except Exception as e:
             logger.error(f"Erro ao executar '{handler_path}': {e}", exc_info=True)
             return f"Erro ao executar o comando: {e}"
+
+    def _intent_dispatch(self, command: str) -> Optional[str]:
+        """Usa LLM para interpretar o comando e executar ações estruturadas."""
+        intent = _import_module("modules.intent")
+        if not intent:
+            return None
+        actions = intent.parse_intent(command)
+        if not actions:
+            return None
+        responses = intent.execute_actions(actions)
+        return " | ".join(responses) if responses else None
 
     def _fallback_ai(self, command: str) -> str:
         """Repassa ao LLM quando nenhuma rota bate."""

@@ -8,8 +8,17 @@ import threading
 import queue
 import sys
 from collections import deque
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
+
+def _is_wsl() -> bool:
+    try:
+        return "microsoft" in Path("/proc/version").read_text().lower()
+    except Exception:
+        return False
+
+_NO_OPACITY = _is_wsl()  # WSL X11 não suporta opacidade de janela
 
 _instance: "PacocaOverlay | None" = None
 _msg_queue: queue.Queue = queue.Queue()
@@ -42,8 +51,9 @@ class PacocaOverlay:
             | Qt.WindowType.WindowStaysOnTopHint
             | Qt.WindowType.Tool
         )
-        self._window.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-        self._window.setWindowOpacity(0.0)
+        if not _NO_OPACITY:
+            self._window.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+            self._window.setWindowOpacity(0.0)
 
         root_layout = QVBoxLayout(self._window)
         root_layout.setContentsMargins(0, 0, 0, 0)
@@ -90,9 +100,12 @@ class PacocaOverlay:
         self._history_label.setStyleSheet("color: #666688; background: transparent; border: none;")
         inner.addWidget(self._history_label)
 
-        # Animação de opacidade
-        self._anim = QPropertyAnimation(self._window, b"windowOpacity")
-        self._anim.setEasingCurve(QEasingCurve.Type.InOutQuad)
+        # Animação de opacidade (desativada em WSL — X11 não suporta)
+        if not _NO_OPACITY:
+            self._anim = QPropertyAnimation(self._window, b"windowOpacity")
+            self._anim.setEasingCurve(QEasingCurve.Type.InOutQuad)
+        else:
+            self._anim = None
 
         # Timer para poll da queue (100ms)
         self._poll_timer = QTimer()
@@ -158,8 +171,17 @@ class PacocaOverlay:
         self._state_dot.setText(dot)
         self._state_dot.setStyleSheet(f"color: {color}; background: transparent; border: none;")
         self._state_label.setText(state.capitalize())
+        # Mostra a janela quando ativo, esconde quando ocioso (sem mensagem pendente)
+        if state == "idle":
+            if not self._msg_label.text():
+                self._fade_out()
+        else:
+            self._fade_in()
 
     def _fade_in(self):
+        if self._anim is None:
+            self._window.show()
+            return
         self._window.show()
         self._anim.stop()
         self._anim.setDuration(200)
@@ -168,10 +190,17 @@ class PacocaOverlay:
         self._anim.start()
 
     def _fade_out(self):
+        if self._anim is None:
+            self._window.hide()
+            return
         self._anim.stop()
         self._anim.setDuration(400)
         self._anim.setStartValue(self._window.windowOpacity())
         self._anim.setEndValue(0.0)
+        try:
+            self._anim.finished.disconnect()
+        except Exception:
+            pass
         self._anim.finished.connect(self._window.hide)
         self._anim.start()
 
@@ -185,11 +214,8 @@ def init(config):
     global _instance
     try:
         _instance = PacocaOverlay(config)
-        thread = threading.Thread(target=_instance.run, daemon=True)
-        thread.start()
-        logger.info("Overlay rodando em thread dedicada")
+        logger.info("Overlay inicializado (aguardando run_main_loop)")
 
-        # Hotkey ctrl+shift+a para mostrar/ocultar
         try:
             import keyboard
             keyboard.add_hotkey("ctrl+shift+a", toggle, suppress=False)
@@ -198,6 +224,12 @@ def init(config):
 
     except ImportError:
         logger.warning("PyQt6 não instalado. Overlay desabilitado.")
+
+
+def run_main_loop():
+    """Executa o event loop do Qt na main thread. Bloqueante."""
+    if _instance:
+        _instance.run()
 
 
 def show_message(text: str, duration_ms: int = None):
