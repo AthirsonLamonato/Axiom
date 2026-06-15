@@ -10,6 +10,7 @@ import os
 import re
 from datetime import datetime, timedelta, timezone
 from typing import Optional
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 logger = logging.getLogger(__name__)
 
@@ -78,10 +79,19 @@ def _format_event(event: dict) -> str:
     return f"{time_label}: {summary}{loc_part}"
 
 
+def _calendar_timezone():
+    timezone_name = _get_config().get("calendar.timezone", "America/Sao_Paulo")
+    try:
+        return ZoneInfo(timezone_name)
+    except ZoneInfoNotFoundError:
+        logger.warning("Fuso do calendário inválido: %s", timezone_name)
+        return datetime.now().astimezone().tzinfo
+
+
 # ── Comandos públicos ──────────────────────────────────────────────────
 
-def get_today_events(*_) -> str:
-    """Lista os eventos de hoje no Google Calendar."""
+def get_day_events(day: str = "hoje", *_) -> str:
+    """Lista eventos de hoje ou amanhã no fuso configurado."""
     try:
         service = _get_service()
     except (FileNotFoundError, RuntimeError) as e:
@@ -90,15 +100,19 @@ def get_today_events(*_) -> str:
         logger.error("Erro ao conectar Calendar: %s", e, exc_info=True)
         return f"Erro ao conectar com o Google Calendar: {e}"
 
-    now = datetime.now(timezone.utc)
-    start_of_day = now.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
-    end_of_day = now.replace(hour=23, minute=59, second=59, microsecond=0).isoformat()
+    tz = _calendar_timezone()
+    now = datetime.now(tz)
+    normalized_day = day.strip().lower()
+    offset = 1 if normalized_day in ("amanhã", "amanha") else 0
+    target = now + timedelta(days=offset)
+    start_of_day = target.replace(hour=0, minute=0, second=0, microsecond=0)
+    end_of_day = start_of_day + timedelta(days=1)
 
     try:
         result = service.events().list(
             calendarId="primary",
-            timeMin=start_of_day,
-            timeMax=end_of_day,
+            timeMin=start_of_day.isoformat(),
+            timeMax=end_of_day.isoformat(),
             singleEvents=True,
             orderBy="startTime",
             maxResults=10,
@@ -108,13 +122,18 @@ def get_today_events(*_) -> str:
         return f"Erro ao buscar eventos: {e}"
 
     events = result.get("items", [])
+    day_label = "amanhã" if offset else "hoje"
     if not events:
-        return "Nenhum evento encontrado para hoje."
+        return f"Nenhum evento encontrado para {day_label}."
 
-    lines = [f"Agenda de hoje ({now.strftime('%d/%m/%Y')}):"]
+    lines = [f"Agenda de {day_label} ({target.strftime('%d/%m/%Y')}):"]
     for ev in events:
         lines.append(f"  • {_format_event(ev)}")
     return "\n".join(lines)
+
+
+def get_today_events(*_) -> str:
+    return get_day_events("hoje")
 
 
 def get_next_event(*_) -> str:
@@ -202,11 +221,11 @@ def add_event(raw: str, *_) -> str:
     start_dt = base_date.replace(hour=hour, minute=minute, second=0, microsecond=0)
     end_dt = start_dt + timedelta(hours=1)
 
-    tz = datetime.now().astimezone().strftime("%Z")
+    timezone_name = _get_config().get("calendar.timezone", "America/Sao_Paulo")
     event_body = {
         "summary": title.capitalize(),
-        "start": {"dateTime": start_dt.isoformat(), "timeZone": "America/Sao_Paulo"},
-        "end": {"dateTime": end_dt.isoformat(), "timeZone": "America/Sao_Paulo"},
+        "start": {"dateTime": start_dt.isoformat(), "timeZone": timezone_name},
+        "end": {"dateTime": end_dt.isoformat(), "timeZone": timezone_name},
     }
 
     try:

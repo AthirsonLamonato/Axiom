@@ -1,6 +1,7 @@
 """Testes para core/orchestrator.py"""
 
 import os
+import re
 import sys
 import pytest
 import yaml
@@ -67,6 +68,11 @@ def test_dispatch_open_vscode_uses_dev_route(orchestrator):
 
 def test_dispatch_unknown_falls_to_ai(orchestrator, monkeypatch):
     """Comandos desconhecidos vão para o fallback de IA."""
+    # Isola o caminho NLU para garantir que chega ao _fallback_ai
+    monkeypatch.setattr("modules.intent.classify_local", lambda cmd: [])
+    monkeypatch.setattr("modules.intent.run_agentic_loop", lambda cmd: "")
+    monkeypatch.setattr("modules.intent.parse_intent_ollama", lambda cmd: [])
+    monkeypatch.setattr("modules.intent.parse_intent", lambda cmd: [])
     monkeypatch.setattr("modules.summarizer.ask_ai", lambda p, **kw: "resposta_ia")
     result = orchestrator.dispatch("comando completamente desconhecido xyz")
     assert result == "resposta_ia"
@@ -86,7 +92,61 @@ def test_dispatch_returns_string(orchestrator):
 
 def test_vscode_route_before_generic_open():
     """VS Code deve ter rota antes da rota genérica 'abre'."""
-    patterns = [r for r, _, _ in ROUTES]
-    vscode_idx = next(i for i, p in enumerate(patterns) if "vscode" in p or "vs" in p)
-    generic_idx = next(i for i, p in enumerate(patterns) if p == r"abre?\s+(.+)")
+    handlers = [handler for _, handler, _ in ROUTES]
+    vscode_idx = handlers.index("modules.dev_tools:open_vscode")
+    generic_idx = handlers.index("modules.system_control:open_app")
     assert vscode_idx < generic_idx, "Rota do VS Code deve vir antes da rota genérica 'abre'"
+
+
+def _matched_route(command):
+    for pattern, handler, confirm in ROUTES:
+        match = re.search(pattern, command.lower())
+        if match:
+            return handler, match.groups(), confirm
+    raise AssertionError(f"Nenhuma rota para: {command}")
+
+
+@pytest.mark.parametrize(
+    ("command", "handler", "groups"),
+    [
+        (
+            "me lembra em 30 minutos de fazer backup",
+            "modules.reminders:add",
+            ("me lembra em 30 minutos de fazer backup",),
+        ),
+        (
+            "cancela lembrete 2",
+            "modules.reminders:cancel",
+            ("2",),
+        ),
+        (
+            "muda para perfil casual",
+            "core.profiles:switch_profile",
+            ("casual",),
+        ),
+        (
+            "adiciona evento dentista amanhã às 10h30",
+            "modules.calendar_integration:add_event",
+            ("dentista amanhã às 10h30",),
+        ),
+        (
+            "abre https://example.com",
+            "modules.system_control:open_url",
+            ("https://example.com",),
+        ),
+        (
+            "foco por 2 h",
+            "modules.productivity:focus_start_hours",
+            ("2",),
+        ),
+        (
+            "começa transcrição do sistema",
+            "modules.transcription:start",
+            ("do sistema",),
+        ),
+    ],
+)
+def test_routes_pass_only_semantic_arguments(command, handler, groups):
+    matched_handler, matched_groups, _ = _matched_route(command)
+    assert matched_handler == handler
+    assert matched_groups == groups

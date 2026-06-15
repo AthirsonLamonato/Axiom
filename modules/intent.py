@@ -740,6 +740,34 @@ def parse_intent(command: str) -> list[dict]:
         return []
 
 
+def parse_intent_ollama(command: str) -> list[dict]:
+    """
+    Força o pipeline Ollama independente do ai.provider configurado.
+    Usado pelo orchestrator como fallback real quando Groq falha,
+    evitando que parse_intent() chame Groq novamente.
+    """
+    cached = _cache_get(command)
+    if cached is not None:
+        return cached
+    calls, _ = _parse_with_classifier(command)
+    if calls:
+        calls = _validate(calls)
+        _cache_set(command, calls)
+        _update_dialog_ctx(command, calls)
+        return calls
+    try:
+        from core.config import Config
+        config = Config()
+        calls = _parse_with_ollama_nlu(command, config)
+        calls = _validate(calls)
+        _cache_set(command, calls)
+        _update_dialog_ctx(command, calls)
+        return calls
+    except Exception as e:
+        logger.warning("parse_intent_ollama falhou: %s", e)
+        return []
+
+
 # ── Groq: loop agentivo completo ──────────────────────────────────────
 
 _MAX_AGENTIC_TURNS = 4  # proteção contra loop infinito

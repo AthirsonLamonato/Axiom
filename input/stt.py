@@ -263,6 +263,42 @@ class VoiceInput:
         logger.info("Transcrição: %r", text)
         return text
 
+    def listen_once(self, timeout: float = 6.0) -> str:
+        """
+        Captura e transcreve um único utterance com tempo máximo de `timeout` segundos.
+        Usado pelo callback de confirmação por voz.
+        """
+        import pyaudio
+        max_chunks = int(SAMPLE_RATE / CHUNK * timeout)
+        stream = self._pa.open(
+            rate=SAMPLE_RATE, channels=1, format=pyaudio.paInt16,
+            input=True, frames_per_buffer=CHUNK,
+        )
+        frames = []
+        voice_started = False
+        silence_count = 0
+        try:
+            for _ in range(max_chunks):
+                chunk = stream.read(CHUNK, exception_on_overflow=False)
+                frames.append(chunk)
+                energy = self._rms(chunk)
+                if energy > self._noise_threshold:
+                    voice_started = True
+                    silence_count = 0
+                elif voice_started:
+                    silence_count += 1
+                    if silence_count >= SILENCE_CHUNKS:
+                        break
+        finally:
+            stream.stop_stream()
+            stream.close()
+        if not frames:
+            return ""
+        audio = np.frombuffer(b"".join(frames), dtype=np.int16).astype(np.float32) / 32768.0
+        language = self.config.get("stt.language", "pt")
+        segments, _ = self._whisper.transcribe(audio, language=language, vad_filter=True)
+        return " ".join(s.text for s in segments).strip()
+
     def transcribe_file(self, path: str) -> str:
         language = self.config.get("stt.language", "pt")
         segments, _ = self._whisper.transcribe(path, language=language)

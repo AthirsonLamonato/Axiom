@@ -6,12 +6,14 @@ Ou via voz: 'abre o dashboard' / 'python main.py --web'
 
 import asyncio
 import hashlib
+import html as html_lib
 import json
 import logging
 import queue as _queue_module
 import threading
 from datetime import datetime
 from typing import Optional
+from urllib.parse import quote, urlsplit
 
 logger = logging.getLogger(__name__)
 
@@ -59,13 +61,24 @@ def _valid_token(token: str) -> bool:
     return token == _token_for(_web_password)
 
 
+def _valid_websocket(websocket) -> bool:
+    token = websocket.cookies.get("axiom_token", "")
+    if not _valid_token(token):
+        return False
+
+    origin = websocket.headers.get("origin", "")
+    host = websocket.headers.get("host", "")
+    if origin and urlsplit(origin).netloc != host:
+        return False
+    return True
+
+
 # ── Factory do app ────────────────────────────────────────────────────
 
 def _make_app():
     try:
         from fastapi import (
             FastAPI, Form, Request, WebSocket, WebSocketDisconnect,
-            HTTPException,
         )
         from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
         from starlette.middleware.base import BaseHTTPMiddleware
@@ -287,7 +300,8 @@ def _make_app():
 // ── WebSocket: comando ────────────────────────────────────────────────
 let cmdWs;
 function connectCmdWs() {
-  cmdWs = new WebSocket('ws://' + location.host + '/ws/command');
+  const wsScheme = location.protocol === 'https:' ? 'wss://' : 'ws://';
+  cmdWs = new WebSocket(wsScheme + location.host + '/ws/command');
   cmdWs.onopen = () => {
     document.getElementById('ws-status').textContent = '● online';
     document.getElementById('ws-status').className = 'ok';
@@ -327,7 +341,8 @@ document.addEventListener('DOMContentLoaded', () => {
 // ── WebSocket: eventos ao vivo ────────────────────────────────────────
 let evtWs;
 function connectEvtWs() {
-  evtWs = new WebSocket('ws://' + location.host + '/ws/events');
+  const wsScheme = location.protocol === 'https:' ? 'wss://' : 'ws://';
+  evtWs = new WebSocket(wsScheme + location.host + '/ws/events');
   evtWs.onmessage = (e) => {
     let evt;
     try { evt = JSON.parse(e.data); } catch { return; }
@@ -336,10 +351,14 @@ function connectEvtWs() {
     if (empty) empty.remove();
     const div = document.createElement('div');
     div.className = 'event-row';
-    const typeClass = 'event-type-' + (evt.type || 'info');
-    div.innerHTML = '<span class="event-ts">' + (evt.ts || '') + '</span>' +
-                    '<span class="' + typeClass + '">[' + (evt.type || 'info') + ']</span> ' +
-                    evt.message;
+    const eventType = ['reminder', 'meeting', 'info'].includes(evt.type) ? evt.type : 'info';
+    const ts = document.createElement('span');
+    ts.className = 'event-ts';
+    ts.textContent = evt.ts || '';
+    const type = document.createElement('span');
+    type.className = 'event-type-' + eventType;
+    type.textContent = '[' + eventType + ']';
+    div.append(ts, type, document.createTextNode(' ' + (evt.message || '')));
     list.prepend(div);
     while (list.children.length > 6) list.removeChild(list.lastChild);
   };
@@ -383,6 +402,9 @@ connectEvtWs();
 
     @app.websocket("/ws/command")
     async def ws_command(websocket: WebSocket):
+        if not _valid_websocket(websocket):
+            await websocket.close(code=1008)
+            return
         await websocket.accept()
         try:
             while True:
@@ -402,7 +424,7 @@ connectEvtWs();
                 else:
                     response = "Orchestrator não inicializado."
                 ts = datetime.now().strftime("%H:%M")
-                esc = (response or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+                esc = html_lib.escape(response or "")
                 await websocket.send_text(
                     f'<div class="response-box">'
                     f'<span style="color:#8b949e;font-size:0.8em">[{ts}]</span> {esc}'
@@ -417,6 +439,9 @@ connectEvtWs();
 
     @app.websocket("/ws/events")
     async def ws_events(websocket: WebSocket):
+        if not _valid_websocket(websocket):
+            await websocket.close(code=1008)
+            return
         await websocket.accept()
         q: _queue_module.Queue = _queue_module.Queue(maxsize=50)
         with _event_queues_lock:
@@ -440,12 +465,13 @@ connectEvtWs();
     @app.get("/api/status-html", response_class=HTMLResponse)
     async def status_html():
         data = _get_status_data()
-        profile = data["profile"]
+        profile = html_lib.escape(str(data["profile"]))
         badge_cls = f"badge-{profile}" if profile in ("work", "casual", "focus", "meeting", "night") else "badge-default"
         lang_display = {
             "pt": "Português", "en": "Inglês", "es": "Espanhol",
             "fr": "Francês",   "de": "Alemão", "it": "Italiano",
         }.get(data["language"], data["language"])
+        lang_display = html_lib.escape(str(lang_display))
         meeting = "🔴 Em reunião" if data["in_meeting"] else "⚪ Aguardando"
         detector = "✅ Ativo" if data["detector_on"] else "⏸ Inativo"
         return HTMLResponse(f"""
@@ -492,7 +518,8 @@ connectEvtWs();
         rows = ""
         for _, r in sorted(pending, key=lambda x: x[1]["fire_at"]):
             t = r["fire_at"].strftime("%H:%M")
-            rows += f'<div class="reminder-row"><span class="reminder-time">⏰ {t}</span>{r["message"]}</div>'
+            message = html_lib.escape(str(r["message"]))
+            rows += f'<div class="reminder-row"><span class="reminder-time">⏰ {t}</span>{message}</div>'
         return HTMLResponse(rows)
 
     @app.get("/api/context-html", response_class=HTMLResponse)
@@ -507,6 +534,8 @@ connectEvtWs();
         rows = ""
         for cmd, resp in turns[-5:]:
             short_resp = resp[:80] + "..." if len(resp) > 80 else resp
+            cmd = html_lib.escape(str(cmd))
+            short_resp = html_lib.escape(str(short_resp))
             rows += (
                 f'<div style="margin-bottom:8px">'
                 f'<div style="color:#c9d1d9">» {cmd}</div>'
@@ -527,8 +556,8 @@ connectEvtWs();
         html = "<table><tr><th>Hora</th><th>Comando</th><th>Resposta</th></tr>"
         for r in rows:
             ts = r["ts"][11:16] if r["ts"] else ""
-            cmd = (r["command"] or "")[:60]
-            resp = (r["response"] or "")[:100]
+            cmd = html_lib.escape((r["command"] or "")[:60])
+            resp = html_lib.escape((r["response"] or "")[:100])
             html += f"<tr><td class='ts'>{ts}</td><td class='cmd'>{cmd}</td><td class='resp'>{resp}</td></tr>"
         html += "</table>"
         return HTMLResponse(html)
@@ -548,14 +577,18 @@ connectEvtWs();
             label = body.get("name", name) if isinstance(body, dict) else name
             steps = body.get("steps", []) if isinstance(body, dict) else []
             steps_txt = ", ".join(s.get("action", "?") for s in steps) if steps else "sem etapas"
+            safe_name = html_lib.escape(str(name))
+            safe_label = html_lib.escape(str(label))
+            safe_steps = html_lib.escape(str(steps_txt))
+            encoded_name = quote(str(name), safe="")
             html += (
                 f'<div class="routine-row">'
-                f'<div><span class="routine-name">{name}</span>'
-                f'<span class="routine-steps">({steps_txt})</span></div>'
+                f'<div><span class="routine-name">{safe_name}</span> '
+                f'<span class="routine-steps">{safe_label} ({safe_steps})</span></div>'
                 f'<button class="danger" '
-                f'hx-post="/api/routines/delete/{name}" '
+                f'hx-post="/api/routines/delete/{encoded_name}" '
                 f'hx-target="#routines-block" hx-swap="innerHTML" '
-                f'hx-confirm="Excluir rotina \'{name}\'?">Excluir</button>'
+                f'hx-confirm="Excluir esta rotina?">Excluir</button>'
                 f'</div>'
             )
         if not html:
@@ -599,7 +632,7 @@ connectEvtWs();
                 except Exception:
                     pass
             except Exception as exc:
-                return HTMLResponse(f'<div class="empty">Erro: {exc}</div>')
+                return HTMLResponse(f'<div class="empty">Erro: {html_lib.escape(str(exc))}</div>')
         return await routines_html()
 
     @app.post("/api/routines/delete/{name}", response_class=HTMLResponse)

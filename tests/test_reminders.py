@@ -127,3 +127,14 @@ def test_cancel_por_id():
     result = cancel(str(rid))
     assert str(rid) in result
     assert "cancelado" in result.lower()
+
+
+def test_orchestrator_route_adds_reminder():
+    import re
+    from core.orchestrator import ROUTES
+
+    pattern = next(p for p, h, _ in ROUTES if h == "modules.reminders:add")
+    match = re.search(pattern, "me lembra em 60 minutos de revisar código")
+    assert match is not None
+    result = add(*match.groups())
+    assert "revisar código" in result

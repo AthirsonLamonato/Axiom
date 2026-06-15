@@ -2,10 +2,14 @@
 
 import os
 import sys
-import numpy as np
 import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+
+# Todos os testes neste arquivo requerem recursos externos pesados
+# (Whisper model download, PyAudio). Marcados como integration para
+# não travar o CI padrão.
+pytestmark = pytest.mark.integration
 
 
 @pytest.fixture
@@ -22,35 +26,38 @@ def config(tmp_path):
     return Config(str(path))
 
 
-def test_voice_input_init_push_to_talk(config):
-    """Com wake_word.enabled=False deve iniciar em modo push-to-talk."""
+@pytest.fixture
+def voice_input(config):
+    """Instancia VoiceInput e fecha ao fim do teste."""
     from input.stt import VoiceInput
     v = VoiceInput(config)
-    assert v._mode == "push_to_talk"
-    assert v._oww is None
-    assert v._whisper is not None
-    assert v._pa is not None
+    yield v
     v.close()
 
 
-def test_voice_input_whisper_transcribes_audio(config):
-    """Whisper deve transcrever áudio sintético sem erros (resultado pode ser vazio)."""
-    from input.stt import VoiceInput, SAMPLE_RATE, MAX_COMMAND_DURATION
-    v = VoiceInput(config)
+def test_voice_input_init_push_to_talk(voice_input):
+    """Com wake_word.enabled=False deve iniciar em modo push-to-talk."""
+    assert voice_input._mode == "push_to_talk"
+    assert voice_input._oww is None
+    assert voice_input._whisper is not None
 
-    # áudio de silêncio: resultado esperado é string vazia ou curta
+
+def test_voice_input_whisper_transcribes_audio(voice_input):
+    """Whisper deve transcrever áudio sintético sem erros."""
+    import numpy as np
+    from input.stt import SAMPLE_RATE, MAX_COMMAND_DURATION
+
     silence = np.zeros(int(SAMPLE_RATE * MAX_COMMAND_DURATION), dtype=np.float32)
-    segments, _ = v._whisper.transcribe(silence, language="pt", vad_filter=True)
+    segments, _ = voice_input._whisper.transcribe(silence, language="pt", vad_filter=True)
     result = " ".join(s.text for s in segments).strip()
-
     assert isinstance(result, str)
-    v.close()
 
 
-def test_transcribe_file_returns_string(config, tmp_path):
+def test_transcribe_file_returns_string(voice_input, tmp_path):
     """transcribe_file deve retornar str mesmo para arquivo de silêncio."""
-    import wave, struct
-    from input.stt import VoiceInput, SAMPLE_RATE
+    import wave
+    import struct
+    from input.stt import SAMPLE_RATE
 
     wav_path = str(tmp_path / "silence.wav")
     samples = [0] * (SAMPLE_RATE * 2)
@@ -60,7 +67,5 @@ def test_transcribe_file_returns_string(config, tmp_path):
         wf.setframerate(SAMPLE_RATE)
         wf.writeframes(struct.pack(f"{len(samples)}h", *samples))
 
-    v = VoiceInput(config)
-    result = v.transcribe_file(wav_path)
+    result = voice_input.transcribe_file(wav_path)
     assert isinstance(result, str)
-    v.close()

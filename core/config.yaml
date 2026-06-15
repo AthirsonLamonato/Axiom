@@ -11,9 +11,10 @@ profile:
 wake_word:
   enabled: true
   sensitivity: 0.5      # 0.0 (menos sensível) → 1.0 (mais sensível)
+  keyword: "paçoca"     # nome exibido no terminal (cosmético)
   model_path: ""        # Caminho para modelo .onnx customizado (ex: pacoca.onnx)
-                        # Deixe vazio para usar hey_jarvis (padrão)
-                        # Para treinar "Paçoca": github.com/dscripka/openWakeWord#training
+                        # Deixe vazio para usar hey_jarvis como modelo de detecção
+                        # Para treinar o modelo "Paçoca": github.com/dscripka/openWakeWord#training
 
 # ── Speech-to-Text ────────────────────────────
 stt:
@@ -92,6 +93,8 @@ obsidian:
 # ── Backup ────────────────────────────────────
 backup:
   local_dir: data/backups
+  auto_schedule: true        # agenda backup automático diário
+  daily_time: "23:30"        # horário do backup automático (HH:MM)
   google_drive:
     enabled: false           # true após configurar credenciais OAuth
     folder_name: Pacoca Backups

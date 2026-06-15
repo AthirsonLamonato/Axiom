@@ -19,10 +19,20 @@ MEETING_PROCESSES = {
     "webex":          "Webex",
     "discord":        "Discord",
     "skype":          "Skype",
-    "meet":           "Google Meet",    # via browser — detectado por título de janela
     "whereby":        "Whereby",
     "loom":           "Loom",
 }
+
+# Palavras-chave nos títulos de janela de browsers para detectar reuniões via web
+MEETING_WINDOW_TITLES = [
+    "meet.google.com",
+    "Google Meet",
+    "Zoom Meeting",
+    "Microsoft Teams",
+    "Whereby",
+    "Jitsi Meet",
+    "BigBlueButton",
+]
 
 _monitoring    = False
 _in_meeting    = False
@@ -39,11 +49,58 @@ def _get_running_process_names() -> list:
         return []
 
 
+def _get_window_titles() -> list[str]:
+    """Retorna títulos das janelas abertas (Linux via xdotool, Windows via win32gui)."""
+    titles: list[str] = []
+    if OS == "Linux":
+        try:
+            import subprocess
+            out = subprocess.check_output(
+                ["xdotool", "search", "--onlyvisible", "--name", ""],
+                stderr=subprocess.DEVNULL, timeout=2,
+            ).decode(errors="ignore")
+            for wid in out.strip().splitlines():
+                try:
+                    title = subprocess.check_output(
+                        ["xdotool", "getwindowname", wid.strip()],
+                        stderr=subprocess.DEVNULL, timeout=1,
+                    ).decode(errors="ignore").strip()
+                    if title:
+                        titles.append(title)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+    elif OS == "Windows":
+        try:
+            import win32gui
+            def _cb(hwnd, _):
+                if win32gui.IsWindowVisible(hwnd):
+                    t = win32gui.GetWindowText(hwnd)
+                    if t:
+                        titles.append(t)
+            win32gui.EnumWindows(_cb, None)
+        except Exception:
+            pass
+    return titles
+
+
 def _detect_meeting_app() -> Optional[str]:
     procs = _get_running_process_names()
     for proc_key, display_name in MEETING_PROCESSES.items():
         if any(proc_key in p for p in procs):
             return display_name
+
+    # Detecta reuniões via browser (Google Meet, Jitsi, etc.) pelo título de janela
+    try:
+        titles = _get_window_titles()
+        for title in titles:
+            for kw in MEETING_WINDOW_TITLES:
+                if kw.lower() in title.lower():
+                    return kw
+    except Exception:
+        pass
+
     return None
 
 

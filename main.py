@@ -163,7 +163,16 @@ def _edit_routines(config):
             if name in routines:
                 del routines[name]
                 config.set("routines", routines)
-                print(f"  Rotina '{name}' removida.")
+                try:
+                    cfg_path = config._path
+                    with open(cfg_path, "r", encoding="utf-8") as f:
+                        data = yaml.safe_load(f) or {}
+                    data["routines"] = routines
+                    with open(cfg_path, "w", encoding="utf-8") as f:
+                        yaml.dump(data, f, allow_unicode=True, default_flow_style=False)
+                    print(f"  Rotina '{name}' removida.")
+                except Exception as e:
+                    print(f"  Erro ao salvar remoção: {e}")
             else:
                 print(f"  Rotina '{name}' não encontrada.")
         else:

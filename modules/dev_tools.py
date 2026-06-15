@@ -193,8 +193,12 @@ def git_branch_current(*_) -> str:
 # ── Testes ─────────────────────────────────────────────────────────────
 
 def run_tests(*_) -> str:
-    if os.path.exists("pytest.ini") or os.path.exists("pyproject.toml"):
-        runner = ["python", "-m", "pytest", "-v", "--tb=short"]
+    if (
+        os.path.exists("pytest.ini")
+        or os.path.exists("pyproject.toml")
+        or os.path.isdir("tests")
+    ):
+        runner = [os.sys.executable, "-m", "pytest", "tests", "-v", "--tb=short"]
     elif os.path.exists("package.json"):
         runner = ["npm", "test"]
     else:

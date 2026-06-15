@@ -9,7 +9,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from modules.dev_tools import (
     git_status, git_log, git_branch_current,
     create_file, _resolve_file, explain_file,
-    git_create_branch,
+    git_create_branch, run_tests,
 )
 
 
@@ -116,3 +116,24 @@ def test_git_status_route():
     status_pattern = next(p for p, h, _ in ROUTES if "git_status" in h)
     assert re.search(status_pattern, "o que mudou")
     assert re.search(status_pattern, "git status")
+
+
+def test_run_tests_uses_pytest_when_tests_directory_exists(tmp_path, monkeypatch):
+    (tmp_path / "tests").mkdir()
+    monkeypatch.chdir(tmp_path)
+    captured = {}
+
+    class Result:
+        returncode = 0
+        stdout = "1 passed"
+        stderr = ""
+
+    def fake_run(command, **kwargs):
+        captured["command"] = command
+        return Result()
+
+    monkeypatch.setattr("modules.dev_tools.subprocess.run", fake_run)
+    result = run_tests()
+
+    assert captured["command"][1:4] == ["-m", "pytest", "tests"]
+    assert "Testes passaram" in result

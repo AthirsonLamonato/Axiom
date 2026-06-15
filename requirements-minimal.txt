@@ -6,6 +6,7 @@
 pyyaml>=6.0
 requests>=2.28
 psutil>=5.9
+pydantic>=2.0       # obrigatório: ToolRegistry usa validação Pydantic
 plyer>=2.1
 duckduckgo-search>=3.9
 schedule>=1.2

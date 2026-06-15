@@ -10,6 +10,7 @@ from typing import Optional
 logger = logging.getLogger(__name__)
 
 _server_thread: Optional[threading.Thread] = None
+_server = None
 _server_running = False
 _server_orc = None
 PORT = 7755
@@ -17,7 +18,7 @@ HOST = "127.0.0.1"
 
 
 def start(*_) -> str:
-    global _server_thread, _server_running
+    global _server_thread, _server, _server_running
     if _server_running:
         _open_browser()
         return f"Dashboard já está rodando em http://{HOST}:{PORT}"
@@ -52,22 +53,24 @@ def start(*_) -> str:
             from core.config import Config
             cfg = Config()
         pwd = cfg.get("web.password", "")
-        if pwd:
-            set_password(pwd)
+        set_password(pwd)
     except Exception:
         pass
 
     _server_running = True
+    config = uvicorn.Config(
+        _app,
+        host=HOST,
+        port=PORT,
+        log_level="warning",
+        reload=False,
+    )
+    _server = uvicorn.Server(config)
 
     def _run():
         global _server_running
         try:
-            uvicorn.run(
-                "web.app:app",
-                host=HOST, port=PORT,
-                log_level="warning",
-                reload=False,
-            )
+            _server.run()
         finally:
             _server_running = False
 
@@ -83,16 +86,22 @@ def start(*_) -> str:
 
 
 def stop(*_) -> str:
-    global _server_running
-    if not _server_running:
+    global _server, _server_thread, _server_running
+    if not _server_running or _server is None:
         return "Servidor web não está rodando."
+    _server.should_exit = True
+    if _server_thread and _server_thread.is_alive():
+        _server_thread.join(timeout=5)
+    if _server_thread and _server_thread.is_alive():
+        return "Servidor web está demorando para encerrar."
     _server_running = False
+    _server = None
+    _server_thread = None
     return "Servidor web encerrado."
 
 
 def _open_browser():
     import webbrowser
-    import platform
     url = f"http://{HOST}:{PORT}"
     try:
         webbrowser.open(url)

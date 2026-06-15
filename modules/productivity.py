@@ -164,6 +164,14 @@ def focus_start(minutes_str: str = "25", *_) -> str:
     return _pomodoro.start()
 
 
+def focus_start_hours(hours_str: str = "1", *_) -> str:
+    try:
+        minutes = int(str(hours_str).strip()) * 60
+    except (ValueError, TypeError):
+        minutes = 60
+    return focus_start(str(minutes))
+
+
 def focus_stop(*_) -> str:
     if _pomodoro is None:
         return "Nenhum timer ativo."

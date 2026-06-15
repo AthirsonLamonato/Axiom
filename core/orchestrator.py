@@ -223,6 +223,10 @@ ROUTES: list[tuple[str, str, bool]] = [
     (r"(relatório|relatorio)\s+de\s+aprendizado", "core.orchestrator:learning_report", False),
     (r"o\s+que\s+você\s+(aprendeu|sabe)",  "core.orchestrator:learning_report",  False),
 
+    # Backup
+    (r"(?:faz?|faz\s+um?|executa)\s+backup",  "modules.backup:backup_all",          False),
+    (r"backup\s+(?:agora|local|drive)",        "modules.backup:backup_all",          False),
+
     # Meta
     (r"^(ajuda|help|\?)$",                 "core.orchestrator:list_commands",    False),
 ]
@@ -343,6 +347,39 @@ class Orchestrator:
             web_server.set_orc(self)
         except Exception:
             pass
+        self._start_backup_scheduler()
+
+    def _start_backup_scheduler(self) -> None:
+        """Agenda backup automático diário se habilitado na config."""
+        if not self.config.get("backup.auto_schedule", True):
+            return
+        backup_time = self.config.get("backup.daily_time", "23:30")
+        try:
+            import schedule
+            import threading
+            import time as _time
+
+            schedule.every().day.at(backup_time).do(self._run_scheduled_backup)
+
+            def _scheduler_loop():
+                while True:
+                    schedule.run_pending()
+                    _time.sleep(60)
+
+            t = threading.Thread(target=_scheduler_loop, daemon=True, name="backup-scheduler")
+            t.start()
+            logger.info("Backup automático agendado para %s diariamente.", backup_time)
+        except Exception as e:
+            logger.warning("Agendamento de backup falhou: %s", e)
+
+    def _run_scheduled_backup(self) -> None:
+        try:
+            from modules.backup import backup_all
+            result = backup_all()
+            logger.info("Backup automático: %s", result)
+            notify("Paçoca", result)
+        except Exception as e:
+            logger.error("Backup automático falhou: %s", e)
 
     def _load_plugins(self) -> None:
         if not self.config.get("plugins.enabled", True):
@@ -418,11 +455,17 @@ class Orchestrator:
             self.run_text_loop()
             return
 
+        # Registra confirmação por voz para ações críticas
+        try:
+            stt_module.register_voice_confirmation_callback(voice, self.tts.speak)
+        except Exception as e:
+            logger.warning("Callback de confirmação por voz não registrado: %s", e)
+
         mode = voice._mode
         if mode == "push_to_talk":
-            print("[Paçoca] Modo push-to-talk ativo. Use Ctrl+Shift+Espaço para falar.\n")
+            print("[Paçoca] Modo push-to-talk ativo. Pressione Enter para falar.\n")
         else:
-            keyword = self.config.get("wake_word.keyword", "hey jarvis")
+            keyword = self.config.get("wake_word.keyword", "paçoca")
             print(f"[Paçoca] Aguardando wake word '{keyword}'...\n")
         self.tts.speak("Paçoca online.")
 
@@ -557,8 +600,9 @@ class Orchestrator:
             except Exception as e:
                 logger.warning("run_agentic_loop falhou, usando Ollama: %s", e)
 
-        # 3. Pipeline Ollama (few-shot NLU → execute)
-        actions = intent.parse_intent(command)
+        # 3. Pipeline Ollama — usa parse_intent_ollama para não chamar Groq novamente
+        parse_fn = getattr(intent, "parse_intent_ollama", intent.parse_intent)
+        actions = parse_fn(command)
         if not actions:
             return None
         responses = intent.execute_actions(actions)

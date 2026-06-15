@@ -15,7 +15,7 @@ import logging
 from dataclasses import dataclass, field
 from typing import Callable, Literal, Optional, Type
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 logger = logging.getLogger(__name__)
 
@@ -92,11 +92,25 @@ class ControlMediaArgs(BaseModel):
     def strip_q(cls, v: object) -> object:
         return v.strip() if isinstance(v, str) else v
 
+    @model_validator(mode="after")
+    def query_required_for_play(self) -> "ControlMediaArgs":
+        if self.action == "play" and not self.query:
+            raise ValueError("query é obrigatória quando action='play'")
+        return self
+
 
 class GitOperationArgs(BaseModel):
     operation: Literal["status", "log", "push", "pull", "commit", "branch"]
     message: Optional[str] = Field(None, description="Mensagem de commit")
     branch_name: Optional[str] = Field(None, description="Nome da branch")
+
+    @model_validator(mode="after")
+    def conditional_required(self) -> "GitOperationArgs":
+        if self.operation == "commit" and not self.message:
+            raise ValueError("message é obrigatória para operation='commit'")
+        if self.operation == "branch" and not self.branch_name:
+            raise ValueError("branch_name é obrigatório para operation='branch'")
+        return self
 
 
 class RememberArgs(BaseModel):
