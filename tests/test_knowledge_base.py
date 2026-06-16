@@ -161,3 +161,39 @@ def test_build_context_smoke(fresh_kb, monkeypatch):
 def test_build_context_empty_without_memories(fresh_kb, monkeypatch):
     monkeypatch.setattr("core.embeddings.embed_text", lambda text, config=None: None)
     assert kb.build_context("qualquer coisa") == ""
+
+
+# ── cleanup_old_entries ────────────────────────────────────────────
+# Regressão: a query antiga filtrava por uma coluna `created_at` que não
+# existe na tabela `memories` — levantava sqlite3.OperationalError em toda
+# chamada (mascarado por um `except Exception: return 0`), nunca removendo
+# nada de fato.
+
+def test_cleanup_old_entries_removes_low_importance_old_memory(fresh_kb, monkeypatch):
+    monkeypatch.setattr("core.embeddings.embed_text", lambda text, config=None: None)
+    kb.save_memory("facts", "old_low", "fato antigo e pouco importante", importance=0.2)
+
+    removed = kb.cleanup_old_entries("2099-01-01")  # cutoff bem no futuro
+
+    assert removed == 1
+    assert kb.get_memories() == []
+
+
+def test_cleanup_old_entries_keeps_high_importance_memory(fresh_kb, monkeypatch):
+    monkeypatch.setattr("core.embeddings.embed_text", lambda text, config=None: None)
+    kb.save_memory("facts", "old_high", "fato antigo mas importante", importance=0.9)
+
+    removed = kb.cleanup_old_entries("2099-01-01")
+
+    assert removed == 0
+    assert len(kb.get_memories()) == 1
+
+
+def test_cleanup_old_entries_keeps_recent_memory(fresh_kb, monkeypatch):
+    monkeypatch.setattr("core.embeddings.embed_text", lambda text, config=None: None)
+    kb.save_memory("facts", "recent_low", "fato recente e pouco importante", importance=0.1)
+
+    removed = kb.cleanup_old_entries("2000-01-01")  # cutoff bem no passado
+
+    assert removed == 0
+    assert len(kb.get_memories()) == 1

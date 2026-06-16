@@ -463,18 +463,18 @@ def show_memories(mem_type: str = "") -> str:
 
 
 def cleanup_old_entries(cutoff_iso: str) -> int:
-    """Remove memórias com importância baixa criadas antes de cutoff_iso. Retorna contagem.
+    """Remove memórias de baixa importância não atualizadas desde cutoff_iso.
+    Retorna a contagem removida.
 
-    TODO: a query abaixo filtra por `created_at`, mas a tabela `memories` só
-    tem `updated_at` — esse `WHERE` levanta sqlite3.OperationalError em toda
-    chamada, mascarado pelo `except Exception: return 0`. Bug pré-existente,
-    fora do escopo da funcionalidade de memória semântica.
-    """
+    Usa `updated_at` (única coluna de data da tabela `memories`) — a query
+    antiga filtrava por `created_at`, que não existe, e sempre levantava
+    sqlite3.OperationalError mascarado pelo `except Exception: return 0`
+    abaixo, nunca removendo nada de fato."""
     try:
         with _lock:
             with _connect() as conn:
                 cur = conn.execute(
-                    "DELETE FROM memories WHERE created_at < ? AND importance < 0.4",
+                    "DELETE FROM memories WHERE updated_at < ? AND importance < 0.4",
                     (cutoff_iso,),
                 )
                 return cur.rowcount

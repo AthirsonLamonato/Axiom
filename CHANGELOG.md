@@ -7,6 +7,15 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ## [Não lançado]
 
+### Corrigido
+- **`cleanup_old_entries()` (storage/knowledge_base.py) nunca removia nada.**
+  A query filtrava por uma coluna `created_at` que não existe na tabela
+  `memories` (só existe `updated_at`) — toda chamada levantava
+  `sqlite3.OperationalError`, mascarado por um `except Exception: return 0`.
+  Corrigido para filtrar por `updated_at`. Validado: memória de baixa
+  importância e desatualizada agora é removida de fato; memórias importantes
+  ou recentes são preservadas
+
 ### Adicionado
 - **`update_calendar_event`** — remarca data/hora e/ou renomeia um evento
   existente (busca por título, mesma desambiguação do delete: nunca altera
