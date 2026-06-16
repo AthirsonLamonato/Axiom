@@ -7,6 +7,24 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ## [Não lançado]
 
+### Corrigido (encontrado via teste real com GROQ_API_KEY)
+- **`run_agentic_loop()` mentia ter completado ações que falharam.** Quando a
+  chamada ao Groq falhava com `tool_use_failed` (o modelo formata a chamada
+  de ferramenta errado — medido empiricamente: acontece em ~80% das vezes em
+  alguns comandos, ex: "marca uma reunião pra mim"), o código desistia após 1
+  tentativa e pedia uma resposta final sem ferramentas — e o LLM, sem saber
+  que nada foi executado, respondia "Reunião marcada" mesmo sem ter chamado
+  nenhuma ferramenta. Agora: (1) `tool_use_failed` tem retry automático (até
+  3 tentativas — resolve sozinho na maioria das vezes, já que é falha de
+  amostragem do modelo, não indisponibilidade real); (2) se mesmo assim
+  nenhuma ferramenta for executada, o prompt final instrui o modelo a admitir
+  isso e pedir esclarecimento em vez de fingir sucesso
+- **`tool_use_failed` (400) contava como falha real do Groq no circuit
+  breaker** (`core/providers.py:_groq_raw`), podendo abrir o circuito e
+  empurrar a IA para Ollama por 120s só por causa de um erro de formatação do
+  modelo, não uma indisponibilidade de verdade. Novo helper
+  `_is_tool_use_failed()` exclui esse caso específico do circuit breaker
+
 ### Adicionado
 - **Memória semântica** — `storage/knowledge_base.py` agora busca memórias por
   significado, não só por palavra-chave (ex: "o que eu gosto de ouvir?" agora

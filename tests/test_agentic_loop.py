@@ -65,6 +65,15 @@ def _text_response(text: str) -> dict:
     }
 
 
+def _tool_use_failed_exc() -> Exception:
+    """Simula a exceção HTTP 400 'tool_use_failed' real do Groq."""
+    exc = RuntimeError("400 Client Error: Bad Request")
+    fake_response = MagicMock()
+    fake_response.text = '{"error":{"code":"tool_use_failed","message":"..."}}'
+    exc.response = fake_response
+    return exc
+
+
 # ── _check_required_args ─────────────────────────────────────────────
 
 class TestCheckRequiredArgs:
@@ -276,6 +285,79 @@ class TestAgenticLoop:
         assert len(tool_msgs) == 1
         assert tool_msgs[0]["tool_call_id"] == "call_42"
         assert "Avançou" in tool_msgs[0]["content"]
+
+    @patch("modules.intent._groq_call")
+    @patch("modules.intent._build_kb_context", return_value="")
+    def test_tool_use_failed_retries_and_recovers(self, mock_kb, mock_groq, groq_config):
+        """tool_use_failed deve ter retry — não desiste na primeira falha."""
+        from modules.intent import run_agentic_loop
+
+        mock_groq.side_effect = [
+            _tool_use_failed_exc(),
+            _tool_call_response("control_media", {"action": "pause"}),
+            _text_response("Spotify pausado."),
+        ]
+
+        with patch("core.config.Config", return_value=groq_config):
+            with patch("modules.tools.execute", return_value="Pausado com sucesso."):
+                result = run_agentic_loop("para a música")
+
+        assert result == "Spotify pausado."
+        assert mock_groq.call_count == 3  # 1 falha + 1 sucesso com tool + 1 resposta final
+
+    @patch("modules.intent._groq_call")
+    @patch("modules.intent._build_kb_context", return_value="")
+    def test_tool_use_failed_exhausts_retries_then_honest_fallback(self, mock_kb, mock_groq, groq_config):
+        """Se tool_use_failed persistir, a resposta final não deve fingir sucesso."""
+        from modules.intent import run_agentic_loop, _TOOL_CALL_RETRY_ATTEMPTS
+
+        captured_final_messages = []
+
+        def fake_groq(api_key, model, messages, tool_choice="auto"):
+            if tool_choice == "none":
+                captured_final_messages.extend(messages)
+                return _text_response("Não consegui completar a ação, pode confirmar os detalhes?")
+            raise _tool_use_failed_exc()
+
+        mock_groq.side_effect = fake_groq
+
+        with patch("core.config.Config", return_value=groq_config):
+            result = run_agentic_loop("marca uma reunião pra mim")
+
+        # 1 chamada com tool_choice="none" + N tentativas que falharam com tool_use_failed
+        none_calls = [c for c in mock_groq.call_args_list if c.kwargs.get("tool_choice") == "none"
+                      or (len(c.args) > 3 and c.args[3] == "none")]
+        assert len(none_calls) == 1
+        assert mock_groq.call_count == _TOOL_CALL_RETRY_ATTEMPTS + 1
+
+        # A instrução de honestidade deve estar nas mensagens da chamada final
+        assert any(
+            m.get("role") == "system" and "Não afirme que algo foi feito" in m.get("content", "")
+            for m in captured_final_messages
+        )
+        assert "Não consegui completar" in result
+
+    @patch("modules.intent._groq_call")
+    @patch("modules.intent._build_kb_context", return_value="")
+    def test_non_tool_use_failed_exception_does_not_retry(self, mock_kb, mock_groq, groq_config):
+        """Erros que não são tool_use_failed (ex: rede) não devem ter retry imediato."""
+        from modules.intent import run_agentic_loop
+
+        call_count = {"n": 0}
+
+        def fake_groq(api_key, model, messages, tool_choice="auto"):
+            call_count["n"] += 1
+            if tool_choice == "none":
+                return _text_response("Não consegui processar agora.")
+            raise RuntimeError("Groq indisponível — circuit breaker aberto.")
+
+        mock_groq.side_effect = fake_groq
+
+        with patch("core.config.Config", return_value=groq_config):
+            run_agentic_loop("toca eminem")
+
+        # 1 tentativa (sem retry) + 1 chamada final honesta = 2
+        assert call_count["n"] == 2
 
     @patch("modules.intent._groq_call")
     @patch("modules.intent._build_kb_context", return_value="")

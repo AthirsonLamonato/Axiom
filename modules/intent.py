@@ -735,11 +735,12 @@ def parse_intent(command: str) -> list[dict]:
         return calls
 
     except Exception as e:
-        resp_obj = getattr(e, "response", None)
-        body = getattr(resp_obj, "text", "") or ""
-        if "tool_use_failed" in body:
+        from core.providers import _is_tool_use_failed
+        if _is_tool_use_failed(e):
             logger.warning("tool_use_failed — fallback para IA")
             return []
+        resp_obj = getattr(e, "response", None)
+        body = getattr(resp_obj, "text", "") or ""
         logger.warning("Intent parse falhou (%s) %s", e, body[:200] if body else "")
         return []
 
@@ -775,6 +776,9 @@ def parse_intent_ollama(command: str) -> list[dict]:
 # ── Groq: loop agentivo completo ──────────────────────────────────────
 
 _MAX_AGENTIC_TURNS = 4  # proteção contra loop infinito
+_TOOL_CALL_RETRY_ATTEMPTS = 3  # "tool_use_failed" é falha de amostragem do
+# modelo, não indisponibilidade real do Groq — repetir o mesmo request
+# costuma resolver em poucas tentativas (medido empiricamente)
 
 
 def _groq_messages_base(command: str, config) -> tuple[str, str, list[dict]]:
@@ -883,13 +887,28 @@ def run_agentic_loop(command: str) -> str:
         return ""
 
     api_key, model, messages = _groq_messages_base(command, config)
+    from core.providers import _is_tool_use_failed
+    any_tool_executed = False
 
     for turn in range(_MAX_AGENTIC_TURNS):
-        try:
-            data = _groq_call(api_key, model, messages)
-        except Exception as e:
-            # _groq_raw() já registrou a falha no circuit breaker — não duplicar
-            logger.warning("run_agentic_loop: chamada Groq falhou (turn %d): %s", turn, e)
+        data = None
+        last_exc: Exception | None = None
+        for attempt in range(_TOOL_CALL_RETRY_ATTEMPTS):
+            try:
+                data = _groq_call(api_key, model, messages)
+                break
+            except Exception as e:
+                last_exc = e
+                if not _is_tool_use_failed(e):
+                    break  # erro real (rede, 401, etc.) — retry não ajuda
+                logger.debug(
+                    "run_agentic_loop: tool_use_failed (tentativa %d/%d) — retentando",
+                    attempt + 1, _TOOL_CALL_RETRY_ATTEMPTS,
+                )
+        if data is None:
+            # _groq_raw() já registrou a falha real no circuit breaker (se não
+            # foi tool_use_failed) — não duplicar
+            logger.warning("run_agentic_loop: chamada Groq falhou (turn %d): %s", turn, last_exc)
             break
 
         choice = data["choices"][0]
@@ -933,6 +952,7 @@ def run_agentic_loop(command: str) -> str:
                 continue
 
             tool_result = _execute_tool(name, args)
+            any_tool_executed = True
             logger.debug("run_agentic_loop: %s(%s) → %r", name, args, tool_result[:80])
 
             messages.append({
@@ -941,7 +961,19 @@ def run_agentic_loop(command: str) -> str:
                 "content":      tool_result,
             })
 
-    # Se chegou ao limite de turns, pede resposta final sem ferramentas
+    # Se chegou ao limite de turns ou a chamada falhou sem nenhuma ferramenta
+    # ter sido executada, pede resposta final sem ferramentas — mas avisa o
+    # modelo para não fingir que completou algo que não foi feito.
+    if not any_tool_executed:
+        messages.append({
+            "role": "system",
+            "content": (
+                "Nenhuma ação foi executada com sucesso até agora. "
+                "Não afirme que algo foi feito/concluído. Se faltar informação "
+                "para executar o pedido, peça-a ao usuário; caso contrário, "
+                "explique que não foi possível completar a ação agora."
+            ),
+        })
     try:
         data = _groq_call(api_key, model, messages, tool_choice="none")
         return (data["choices"][0]["message"].get("content") or "").strip()

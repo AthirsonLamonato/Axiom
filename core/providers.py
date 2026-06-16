@@ -70,6 +70,18 @@ def _redact_auth(headers: dict) -> dict:
     return safe
 
 
+def _is_tool_use_failed(exc: Exception) -> bool:
+    """
+    True se a exceção é um 400 'tool_use_failed' do Groq — o modelo tentou
+    chamar uma ferramenta mas formatou errado. É um problema de amostragem do
+    modelo (frequentemente some ao tentar de novo o mesmo request), não uma
+    indisponibilidade real do Groq — não deve contar para o circuit breaker.
+    """
+    resp = getattr(exc, "response", None)
+    body = getattr(resp, "text", "") or ""
+    return "tool_use_failed" in body
+
+
 def _circuit_is_open() -> bool:
     with _circuit_lock:
         return time.monotonic() < _groq_open_until
@@ -275,8 +287,9 @@ class LLMClient:
                 raise RuntimeError("Groq 401 — verifique a GROQ_API_KEY.")
             resp.raise_for_status()
             data = resp.json()
-        except Exception:
-            _record_groq_failure()
+        except Exception as e:
+            if not _is_tool_use_failed(e):
+                _record_groq_failure()
             raise
 
         _record_groq_success()

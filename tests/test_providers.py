@@ -55,6 +55,59 @@ def test_circuit_breaker_below_threshold_does_not_open():
     _reset_cb()
 
 
+# ── Unit: _is_tool_use_failed ──────────────────────────────────────────
+
+def test_is_tool_use_failed_detects_groq_400():
+    import core.providers as p
+    exc = RuntimeError("400 Bad Request")
+    fake_resp = type("R", (), {"text": '{"error":{"code":"tool_use_failed"}}'})()
+    exc.response = fake_resp
+    assert p._is_tool_use_failed(exc) is True
+
+
+def test_is_tool_use_failed_false_for_other_errors():
+    import core.providers as p
+    assert p._is_tool_use_failed(RuntimeError("conexão recusada")) is False
+
+    exc = RuntimeError("401 Unauthorized")
+    fake_resp = type("R", (), {"text": '{"error":{"code":"invalid_api_key"}}'})()
+    exc.response = fake_resp
+    assert p._is_tool_use_failed(exc) is False
+
+
+def test_tool_use_failed_does_not_count_toward_circuit_breaker(monkeypatch):
+    """tool_use_failed é falha de formatação do modelo, não indisponibilidade
+    real do Groq — não deve abrir o circuit breaker."""
+    import core.providers as p
+    _reset_cb()
+
+    client = p.LLMClient(config=type("C", (), {"get": lambda self, k, d=None: d})())
+    monkeypatch.setattr(client, "_get_groq_key", lambda: "fake-key")
+    monkeypatch.setattr(client, "_groq_model", lambda: "llama-3.3-70b-versatile")
+
+    class _FakeResp:
+        status_code = 400
+        text = '{"error":{"code":"tool_use_failed"}}'
+
+        def raise_for_status(self):
+            import requests
+            err = requests.HTTPError("400 Client Error")
+            err.response = self
+            raise err
+
+    monkeypatch.setattr(p, "_get_session", lambda: type(
+        "S", (), {"post": lambda self, *a, **k: _FakeResp()}
+    )())
+    monkeypatch.setattr(p, "_retry_http", lambda fn, **k: fn())
+
+    with pytest.raises(Exception):
+        client._groq_raw([{"role": "user", "content": "oi"}])
+
+    assert p._groq_failures == 0
+    assert not p._circuit_is_open()
+    _reset_cb()
+
+
 # ── Unit: TTL cache ──────────────────────────────────────────────────
 
 
