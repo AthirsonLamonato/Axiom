@@ -206,6 +206,44 @@ TOOLS = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_calendar_events",
+            "description": "Lista os eventos da agenda do Google Calendar para hoje ou amanhã.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "day": {"type": "string", "enum": ["hoje", "amanhã"], "description": "Dia a consultar"}
+                },
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_next_calendar_event",
+            "description": "Retorna o próximo evento agendado a partir de agora no Google Calendar.",
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "create_calendar_event",
+            "description": "Cria um evento/reunião no Google Calendar. Use quando o usuário pedir para marcar, agendar ou criar uma reunião/evento/compromisso.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "title": {"type": "string", "description": "Título/assunto do evento"},
+                    "day": {"type": "string", "description": "'hoje', 'amanhã', ou data no formato AAAA-MM-DD"},
+                    "time": {"type": "string", "description": "Horário no formato HH:MM (24h)"},
+                },
+                "required": ["title"],
+            },
+        },
+    },
 ]
 
 _VALID_TOOLS = {t["function"]["name"] for t in TOOLS}
@@ -800,7 +838,13 @@ def _groq_messages_base(command: str, config) -> tuple[str, str, list[dict]]:
         "You are Paçoca, a helpful personal desktop assistant. "
         "Reply in the same language the user used. "
         "Use the provided tools to execute requests. "
-        "After executing a tool, produce a natural, concise response in the user's language."
+        "After executing a tool, produce a natural, concise response in the user's language. "
+        "IMPORTANT: ground your response strictly in the actual tool result content. "
+        "If a tool result indicates an error or failure (e.g., starts with 'Erro', "
+        "mentions a missing dependency/credential/configuration, or otherwise did not "
+        "complete the request), you MUST tell the user it failed and why — never claim "
+        "an action succeeded ('marcado', 'feito', 'concluído', etc.) when the tool "
+        "result says it did not."
     ]
     if dialog_ctx:
         system_parts.append(dialog_ctx)

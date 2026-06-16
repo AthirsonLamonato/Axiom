@@ -140,6 +140,18 @@ class TestNewTools:
         assert "forget" in _VALID_TOOLS
         assert "list_memories" in _VALID_TOOLS
 
+    def test_calendar_tools_in_schema(self):
+        from modules.intent import TOOLS, _VALID_TOOLS
+        names = {t["function"]["name"] for t in TOOLS}
+        for tool in ("get_calendar_events", "get_next_calendar_event", "create_calendar_event"):
+            assert tool in names
+            assert tool in _VALID_TOOLS
+
+    def test_create_calendar_event_requires_title(self):
+        from modules.intent import TOOLS
+        tool = next(t for t in TOOLS if t["function"]["name"] == "create_calendar_event")
+        assert "title" in tool["function"]["parameters"]["required"]
+
 
 # ── _execute_tool ─────────────────────────────────────────────────────
 
@@ -169,6 +181,35 @@ class TestExecuteTool:
         from modules.intent import _execute_tool
         result = _execute_tool("nonexistent_tool", {})
         assert "desconhecida" in result.lower() or "nonexistent" in result
+
+    def test_create_calendar_event_delegates_with_structured_args(self):
+        from modules.intent import _execute_tool
+        with patch("modules.calendar_integration.create_event", return_value="Evento criado.") as mock_create:
+            result = _execute_tool(
+                "create_calendar_event",
+                {"title": "Reunião", "day": "amanhã", "time": "15:00"},
+            )
+        mock_create.assert_called_once_with("Reunião", "amanhã", "15:00")
+        assert "Evento criado" in result
+
+    def test_create_calendar_event_requires_title_via_pydantic(self):
+        from modules.intent import _check_required_args
+        result = _check_required_args("create_calendar_event", {})
+        assert result != ""
+
+    def test_get_calendar_events_delegates_with_day(self):
+        from modules.intent import _execute_tool
+        with patch("modules.calendar_integration.get_day_events", return_value="Agenda de hoje vazia.") as mock_get:
+            result = _execute_tool("get_calendar_events", {"day": "hoje"})
+        mock_get.assert_called_once_with("hoje")
+        assert "Agenda" in result
+
+    def test_get_next_calendar_event_delegates(self):
+        from modules.intent import _execute_tool
+        with patch("modules.calendar_integration.get_next_event", return_value="Próximo evento: dentista.") as mock_next:
+            result = _execute_tool("get_next_calendar_event", {})
+        mock_next.assert_called_once_with()
+        assert "dentista" in result
 
     def test_open_application_delegates(self):
         from modules.intent import _execute_tool

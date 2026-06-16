@@ -135,6 +135,25 @@ class ListMemoriesArgs(BaseModel):
     filter: str = Field("", description="Filtro opcional: preferences | habits | projects | facts")
 
 
+class GetCalendarEventsArgs(BaseModel):
+    day: Literal["hoje", "amanhã"] = "hoje"
+
+
+class GetNextCalendarEventArgs(BaseModel):
+    pass
+
+
+class CreateCalendarEventArgs(BaseModel):
+    title: str = Field(..., min_length=1, description="Título/assunto do evento")
+    day: str = Field("amanhã", description="'hoje', 'amanhã', ou data no formato AAAA-MM-DD")
+    time: str = Field("09:00", description="Horário no formato HH:MM (24h)")
+
+    @field_validator("title", mode="before")
+    @classmethod
+    def strip_title(cls, v: str) -> str:
+        return v.strip() if isinstance(v, str) else v
+
+
 # ── Executores (lazy imports) ─────────────────────────────────────────
 
 def _exec_open_application(a: OpenApplicationArgs) -> str:
@@ -215,6 +234,21 @@ def _exec_list_memories(a: ListMemoriesArgs) -> str:
     return show_memories(a.filter)
 
 
+def _exec_get_calendar_events(a: GetCalendarEventsArgs) -> str:
+    from modules import calendar_integration
+    return calendar_integration.get_day_events(a.day)
+
+
+def _exec_get_next_calendar_event(a: GetNextCalendarEventArgs) -> str:
+    from modules import calendar_integration
+    return calendar_integration.get_next_event()
+
+
+def _exec_create_calendar_event(a: CreateCalendarEventArgs) -> str:
+    from modules import calendar_integration
+    return calendar_integration.create_event(a.title, a.day, a.time)
+
+
 # ── Definição de ferramenta ───────────────────────────────────────────
 
 @dataclass
@@ -290,6 +324,21 @@ REGISTRY: dict[str, ToolDef] = {
         schema_model=ListMemoriesArgs,
         executor=_exec_list_memories,
         risk="low",
+    ),
+    "get_calendar_events": ToolDef(
+        schema_model=GetCalendarEventsArgs,
+        executor=_exec_get_calendar_events,
+        risk="low",
+    ),
+    "get_next_calendar_event": ToolDef(
+        schema_model=GetNextCalendarEventArgs,
+        executor=_exec_get_next_calendar_event,
+        risk="low",
+    ),
+    "create_calendar_event": ToolDef(
+        schema_model=CreateCalendarEventArgs,
+        executor=_exec_create_calendar_event,
+        risk="low",  # mesmo nível da rota direta de voz (add_event não exige confirmação)
     ),
 }
 

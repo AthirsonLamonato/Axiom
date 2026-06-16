@@ -7,7 +7,24 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ## [Não lançado]
 
+### Adicionado
+- **Ferramentas de Google Calendar no loop agentivo** — `get_calendar_events`,
+  `get_next_calendar_event` e `create_calendar_event` agora estão disponíveis
+  para o LLM via tool-calling (antes só existiam como rotas diretas de
+  regex; o agente não sabia que podia marcar reuniões). `create_event()`
+  (novo, em `modules/calendar_integration.py`) recebe campos estruturados
+  (`title`, `day`, `time`) em vez do parser por regex usado pela rota de voz
+  — o LLM já normaliza datas/horários melhor do que regex
+
 ### Corrigido (encontrado via teste real com GROQ_API_KEY)
+- **O modelo ignorava erros reais de ferramentas e inventava sucesso.**
+  Testando `create_calendar_event` sem `google-api-python-client` instalado,
+  a ferramenta retornou corretamente "Instale: pip install ..." — mas o LLM,
+  no turno seguinte, ignorou esse erro e respondeu "Reunião marcada com
+  sucesso!". Reforçado o prompt base do loop agentivo para se ater
+  estritamente ao conteúdo real do resultado da ferramenta e nunca afirmar
+  sucesso quando o resultado indica erro/falha. Validado com chamadas reais
+  ao Groq antes e depois da correção
 - **`run_agentic_loop()` mentia ter completado ações que falharam.** Quando a
   chamada ao Groq falhava com `tool_use_failed` (o modelo formata a chamada
   de ferramenta errado — medido empiricamente: acontece em ~80% das vezes em

@@ -185,8 +185,41 @@ def get_next_event(*_) -> str:
         return f"Próximo evento: {ev.get('summary', '(sem título)')} — {dt_str}"
 
 
+def _insert_event(title: str, start_dt: datetime, timezone_name: str, service) -> str:
+    """Cria o evento na agenda primária. Helper compartilhado por add_event()
+    (parsing por regex, rota direta de voz) e create_event() (args
+    estruturados, usado pelo loop agentivo)."""
+    end_dt = start_dt + timedelta(hours=1)
+    event_body = {
+        "summary": title.strip().capitalize() or "Evento",
+        "start": {"dateTime": start_dt.isoformat(), "timeZone": timezone_name},
+        "end": {"dateTime": end_dt.isoformat(), "timeZone": timezone_name},
+    }
+    try:
+        created = service.events().insert(calendarId="primary", body=event_body).execute()
+        return (
+            f"Evento criado: '{created['summary']}' — "
+            f"{start_dt.strftime('%d/%m %H:%M')} a {end_dt.strftime('%H:%M')}"
+        )
+    except Exception as e:
+        logger.error("Erro ao criar evento: %s", e, exc_info=True)
+        return f"Erro ao criar evento: {e}"
+
+
+def _resolve_day(day: str, now: datetime) -> datetime:
+    day_norm = (day or "amanhã").strip().lower()
+    if day_norm in ("amanhã", "amanha"):
+        return now + timedelta(days=1)
+    if day_norm == "hoje":
+        return now
+    try:
+        return datetime.strptime(day_norm, "%Y-%m-%d")
+    except ValueError:
+        return now + timedelta(days=1)  # padrão quando não reconhece o formato
+
+
 def add_event(raw: str, *_) -> str:
-    """Adiciona um evento via linguagem natural.
+    """Adiciona um evento via linguagem natural (rota direta de voz/texto).
     Exemplos: 'reunião amanhã às 14h', 'dentista hoje às 10h30 sobre consulta'
     """
     try:
@@ -224,24 +257,33 @@ def add_event(raw: str, *_) -> str:
     title = " ".join(title.split()) or "Evento"
 
     start_dt = base_date.replace(hour=hour, minute=minute, second=0, microsecond=0)
-    end_dt = start_dt + timedelta(hours=1)
-
     timezone_name = _get_config().get("calendar.timezone", "America/Sao_Paulo")
-    event_body = {
-        "summary": title.capitalize(),
-        "start": {"dateTime": start_dt.isoformat(), "timeZone": timezone_name},
-        "end": {"dateTime": end_dt.isoformat(), "timeZone": timezone_name},
-    }
+    return _insert_event(title, start_dt, timezone_name, service)
 
+
+def create_event(title: str, day: str = "amanhã", time: str = "09:00", *_) -> str:
+    """Cria evento com campos estruturados — usado pelo loop agentivo (Groq),
+    que já normaliza data/hora melhor do que o parser por regex de add_event().
+
+    day:  'hoje' | 'amanhã' | data no formato AAAA-MM-DD
+    time: horário no formato HH:MM
+    """
     try:
-        created = service.events().insert(calendarId="primary", body=event_body).execute()
-        return (
-            f"Evento criado: '{created['summary']}' — "
-            f"{start_dt.strftime('%d/%m %H:%M')} a {end_dt.strftime('%H:%M')}"
-        )
+        service = _get_service()
+    except (FileNotFoundError, RuntimeError) as e:
+        return str(e)
     except Exception as e:
-        logger.error("Erro ao criar evento: %s", e, exc_info=True)
-        return f"Erro ao criar evento: {e}"
+        return f"Erro ao conectar com o Google Calendar: {e}"
+
+    base_date = _resolve_day(day, datetime.now())
+    try:
+        hour, minute = (int(x) for x in (time or "09:00").strip().split(":"))
+    except (ValueError, AttributeError):
+        hour, minute = 9, 0
+
+    start_dt = base_date.replace(hour=hour, minute=minute, second=0, microsecond=0)
+    timezone_name = _get_config().get("calendar.timezone", "America/Sao_Paulo")
+    return _insert_event(title or "Evento", start_dt, timezone_name, service)
 
 
 def auth_calendar(*_) -> str:
