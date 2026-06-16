@@ -14,8 +14,9 @@ class _Events:
         self.params = kwargs
         return self
 
-    def insert(self, calendarId, body):
+    def insert(self, calendarId, body, sendUpdates="none"):
         self.inserted_body = body
+        self.send_updates = sendUpdates
         return self
 
     def execute(self):
@@ -69,6 +70,18 @@ def test_create_event_with_structured_args(monkeypatch):
     assert body["start"]["timeZone"] == "America/Sao_Paulo"
     assert "Reunião sobre projeto novo" in result
     assert "Evento criado" in result
+
+
+def test_create_event_preserves_internal_capitalization(monkeypatch):
+    """Regressão: .capitalize() forçava todo o título pra minúsculo,
+    destruindo siglas/nomes próprios como '[TESTE] Reunião com a Paçoca'."""
+    service = _Service()
+    monkeypatch.setattr(calendar, "_get_service", lambda: service)
+    monkeypatch.setattr(calendar, "_get_config", lambda: _Config())
+
+    calendar.create_event("[TESTE] Reunião com a Paçoca", "amanhã", "10:00")
+
+    assert service._events.inserted_body["summary"] == "[TESTE] Reunião com a Paçoca"
 
 
 def test_create_event_defaults_to_9am_on_invalid_time(monkeypatch):
@@ -128,3 +141,45 @@ def test_add_event_still_creates_via_shared_helper(monkeypatch):
     start = datetime.fromisoformat(body["start"]["dateTime"])
     assert start.hour == 14 and start.minute == 0
     assert "Evento criado" in result
+    assert "attendees" not in body  # sem e-mail no comando → sem convidados
+
+
+# ── attendees (convidados) ─────────────────────────────────────────
+
+def test_add_event_extracts_emails_as_attendees(monkeypatch):
+    service = _Service()
+    monkeypatch.setattr(calendar, "_get_service", lambda: service)
+    monkeypatch.setattr(calendar, "_get_config", lambda: _Config())
+
+    result = calendar.add_event("reunião amanhã às 14h com a@x.com e b@y.com")
+
+    body = service._events.inserted_body
+    emails = {a["email"] for a in body["attendees"]}
+    assert emails == {"a@x.com", "b@y.com"}
+    assert service._events.send_updates == "all"
+    assert "a@x.com" not in body["summary"]  # e-mails não vazam pro título
+    assert "convidados" in result.lower()
+
+
+def test_create_event_with_attendees_sends_invite(monkeypatch):
+    service = _Service()
+    monkeypatch.setattr(calendar, "_get_service", lambda: service)
+    monkeypatch.setattr(calendar, "_get_config", lambda: _Config())
+
+    calendar.create_event("Reunião", "amanhã", "15:00", attendees=["a@x.com", "b@y.com"])
+
+    body = service._events.inserted_body
+    assert body["attendees"] == [{"email": "a@x.com"}, {"email": "b@y.com"}]
+    assert service._events.send_updates == "all"
+
+
+def test_create_event_without_attendees_does_not_send_updates(monkeypatch):
+    service = _Service()
+    monkeypatch.setattr(calendar, "_get_service", lambda: service)
+    monkeypatch.setattr(calendar, "_get_config", lambda: _Config())
+
+    calendar.create_event("Reunião", "amanhã", "15:00")
+
+    body = service._events.inserted_body
+    assert "attendees" not in body
+    assert service._events.send_updates == "none"

@@ -16,6 +16,7 @@ import os
 import re
 import sys
 from collections import deque
+from datetime import datetime
 from typing import Optional
 
 logger = logging.getLogger(__name__)
@@ -239,6 +240,11 @@ TOOLS = [
                     "title": {"type": "string", "description": "Título/assunto do evento"},
                     "day": {"type": "string", "description": "'hoje', 'amanhã', ou data no formato AAAA-MM-DD"},
                     "time": {"type": "string", "description": "Horário no formato HH:MM (24h)"},
+                    "attendees": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "E-mails dos convidados (opcional) — só inclua e-mails que o usuário mencionou explicitamente",
+                    },
                 },
                 "required": ["title"],
             },
@@ -833,6 +839,7 @@ def _groq_messages_base(command: str, config) -> tuple[str, str, list[dict]]:
 
     kb_ctx = _build_kb_context(safe_cmd)
     dialog_ctx = _dialog_context_prompt()
+    today_str = datetime.now().strftime("%Y-%m-%d (%A)")
 
     system_parts = [
         "You are Paçoca, a helpful personal desktop assistant. "
@@ -844,7 +851,11 @@ def _groq_messages_base(command: str, config) -> tuple[str, str, list[dict]]:
         "mentions a missing dependency/credential/configuration, or otherwise did not "
         "complete the request), you MUST tell the user it failed and why — never claim "
         "an action succeeded ('marcado', 'feito', 'concluído', etc.) when the tool "
-        "result says it did not."
+        "result says it did not. "
+        f"Today's date is {today_str}. For any tool parameter expecting a relative day "
+        "(e.g. calendar 'day' field), compute and pass an exact AAAA-MM-DD date for "
+        "anything other than literally 'today'/'tomorrow' — never pass ambiguous phrases "
+        "like 'depois de amanhã' or weekday names as-is, they will not be understood."
     ]
     if dialog_ctx:
         system_parts.append(dialog_ctx)

@@ -8,6 +8,26 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 ## [Não lançado]
 
 ### Adicionado
+- **Convidados em eventos de calendário** — `create_event()`/`add_event()`
+  agora aceitam `attendees` (e-mails); `add_event()` extrai e-mails
+  mencionados na frase automaticamente (ex: "reunião com x@y.com"). O Google
+  Calendar envia o convite por e-mail de verdade quando há convidados.
+  Validado com um evento real de teste entre duas contas próprias
+
+### Corrigido (encontrados testando criação de evento real, com convite)
+- **Data errada quando o pedido usava expressões fora de 'hoje'/'amanhã'.**
+  "marca uma reunião pra depois de amanhã" criava o evento para *amanhã*
+  (1 dia errado) — o LLM não sabia a data de hoje, então não conseguia
+  calcular "depois de amanhã" como data exata, e `_resolve_day()` só entende
+  'hoje'/'amanhã'/AAAA-MM-DD literalmente, caindo silenciosamente no padrão
+  ("amanhã") para qualquer outra coisa. Agora o prompt do loop agentivo
+  informa a data atual e instrui o modelo a sempre calcular AAAA-MM-DD
+  exato para qualquer dia que não seja literalmente hoje/amanhã. Validado:
+  "depois de amanhã" (16/06) agora cria corretamente em 18/06, antes caía em 17/06
+- **Título do evento perdia maiúsculas internas.** `.capitalize()` forçava
+  todo o título para minúsculo exceto a 1ª letra — `"[TESTE] Reunião com a
+  Paçoca"` virava `"[teste] reunião com a paçoca"`. Trocado por uma
+  capitalização que só garante a 1ª letra maiúscula sem tocar no resto
 - **Ferramentas de Google Calendar no loop agentivo** — `get_calendar_events`,
   `get_next_calendar_event` e `create_calendar_event` agora estão disponíveis
   para o LLM via tool-calling (antes só existiam como rotas diretas de

@@ -189,8 +189,23 @@ class TestExecuteTool:
                 "create_calendar_event",
                 {"title": "Reunião", "day": "amanhã", "time": "15:00"},
             )
-        mock_create.assert_called_once_with("Reunião", "amanhã", "15:00")
+        mock_create.assert_called_once_with("Reunião", "amanhã", "15:00", None)
         assert "Evento criado" in result
+
+    def test_create_calendar_event_with_attendees(self):
+        from modules.intent import _execute_tool
+        with patch("modules.calendar_integration.create_event", return_value="Evento criado.") as mock_create:
+            _execute_tool(
+                "create_calendar_event",
+                {"title": "Reunião", "attendees": ["a@x.com", "b@y.com"]},
+            )
+        mock_create.assert_called_once_with("Reunião", "amanhã", "09:00", ["a@x.com", "b@y.com"])
+
+    def test_create_calendar_event_attendees_accepts_comma_separated_string(self):
+        from modules.tools import validate
+        validated, err = validate("create_calendar_event", {"title": "Reunião", "attendees": "a@x.com, b@y.com"})
+        assert err == ""
+        assert validated.attendees == ["a@x.com", "b@y.com"]
 
     def test_create_calendar_event_requires_title_via_pydantic(self):
         from modules.intent import _check_required_args

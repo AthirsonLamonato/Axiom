@@ -147,11 +147,21 @@ class CreateCalendarEventArgs(BaseModel):
     title: str = Field(..., min_length=1, description="Título/assunto do evento")
     day: str = Field("amanhã", description="'hoje', 'amanhã', ou data no formato AAAA-MM-DD")
     time: str = Field("09:00", description="Horário no formato HH:MM (24h)")
+    attendees: list[str] = Field(default_factory=list, description="E-mails dos convidados (opcional)")
 
     @field_validator("title", mode="before")
     @classmethod
     def strip_title(cls, v: str) -> str:
         return v.strip() if isinstance(v, str) else v
+
+    @field_validator("attendees", mode="before")
+    @classmethod
+    def normalize_attendees(cls, v: object) -> list[str]:
+        if v is None:
+            return []
+        if isinstance(v, str):
+            return [e.strip() for e in v.split(",") if e.strip()]
+        return v
 
 
 # ── Executores (lazy imports) ─────────────────────────────────────────
@@ -246,7 +256,7 @@ def _exec_get_next_calendar_event(a: GetNextCalendarEventArgs) -> str:
 
 def _exec_create_calendar_event(a: CreateCalendarEventArgs) -> str:
     from modules import calendar_integration
-    return calendar_integration.create_event(a.title, a.day, a.time)
+    return calendar_integration.create_event(a.title, a.day, a.time, a.attendees or None)
 
 
 # ── Definição de ferramenta ───────────────────────────────────────────

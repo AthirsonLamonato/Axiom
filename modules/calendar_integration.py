@@ -185,21 +185,40 @@ def get_next_event(*_) -> str:
         return f"Próximo evento: {ev.get('summary', '(sem título)')} — {dt_str}"
 
 
-def _insert_event(title: str, start_dt: datetime, timezone_name: str, service) -> str:
+EMAIL_RE = re.compile(r"\b[\w.+-]+@[\w-]+\.[a-zA-Z]{2,}\b")
+
+
+def _insert_event(
+    title: str, start_dt: datetime, timezone_name: str, service,
+    attendees: Optional[list[str]] = None,
+) -> str:
     """Cria o evento na agenda primária. Helper compartilhado por add_event()
     (parsing por regex, rota direta de voz) e create_event() (args
-    estruturados, usado pelo loop agentivo)."""
+    estruturados, usado pelo loop agentivo).
+    attendees: lista de e-mails a convidar (opcional). Quando presente, o
+    Google Calendar envia convite/notificação por e-mail a cada um."""
     end_dt = start_dt + timedelta(hours=1)
+    clean_title = title.strip()
+    # Só garante 1ª letra maiúscula — .capitalize() forçaria o resto pra
+    # minúsculo, destruindo títulos como "[TESTE] Reunião com a Paçoca"
+    summary = (clean_title[0].upper() + clean_title[1:]) if clean_title else ""
     event_body = {
-        "summary": title.strip().capitalize() or "Evento",
+        "summary": summary or "Evento",
         "start": {"dateTime": start_dt.isoformat(), "timeZone": timezone_name},
         "end": {"dateTime": end_dt.isoformat(), "timeZone": timezone_name},
     }
+    if attendees:
+        event_body["attendees"] = [{"email": e} for e in attendees]
     try:
-        created = service.events().insert(calendarId="primary", body=event_body).execute()
+        created = service.events().insert(
+            calendarId="primary",
+            body=event_body,
+            sendUpdates="all" if attendees else "none",
+        ).execute()
+        suffix = f" — convidados: {', '.join(attendees)}" if attendees else ""
         return (
             f"Evento criado: '{created['summary']}' — "
-            f"{start_dt.strftime('%d/%m %H:%M')} a {end_dt.strftime('%H:%M')}"
+            f"{start_dt.strftime('%d/%m %H:%M')} a {end_dt.strftime('%H:%M')}{suffix}"
         )
     except Exception as e:
         logger.error("Erro ao criar evento: %s", e, exc_info=True)
@@ -232,18 +251,22 @@ def add_event(raw: str, *_) -> str:
     raw = raw.strip()
     now = datetime.now()
 
+    # E-mails mencionados no comando → convidados (ex: "reunião com x@y.com")
+    attendees = EMAIL_RE.findall(raw)
+    raw_sem_emails = EMAIL_RE.sub("", raw) if attendees else raw
+
     # Detectar dia
-    if re.search(r"\bamanhã\b", raw, re.I):
+    if re.search(r"\bamanhã\b", raw_sem_emails, re.I):
         base_date = now + timedelta(days=1)
-    elif re.search(r"\bhoje\b", raw, re.I):
+    elif re.search(r"\bhoje\b", raw_sem_emails, re.I):
         base_date = now
     else:
         base_date = now + timedelta(days=1)  # padrão: amanhã
 
     # Detectar horário
-    hour_match = re.search(r"\bàs?\s+(\d{1,2})h(\d{2})?\b", raw, re.I)
+    hour_match = re.search(r"\bàs?\s+(\d{1,2})h(\d{2})?\b", raw_sem_emails, re.I)
     if not hour_match:
-        hour_match = re.search(r"\b(\d{1,2}):(\d{2})\b", raw)
+        hour_match = re.search(r"\b(\d{1,2}):(\d{2})\b", raw_sem_emails)
     if hour_match:
         hour = int(hour_match.group(1))
         minute = int(hour_match.group(2) or 0)
@@ -251,22 +274,26 @@ def add_event(raw: str, *_) -> str:
         hour, minute = 9, 0
 
     # Título: remove palavras-chave de data/hora
-    title = re.sub(r"\b(amanhã|hoje|às?|sobre)\b", "", raw, flags=re.I)
+    title = re.sub(r"\b(amanhã|hoje|às?|sobre|com)\b", "", raw_sem_emails, flags=re.I)
     title = re.sub(r"\b\d{1,2}h\d{0,2}\b", "", title)
     title = re.sub(r"\b\d{1,2}:\d{2}\b", "", title)
     title = " ".join(title.split()) or "Evento"
 
     start_dt = base_date.replace(hour=hour, minute=minute, second=0, microsecond=0)
     timezone_name = _get_config().get("calendar.timezone", "America/Sao_Paulo")
-    return _insert_event(title, start_dt, timezone_name, service)
+    return _insert_event(title, start_dt, timezone_name, service, attendees=attendees or None)
 
 
-def create_event(title: str, day: str = "amanhã", time: str = "09:00", *_) -> str:
+def create_event(
+    title: str, day: str = "amanhã", time: str = "09:00",
+    attendees: Optional[list[str]] = None, *_,
+) -> str:
     """Cria evento com campos estruturados — usado pelo loop agentivo (Groq),
     que já normaliza data/hora melhor do que o parser por regex de add_event().
 
-    day:  'hoje' | 'amanhã' | data no formato AAAA-MM-DD
-    time: horário no formato HH:MM
+    day:       'hoje' | 'amanhã' | data no formato AAAA-MM-DD
+    time:      horário no formato HH:MM
+    attendees: e-mails a convidar (opcional) — Google envia convite por e-mail
     """
     try:
         service = _get_service()
@@ -283,7 +310,7 @@ def create_event(title: str, day: str = "amanhã", time: str = "09:00", *_) -> s
 
     start_dt = base_date.replace(hour=hour, minute=minute, second=0, microsecond=0)
     timezone_name = _get_config().get("calendar.timezone", "America/Sao_Paulo")
-    return _insert_event(title or "Evento", start_dt, timezone_name, service)
+    return _insert_event(title or "Evento", start_dt, timezone_name, service, attendees=attendees)
 
 
 def auth_calendar(*_) -> str:
