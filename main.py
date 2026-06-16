@@ -106,7 +106,22 @@ def _ensure_directories():
 
 
 def shutdown(sig, frame):
-    print("\n\n[Paçoca] Encerrando... até logo.")
+    print("\n\n[Paçoca] Encerrando... até logo.", flush=True)
+    # Com a janela de desktop aberta, a thread principal fica bloqueada
+    # dentro do event loop do Qt (C++) — sys.exit() levantado ali dentro
+    # (quando o sinal é finalmente verificado pelo interpretador, durante o
+    # callback periódico do _poll_timer) é engolido pelo PyQt, e o processo
+    # nunca chegaria a pedir a saída. Pede pela mesma fila thread-safe da
+    # janela em vez de depender de exceção atravessando o C++ — o
+    # encerramento de fato do processo é forçado em main() via os._exit()
+    # depois que run_main_loop() retornar (ver comentário lá).
+    try:
+        from output import overlay
+        if overlay._instance:
+            overlay.request_quit()
+            return
+    except Exception:
+        pass
     sys.exit(0)
 
 
@@ -326,6 +341,11 @@ def main():
             t = threading.Thread(target=_run_orchestrator, daemon=True)
             t.start()
             _overlay_mod.run_main_loop()  # Qt event loop na main thread
+            # A finalização normal do interpretador (atexit, GC, destruidor
+            # do QApplication) trava depois daqui neste setup Qt/Wayland —
+            # confirmado: só restam threads daemon nesse ponto (nada
+            # pendente de fato), então pular o teardown normal é seguro.
+            os._exit(0)
         else:
             _run_orchestrator()
     else:

@@ -8,6 +8,22 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 ## [Não lançado]
 
 ### Corrigido
+- **Ctrl+C (SIGINT) travava o processo indefinidamente com a janela de
+  desktop aberta** — mesmo depois da correção do "sair" no terminal. O
+  handler `shutdown()` (já existia, registrado para SIGINT/SIGTERM) chamava
+  `sys.exit(0)`, mas como ele só é de fato invocado quando o interpretador
+  verifica o sinal pendente durante um callback do Qt (a thread principal
+  fica bloqueada dentro do event loop em C++), essa exceção nunca propagava
+  pra fora do `app.exec()`. Corrigido `shutdown()` pra usar o mesmo
+  `request_quit()` da correção anterior — mas isso revelou um problema mais
+  profundo: mesmo com `app.quit()` rodando certinho (confirmado com prints
+  de diagnóstico), a finalização normal do interpretador Python (atexit,
+  GC, destruidor do `QApplication`) trava neste setup Qt/Wayland depois que
+  `run_main_loop()` retorna — só sobram threads daemon nesse ponto (nada
+  pendente de verdade pra limpar, confirmado com `threading.enumerate()`),
+  então `main.py` agora chama `os._exit(0)` ali, pulando esse teardown
+  problemático. Validado com um SIGINT real via `pty`/`subprocess`: antes
+  travava (precisava `kill -9`), agora termina em &lt;4s com exit code 0
 - **Digitar "sair" no terminal não encerrava o processo quando a janela de
   desktop estava habilitada — o processo ficava preso indefinidamente.**
   O loop de texto/voz roda numa thread separada da thread do Qt; quando o
