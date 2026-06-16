@@ -7,6 +7,14 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ## [Não lançado]
 
+### Corrigido
+- WebSocket do dashboard (`/ws/command`, `/ws/events`) só checava a expiração de
+  sessão na conexão inicial — uma conexão aceita antes do timeout continuava
+  processando comandos/eventos indefinidamente mesmo após a sessão expirar.
+  Agora a expiração é reavaliada periodicamente dentro do loop (no ritmo do
+  heartbeat, para não reabrir `config.yaml` a cada 0.3s) e comandos reais via
+  `/ws/command` renovam a sessão como qualquer requisição HTTP
+
 ### Adicionado
 - **Segurança do dashboard web** — rate limiting de login (5 tentativas/60s por IP),
   expiração de sessão por inatividade (`security.session_timeout_min`) e token CSRF

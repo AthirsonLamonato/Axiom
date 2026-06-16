@@ -527,8 +527,14 @@ connectEvtWs();
                     if time.monotonic() - last_activity > _WS_PONG_TIMEOUT_S:
                         logger.info("ws_command: heartbeat sem resposta, encerrando conexão")
                         break
+                    if _session_expired():
+                        logger.info("ws_command: sessão expirada, encerrando conexão")
+                        break
                     await websocket.send_text(json.dumps({"type": "ping"}))
                     continue
+                if _session_expired():
+                    logger.info("ws_command: sessão expirada, encerrando conexão")
+                    break
                 last_activity = time.monotonic()
                 try:
                     payload = json.loads(data)
@@ -539,6 +545,7 @@ connectEvtWs();
                     cmd = data.strip()
                 if not cmd:
                     continue
+                _touch_session()  # comando real via WS conta como atividade de sessão
                 if _orchestrator:
                     loop = asyncio.get_event_loop()
                     response = await loop.run_in_executor(
@@ -588,6 +595,9 @@ connectEvtWs();
                     logger.info("ws_events: heartbeat sem resposta, encerrando conexão")
                     break
                 if now - last_ping > _WS_PING_INTERVAL_S:
+                    if _session_expired():
+                        logger.info("ws_events: sessão expirada, encerrando conexão")
+                        break
                     await websocket.send_text(json.dumps({"type": "ping"}))
                     last_ping = now
         except (WebSocketDisconnect, Exception):
