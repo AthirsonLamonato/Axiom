@@ -35,6 +35,10 @@ ai:
   use_context: true     # injeta histórico da sessão no prompt (memória contextual)
   auto_learn: false     # extrai fatos de cada conversa e salva na KB (opt-in)
                         # quando true, cada troca é enviada ao LLM configurado
+  embeddings_provider: auto             # auto | gemini | ollama | none — memória semântica da KB
+  embeddings_model: text-embedding-004  # modelo Gemini (free tier)
+  embeddings_ollama_model: nomic-embed-text  # requer `ollama pull nomic-embed-text`
+  embeddings_api_key: ""                # sobrescrito por GEMINI_API_KEY no .env
   system_prompt: |
     Você é Paçoca, um assistente pessoal técnico e objetivo.
     Responda sempre em português, de forma direta e sem rodeios.

@@ -53,6 +53,22 @@ Cliente HTTP centralizado para todos os provedores de IA.
 Registra por comando: rota, ferramenta, provedor, latência, tokens, sucesso, fallback.
 Exposto em `/api/metrics` (JSON) e `/metrics` (HTML visual).
 
+### `core/embeddings.py`
+Provedor de embeddings para memória semântica, mesmo padrão arquitetural de
+`core/providers.py` (reusa `_resolve_key`, `_get_session`, `_retry_http`,
+`_TTLCache`/`cached_get` por import lazy — não duplica).
+- Backends: `gemini` (API REST gratuita do Google AI Studio), `ollama` (local,
+  `/api/embeddings`), `auto` (tenta Gemini se houver chave, senão Ollama),
+  `none` (desativa).
+- Circuit breaker **próprio**, com estado separado do circuit breaker do Groq
+  (3 falhas → 120s aberto) — uma falha aqui nunca afeta o roteamento Groq/Ollama
+  do chat.
+- `embed_text()` nunca propaga exceção — retorna `None` em qualquer falha,
+  para que `storage/knowledge_base.py` sempre tenha um fallback seguro
+  (busca por palavra-chave) sem try/except próprio em cada call site.
+- Embeddings são armazenados como `BLOB` compactado (`array.array('f', ...)`),
+  não JSON texto — ~3x menor, sem dependência de numpy.
+
 ### `modules/intent.py`
 Pipeline NLU de 3 camadas:
 1. `classify_local()`: TF-IDF com cache de comandos (TTL 300s, via `_TTLCache` de

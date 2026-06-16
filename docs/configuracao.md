@@ -58,6 +58,10 @@ ai:
   max_tokens: 1024
   use_context: true            # injeta histórico da sessão no prompt
   auto_learn: false             # extrai fatos de cada conversa para a KB (opt-in)
+  embeddings_provider: auto              # auto | gemini | ollama | none
+  embeddings_model: text-embedding-004   # modelo Gemini (free tier)
+  embeddings_ollama_model: nomic-embed-text  # requer `ollama pull nomic-embed-text`
+  embeddings_api_key: ""                 # prefira GEMINI_API_KEY no .env
   system_prompt: |
     Você é Paçoca, um assistente pessoal técnico e objetivo...
 ```
@@ -67,6 +71,25 @@ keyring > YAML (com aviso de log se vier do YAML em texto puro).
 
 **Online-first**: Groq é primário (mais rápido, sem hardware exigido); Ollama é fallback local
 automático se Groq falhar 3 vezes (circuit breaker abre por 120s) ou estiver sem internet.
+
+**Memória semântica** (`core/embeddings.py`): a base de conhecimento
+(`storage/knowledge_base.py`) busca memórias por *significado*, não só por
+palavra-chave — ex: perguntar "o que eu gosto de ouvir?" encontra uma memória
+salva como "prefere rock e jazz", mesmo sem nenhuma palavra em comum.
+- `embeddings_provider: gemini` — API gratuita do Google AI Studio
+  (console.cloud.google.com/apis, crie uma chave grátis e exporte
+  `GEMINI_API_KEY`). Free tier generoso, suficiente para uso pessoal.
+- `embeddings_provider: ollama` — local, sem chave nova, mas requer
+  `ollama pull nomic-embed-text` (modelo dedicado de embeddings, diferente do
+  `ai.model` usado para chat).
+- `embeddings_provider: auto` (padrão) — tenta Gemini se houver chave, senão
+  Ollama, senão `none`.
+- `embeddings_provider: none` — desativa; a busca volta a ser só por
+  palavra-chave (comportamento de antes desta funcionalidade, zero
+  configuração necessária).
+- Tem circuit breaker próprio (3 falhas → 120s pausado) — se o provedor
+  configurado falhar/estiver fora do ar, a busca cai automaticamente para
+  palavra-chave nesse intervalo, sem travar nenhum comando.
 
 ---
 
@@ -258,5 +281,6 @@ Ações disponíveis: `open_app`, `notify`, `set_volume`, `focus`, `daily_report
 |---|---|
 | `GROQ_API_KEY` | Chave da API Groq (preferida sobre YAML) |
 | `GROQ_MODEL` | Sobrescreve `ai.groq_model` |
+| `GEMINI_API_KEY` | Chave da API Gemini — habilita memória semântica (`ai.embeddings_provider: gemini`) |
 | `PACOCA_CONFIG_PATH` | Caminho customizado para config.yaml |
 | `HF_TOKEN` | Necessário só para speaker diarization (pyannote.audio) |

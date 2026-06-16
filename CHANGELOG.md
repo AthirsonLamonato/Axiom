@@ -7,6 +7,18 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ## [Não lançado]
 
+### Adicionado
+- **Memória semântica** — `storage/knowledge_base.py` agora busca memórias por
+  significado, não só por palavra-chave (ex: "o que eu gosto de ouvir?" agora
+  encontra uma memória salva como "prefere rock e jazz", mesmo sem nenhuma
+  palavra em comum). Novo `core/embeddings.py` com dois backends gratuitos:
+  Gemini (API REST, `GEMINI_API_KEY`) e Ollama local (`nomic-embed-text`),
+  modo `auto` (padrão) escolhe entre eles, e `none` desativa — cai de volta
+  para a busca por palavra-chave de antes, sem nenhuma configuração extra
+  necessária. Circuit breaker próprio, independente do do Groq
+- Testes para `core/embeddings.py` e `storage/knowledge_base.py` (módulo não
+  tinha nenhum teste antes)
+
 ### Corrigido
 - **README.md desatualizado em vários pontos**: anunciava `v1.0.0` "Lançado" com
   links de download (`Pacoca-Setup.exe`, `.zip`) para uma release que não existe

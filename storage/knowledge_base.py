@@ -64,7 +64,17 @@ def init():
             CREATE INDEX IF NOT EXISTS idx_type ON memories(type);
             CREATE INDEX IF NOT EXISTS idx_imp  ON memories(importance DESC);
         """)
+        _migrate_embedding_columns(conn)
     logger.info("Knowledge base inicializada em %s", KB_DIR)
+
+
+def _migrate_embedding_columns(conn: sqlite3.Connection):
+    """SQLite não tem ADD COLUMN IF NOT EXISTS — checa antes de alterar."""
+    cols = {row["name"] for row in conn.execute("PRAGMA table_info(memories)")}
+    if "embedding" not in cols:
+        conn.execute("ALTER TABLE memories ADD COLUMN embedding BLOB")
+    if "embedding_model" not in cols:
+        conn.execute("ALTER TABLE memories ADD COLUMN embedding_model TEXT")
 
 
 def _connect() -> sqlite3.Connection:
@@ -145,6 +155,25 @@ def _index(mem_type, key, content, importance, date, tags):
             "updated_at=excluded.updated_at, tags=excluded.tags",
             (mem_type, key, content, importance, date, json.dumps(tags)),
         )
+        _try_embed_and_store(conn, mem_type, key, content)
+
+
+def _try_embed_and_store(conn: sqlite3.Connection, mem_type: str, key: str, content: str):
+    """Calcula e grava o embedding do conteúdo — melhor-esforço, nunca bloqueia o save."""
+    try:
+        from core.config import Config
+        from core.embeddings import embed_text, pack_embedding
+        config = Config()
+        vec = embed_text(content, config)
+        if vec is None:
+            return
+        model = config.get("ai.embeddings_model", "text-embedding-004")
+        conn.execute(
+            "UPDATE memories SET embedding=?, embedding_model=? WHERE type=? AND key=?",
+            (pack_embedding(vec), model, mem_type, key),
+        )
+    except Exception as e:
+        logger.debug("Embedding de memória falhou (ignorado): %s", e)
 
 
 # ── Leitura e busca ────────────────────────────────────────────────────
@@ -167,8 +196,70 @@ def get_memories(mem_type: str | None = None, min_importance: float = 0.0) -> li
     return [dict(r) for r in rows]
 
 
+_MIN_SIMILARITY = 0.35
+
+
 def search_memories(query: str, limit: int = 5) -> list[dict]:
-    """Busca semântica simples por palavras-chave no conteúdo."""
+    """
+    Busca memórias relevantes para a query.
+    Tenta similaridade semântica (embeddings) primeiro; se nenhum backend de
+    embeddings estiver configurado/disponível, cai para busca por
+    palavra-chave (comportamento idêntico ao de antes desta funcionalidade).
+    """
+    semantic = _search_memories_semantic(query, limit)
+    if semantic is not None:
+        return semantic
+    return _search_memories_keyword(query, limit)
+
+
+def _search_memories_semantic(query: str, limit: int) -> list[dict] | None:
+    """Retorna None se embeddings não estiverem disponíveis (sinal de fallback)."""
+    try:
+        from core.config import Config
+        from core.embeddings import cosine_similarity, embed_text, pack_embedding, unpack_embedding
+        config = Config()
+        query_vec = embed_text(query, config)
+        if query_vec is None:
+            return None
+        current_model = config.get("ai.embeddings_model", "text-embedding-004")
+
+        scored = []
+        with _connect() as conn:
+            rows = conn.execute(
+                "SELECT type, key, content, importance, embedding, embedding_model FROM memories"
+            ).fetchall()
+
+            for r in rows:
+                blob = r["embedding"]
+                if blob is None or r["embedding_model"] != current_model:
+                    # Backfill best-effort de entradas sem embedding (ou de modelo antigo)
+                    vec = embed_text(r["content"], config)
+                    if vec is None:
+                        continue
+                    conn.execute(
+                        "UPDATE memories SET embedding=?, embedding_model=? WHERE type=? AND key=?",
+                        (pack_embedding(vec), current_model, r["type"], r["key"]),
+                    )
+                else:
+                    vec = unpack_embedding(blob)
+
+                sim = cosine_similarity(query_vec, vec)
+                score = sim * (0.7 + 0.3 * r["importance"])
+                if score >= _MIN_SIMILARITY:
+                    scored.append((score, dict(r)))
+
+        scored.sort(key=lambda x: x[0], reverse=True)
+        return [
+            {"type": r["type"], "key": r["key"], "content": r["content"], "importance": r["importance"]}
+            for _, r in scored[:limit]
+        ]
+    except Exception as e:
+        logger.debug("Busca semântica falhou, usando palavra-chave: %s", e)
+        return None
+
+
+def _search_memories_keyword(query: str, limit: int = 5) -> list[dict]:
+    """Busca por substring de palavras-chave no conteúdo (fallback sem embeddings)."""
     words = [w.lower() for w in query.split() if len(w) > 3]
     if not words:
         return get_memories(min_importance=0.6)[:limit]
@@ -370,7 +461,13 @@ def show_memories(mem_type: str = "") -> str:
 
 
 def cleanup_old_entries(cutoff_iso: str) -> int:
-    """Remove memórias com importância baixa criadas antes de cutoff_iso. Retorna contagem."""
+    """Remove memórias com importância baixa criadas antes de cutoff_iso. Retorna contagem.
+
+    TODO: a query abaixo filtra por `created_at`, mas a tabela `memories` só
+    tem `updated_at` — esse `WHERE` levanta sqlite3.OperationalError em toda
+    chamada, mascarado pelo `except Exception: return 0`. Bug pré-existente,
+    fora do escopo da funcionalidade de memória semântica.
+    """
     try:
         with _lock:
             with _connect() as conn:
