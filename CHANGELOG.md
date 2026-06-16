@@ -20,6 +20,15 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
   tinha nenhum teste antes)
 
 ### Corrigido
+- Modelo padrão de embeddings Gemini era `text-embedding-004` — testado com
+  chave real e descoberto que o Google descontinuou esse modelo; trocado para
+  `gemini-embedding-001` (3072 dimensões, confirmado funcionando)
+- Limiar de similaridade semântica (`_MIN_SIMILARITY`) estava em `0.35`,
+  calibrado sem dados reais. Medido com a API real do Gemini: frases
+  totalmente não-relacionadas em PT-BR já ficam em ~0.55-0.65 de similaridade
+  de cosseno (piso de ruído alto, típico de embeddings de frase) — um limiar
+  de 0.35 deixava passar memórias irrelevantes em toda busca. Recalibrado
+  para `0.55` com base em testes ponta-a-ponta reais
 - **README.md desatualizado em vários pontos**: anunciava `v1.0.0` "Lançado" com
   links de download (`Pacoca-Setup.exe`, `.zip`) para uma release que não existe
   no GitHub (confirmado: nenhuma release publicada); badge de testes dizia "73

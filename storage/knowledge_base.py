@@ -196,7 +196,9 @@ def get_memories(mem_type: str | None = None, min_importance: float = 0.0) -> li
     return [dict(r) for r in rows]
 
 
-_MIN_SIMILARITY = 0.35
+_MIN_SIMILARITY = 0.55  # embeddings de frase têm "piso de ruído" alto entre
+# frases não-relacionadas (~0.55-0.65 medido com Gemini gemini-embedding-001
+# em PT-BR); este valor corta o pior ruído sem exigir similaridade perfeita
 
 
 def search_memories(query: str, limit: int = 5) -> list[dict]:

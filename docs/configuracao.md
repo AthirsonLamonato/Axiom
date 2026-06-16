@@ -59,7 +59,7 @@ ai:
   use_context: true            # injeta histórico da sessão no prompt
   auto_learn: false             # extrai fatos de cada conversa para a KB (opt-in)
   embeddings_provider: auto              # auto | gemini | ollama | none
-  embeddings_model: text-embedding-004   # modelo Gemini (free tier)
+  embeddings_model: gemini-embedding-001   # modelo Gemini (free tier)
   embeddings_ollama_model: nomic-embed-text  # requer `ollama pull nomic-embed-text`
   embeddings_api_key: ""                 # prefira GEMINI_API_KEY no .env
   system_prompt: |

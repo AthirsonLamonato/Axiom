@@ -91,7 +91,7 @@ def _gemini_embed(text: str, config) -> Optional[list[float]]:
     key = _resolve_key("ai.embeddings_api_key", "GEMINI_API_KEY", config)
     if not key:
         return None
-    model = config.get("ai.embeddings_model", "text-embedding-004")
+    model = config.get("ai.embeddings_model", "gemini-embedding-001")
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:embedContent?key={key}"
     body = {"model": f"models/{model}", "content": {"parts": [{"text": text}]}}
     try:
@@ -160,7 +160,7 @@ def embed_text(text: str, config=None) -> Optional[list[float]]:
     provider = config.get("ai.embeddings_provider", "auto")
     if provider == "none":
         return None
-    model = config.get("ai.embeddings_model", "text-embedding-004")
+    model = config.get("ai.embeddings_model", "gemini-embedding-001")
     cache_key = f"{provider}:{model}:{hash(text)}"
 
     def _fetch():
