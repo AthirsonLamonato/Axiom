@@ -7,6 +7,14 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ## [Não lançado]
 
+### Corrigido (documentação)
+- README e `docs/` atualizados para refletir tudo desta sessão: CRUD
+  completo de calendário (`docs/comandos.md`), janela de desktop
+  (`docs/comandos.md`, `docs/troubleshooting.md`, `docs/performance.md`,
+  `docs/instalacao.md`), memória semântica via Gemini (`README.md`,
+  `docs/instalacao.md`), registro central de ferramentas do loop agentivo
+  (`ARCHITECTURE.md`), contagem de testes (222 → 296) e roadmap
+
 ### Corrigido
 - **Ctrl+C (SIGINT) travava o processo indefinidamente com a janela de
   desktop aberta** — mesmo depois da correção do "sair" no terminal. O

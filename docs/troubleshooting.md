@@ -81,6 +81,34 @@ já foi baixado.
 
 ---
 
+## Janela de desktop
+
+**Fechei a janela pelo X e o Paçoca continua rodando em segundo plano**
+
+Comportamento esperado. A janela tem barra de título agora (diferente do
+overlay flutuante antigo), mas fechá-la só oculta — não mata o processo.
+Reabra com `ctrl+shift+a` ou dizendo "abre o overlay".
+
+**A caixa de texto/botão "Enviar" ficaram cinza por alguns segundos**
+
+Esperado — ficam desabilitados enquanto o comando é processado (chamada ao
+Groq/Ollama), pra evitar enviar vários comandos em cima do outro. Reabilitam
+quando a resposta chega.
+
+**Cliquei no microfone e nada aconteceu**
+
+Captura um único comando (até 8s) — fale logo após clicar. Se as
+dependências de voz (`faster-whisper`, `pyaudio`) não estiverem instaladas,
+a resposta no histórico vai dizer isso explicitamente.
+
+**Botão de conta Google não mostra o e-mail conectado**
+
+Por padrão, só mostra "Conectado"/"Não conectado" — não busca o e-mail da
+conta, porque isso exigiria um escopo OAuth novo (`email`/`profile`) que o
+projeto não solicita hoje (só Calendar + Drive).
+
+---
+
 ## Dashboard web
 
 **`/login` retorna 429 "Muitas tentativas"**

@@ -13,7 +13,7 @@
 
 ---
 
-## 2. Modo texto mínimo (sem voz, sem overlay)
+## 2. Modo texto mínimo (sem voz, sem janela de desktop)
 
 Mais rápido para testar o projeto:
 
@@ -26,7 +26,7 @@ python main.py --mode text --no-tts --no-overlay
 
 ---
 
-## 3. Modo texto completo (TTS + overlay + dashboard)
+## 3. Modo texto completo (TTS + janela de desktop + dashboard)
 
 ```bash
 pip install -r requirements.txt
@@ -44,6 +44,12 @@ ollama pull llama3
 No `core/config.yaml`, defina `ai.provider: ollama` para rodar 100% offline.
 Por padrão, `ai.provider: groq` usa a API gratuita do Groq — configure `GROQ_API_KEY`
 no `.env` (sem cartão de crédito, free tier em https://console.groq.com).
+
+**Memória semântica (opcional, gratuita)**: sem configurar nada, a busca de
+memórias usa palavra-chave. Para busca por significado, configure
+`GEMINI_API_KEY` no `.env` (free tier em https://aistudio.google.com/apikey)
+ou rode `ollama pull nomic-embed-text` se já usa Ollama. Detalhes em
+[configuracao.md](configuracao.md#ai).
 
 ---
 
@@ -154,6 +160,7 @@ Crie um `.env` na raiz do projeto:
 ```
 GROQ_API_KEY=sua_chave_aqui
 GROQ_MODEL=llama-3.1-8b-instant
+GEMINI_API_KEY=sua_chave_aqui   # opcional — habilita memória semântica
 ```
 
 Veja a lista completa em [configuracao.md](configuracao.md#variáveis-de-ambiente-env).

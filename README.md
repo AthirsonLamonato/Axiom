@@ -5,7 +5,7 @@
 ![Version](https://img.shields.io/badge/version-v0.6.0-blue)
 ![Python](https://img.shields.io/badge/python-3.10+-green)
 ![License](https://img.shields.io/badge/license-MIT-orange)
-![Tests](https://img.shields.io/badge/tests-222%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/tests-296%20passing-brightgreen)
 ![CI](https://github.com/AthirsonLamonato/Pacoca/actions/workflows/tests.yml/badge.svg)
 
 Paçoca é um assistente de desktop estilo Jarvis — modular, expansível e capaz de rodar completamente offline em hardware modesto (4 GB RAM, CPU sem GPU).
@@ -77,10 +77,11 @@ python main.py --edit-routines
 | **Segurança** | Confirmação antes de ações críticas, lista configurável |
 | **Backup** | Local automático + Google Drive (opcional, OAuth via wizard) |
 | **Perfis** | work / casual / focus / meeting / night — alteráveis por voz em tempo real |
-| **Google Calendar** | Ver agenda do dia, próximo evento, adicionar eventos por voz |
+| **Google Calendar** | Ver agenda, criar/editar/apagar eventos (com convidados por e-mail) — CRUD completo, incluindo via raciocínio livre do LLM |
 | **Speaker diarization** | Identifica falantes na transcrição (`[Falante 1]`, `[Falante 2]`…) — requer `pyannote.audio` |
 | **Plugin system** | Carregamento dinâmico em `plugins/`. Plugin de anotações incluso. Hot-reload por voz |
 | **Memória contextual** | Histórico da sessão injetado no prompt do LLM para respostas coerentes |
+| **Memória semântica** | Lembra fatos/preferências e busca por *significado* (não só palavra-chave) via embeddings — Gemini (grátis) ou Ollama local |
 | **Lembretes** | Notificações por voz — horário absoluto ("às 15h") ou relativo ("em 30 min") |
 | **Clipboard** | Copiar texto/último resultado, ler e limpar área de transferência por voz |
 | **OCR de tela** | Lê texto visível via pytesseract. Salva screenshots |
@@ -176,7 +177,10 @@ o que tenho hoje / agenda hoje
 próximo evento / próximo compromisso
 adiciona reunião amanhã às 14h
 adiciona dentista hoje às 10h30
-autoriza calendário                   ← re-autoriza OAuth se necessário
+reunião amanhã às 14h com fulano@email.com   ← convida o e-mail mencionado
+apaga o evento dentista                      ← pede confirmação
+muda a reunião X pra amanhã às 16h           ← via raciocínio do LLM
+autoriza calendário                          ← re-autoriza OAuth se necessário
 ```
 
 ### Lembretes
@@ -287,6 +291,18 @@ export GROQ_API_KEY=gsk_...   # Linux/Mac
 
 O plano gratuito da Groq oferece 30 requisições/minuto e 6.000 tokens/minuto — mais que suficiente para uso pessoal.
 
+### Memória semântica (opcional, gratuito)
+
+Sem configurar nada, a busca de memórias cai automaticamente para palavra-chave
+(comportamento padrão). Para busca por significado de verdade:
+
+```bash
+export GEMINI_API_KEY=...   # console.cloud.google.com → AI Studio → API key grátis
+```
+
+Ou, sem precisar de chave nova, se você já roda Ollama: `ollama pull nomic-embed-text`.
+Detalhes em [configuracao.md](docs/configuracao.md#ai).
+
 ### Google Calendar e Drive (opcional)
 
 Configuração manual (ainda não há instalador que automatize este passo):
@@ -388,7 +404,7 @@ Pacoca/
 │
 ├── hooks/                     # runtime hooks do PyInstaller
 │
-└── tests/                     # 222 testes (pytest)
+└── tests/                     # 304 testes (pytest)
     ├── test_config.py
     ├── test_db.py
     ├── test_orchestrator.py
@@ -410,9 +426,10 @@ Pacoca/
 | Wake word | openWakeWord (sem API key) | Local / offline |
 | LLM | Ollama (llama3 / mistral / phi3) | Local / offline |
 | LLM cloud | Groq API (llama3, free tier) | Opcional / gratuito |
+| Embeddings (memória semântica) | Gemini API (free tier) ou Ollama local (`nomic-embed-text`) | Opcional / gratuito |
 | TTS | edge-tts (padrão, voz neural) com fallback para pyttsx3 | Gratuito / offline opcional |
 | Busca web | duckduckgo-search | Gratuito |
-| Overlay | PyQt6 | Open-source |
+| Janela de desktop | PyQt6 | Open-source |
 | Monitoramento | psutil | Open-source |
 | Banco de dados | SQLite | Open-source |
 | Backup nuvem | Google Drive API | Gratuito |
@@ -429,7 +446,7 @@ Pacoca/
 python -m pytest tests/ -v
 ```
 
-222 testes (8 skipped — exigem rede/credenciais reais) cobrindo: config, orchestrator
+304 testes (8 skipped — exigem rede/credenciais reais) cobrindo: config, orchestrator
 (roteamento), banco de dados, STT, dev tools, dispatch_chain, lembretes, memória
 contextual, providers (circuit breaker, cache, retry), telemetria e endpoints do
 dashboard web (autenticação, CSRF, rate limit, sessão).
@@ -497,9 +514,19 @@ Windows + Linux.
 - [x] Testes para `web/app.py` (auth, CSRF, rate limit, sessão) e `core/providers.py`
 - [x] Sessão do dashboard com cookie assinado (HMAC) em vez de hash estático da senha
 - [x] CI em matriz Windows + Linux
+- [x] **Memória semântica** (`core/embeddings.py`) — busca por significado, não só
+      palavra-chave, via Gemini (free tier) ou Ollama local (`nomic-embed-text`)
+- [x] Loop agentivo mais confiável — retry automático para falhas de formatação do
+      Groq, e nunca afirma sucesso quando uma ferramenta falhou de verdade
+- [x] **CRUD completo de calendário** no loop agentivo — criar, ler, editar e apagar
+      eventos, incluindo convidados por e-mail
+- [x] **Janela de desktop** (texto, microfone, conta Google) — `overlay.enabled: true`
 
 ### Próximo
-- [ ] Streaming de resposta do LLM — tokens em tempo real no dashboard
+- [ ] Streaming de resposta do LLM — tokens em tempo real no dashboard/janela de desktop
+- [ ] Proatividade — hoje o assistente só age quando alguém pede algo (exceto o
+      detector de reunião automático); agir com base em padrões sem comando
+      explícito ainda não existe
 - [ ] Treinar modelo de wake word "Paçoca" customizado (hoje usa `hey_jarvis`)
 - [ ] Validar `pacoca.spec`/`wizard.spec` gerando um executável funcional e
       publicar a primeira release no GitHub (`pacoca.spec`/`wizard.spec` existem

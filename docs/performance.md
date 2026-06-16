@@ -100,13 +100,17 @@ sqlite3.connect("data/pacoca.db").execute("VACUUM")
 
 ---
 
-## Overlay / UI
+## Janela de desktop / UI
 
-O overlay (PyQt6) roda em thread própria e não deve bloquear o pipeline de
-comando. Se a UI parecer travada durante um comando longo (ex: aguardando
-resposta do LLM), confirme que a chamada ao LLM está sendo feita fora da thread
-principal do Qt — veja como `output/overlay.py` trata `set_state()`/
-`set_state_detail()` de forma assíncrona.
+A janela de desktop (PyQt6, `output/overlay.py`) roda na thread principal;
+o loop de texto/voz do terminal roda numa thread separada — nenhum dos dois
+deve bloquear o outro. Comandos digitados ou falados na própria janela
+(caixa de texto, botão de microfone) também disparam uma thread de fundo
+própria antes de chamar `Orchestrator.dispatch_chain()`, para a chamada ao
+Groq/Ollama não travar a UI. Se a janela parecer travada durante um comando
+longo, confirme que essa chamada está mesmo saindo em background — veja
+`_dispatch_command()`/`_on_submit_text()`/`_on_mic_clicked()` em
+`output/overlay.py`.
 
 ---
 

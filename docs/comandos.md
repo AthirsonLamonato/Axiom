@@ -114,7 +114,15 @@
 | `próximo evento` / `próximo compromisso` | Próximo evento no calendário |
 | `cria evento reunião amanhã às 14h` | Criar evento com linguagem natural |
 | `adiciona no calendário dentista hoje às 10h` | Criar evento |
+| `reunião amanhã às 14h com fulano@email.com` | Criar evento convidando e-mails mencionados na frase |
+| `apaga o evento [título]` / `cancela o evento [título]` | Apaga por título (busca por trecho — só apaga se achar exatamente 1 correspondência) ⚠ |
 | `autoriza o calendário` | Iniciar autenticação Google |
+
+Remarcar/renomear um evento (`muda a reunião X pra amanhã às 16h`) e listar
+agenda de qualquer dia específico não têm rota de voz direta — caem
+automaticamente no raciocínio do LLM (`update_calendar_event`,
+`get_calendar_events`), que entende linguagem livre melhor do que uma regex
+conseguiria.
 
 ---
 
@@ -255,12 +263,17 @@
 
 ---
 
-## 🪟 Overlay
+## 🪟 Janela de desktop
 
 | Exemplo de comando | Ação |
 |---|---|
-| `abre o overlay` | Exibir janela flutuante |
-| `fecha o overlay` | Ocultar janela flutuante |
+| `abre o overlay` | Exibir a janela de desktop |
+| `fecha o overlay` | Ocultar a janela de desktop |
+| `ctrl+shift+a` | Mesma coisa, via atalho de teclado |
+
+Quando `overlay.enabled: true` (padrão), essa janela tem histórico de
+conversa, caixa de texto, botão de microfone (um comando de voz por clique)
+e botão de conta Google — ver [configuracao.md](configuracao.md#overlay).
 
 ---
 

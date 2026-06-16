@@ -79,6 +79,20 @@ Pipeline NLU de 3 camadas:
 `_intent_dispatch()` (orchestrator) retorna um `IntentResult` (NamedTuple:
 `response, provider, tool, fallback_used`) em vez de uma tupla posicional solta.
 
+### `modules/tools.py` — registro central de ferramentas
+Cada ferramenta do loop agentivo (`run_agentic_loop()`) é declarada em um
+único lugar: modelo Pydantic para validar args (`REGISTRY[nome].schema_model`),
+função executora com import lazy, nível de risco e se exige confirmação
+explícita. `validate()`/`execute()`/`needs_confirmation()` são usados tanto
+pelo orchestrator quanto pelo loop agentivo — nenhuma cadeia de if/elif
+espalhada. O schema JSON enviado ao Groq (em `modules/intent.py:TOOLS`) é
+mantido manualmente em paralelo a este registro (são dois lugares, não um só
+gerado do outro). Exemplo completo de ferramenta com múltiplos campos
+opcionais e validação condicional: `create_calendar_event`/
+`update_calendar_event` (`day`/`time`/`attendees` opcionais, mas
+`update_calendar_event` exige ao menos um campo de mudança via
+`@model_validator`).
+
 ### `output/overlay.py`
 Janela de desktop do Paçoca (PyQt6) — quando `overlay.enabled: true`, é a
 interface gráfica completa: histórico de conversa, caixa de texto, botão de
