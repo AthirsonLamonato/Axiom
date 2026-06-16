@@ -314,6 +314,11 @@ def main():
             orchestrator.run_text_loop()
         else:
             orchestrator.run_voice_loop()
+        # Loop de texto/voz terminou (ex: usuário digitou "sair") — sem isso
+        # a janela de desktop manteria o processo vivo indefinidamente.
+        if _overlay_enabled:
+            from output import overlay as _overlay_mod
+            _overlay_mod.request_quit()
 
     if _overlay_enabled:
         from output import overlay as _overlay_mod

@@ -290,6 +290,11 @@ class PacocaOverlay:
                     self._window.show()
                 elif cmd == "hide":
                     self._window.hide()
+                elif cmd == "quit":
+                    # app.quit() chamado de outra thread não é confiável em
+                    # todos os backends Qt (testado: trava no Wayland/WSLg) —
+                    # processa na própria thread do Qt, igual a todo o resto.
+                    self._app.quit()
                 elif cmd == "account_done":
                     self._append_chat("Paçoca", args[0])
                     self._refresh_account_status()
@@ -402,3 +407,15 @@ def toggle(*_) -> str:
             return hide()
         return show()
     return "Janela de desktop não disponível."
+
+
+def request_quit() -> None:
+    """
+    Encerra o event loop do Qt (run_main_loop() retorna), permitindo o
+    processo terminar. Chamado por main.py quando o loop de texto/voz no
+    terminal termina (ex: usuário digita 'sair') — sem isso, a janela de
+    desktop manteria o processo vivo indefinidamente mesmo depois do
+    terminal "encerrar".
+    """
+    if _instance:
+        _msg_queue.put(("quit",))

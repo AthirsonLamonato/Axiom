@@ -8,6 +8,19 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 ## [Não lançado]
 
 ### Corrigido
+- **Digitar "sair" no terminal não encerrava o processo quando a janela de
+  desktop estava habilitada — o processo ficava preso indefinidamente.**
+  O loop de texto/voz roda numa thread separada da thread do Qt; quando o
+  usuário sai desse loop, nada avisava o event loop do Qt pra parar, então
+  `run_main_loop()` (que bloqueia a thread principal) nunca retornava.
+  Descoberto rodando `main.py` de verdade (não só testes isolados) — o
+  `timeout` precisou matar o processo à força (`exit 124`). Também
+  confirmado que `QApplication.quit()` chamado direto de outra thread não
+  é confiável neste setup Qt/Wayland (trava do mesmo jeito). Corrigido com
+  `request_quit()`, que enfileira o pedido na mesma fila thread-safe já
+  usada por toda a janela, processado na thread certa do Qt. Validado:
+  `python main.py --mode text` agora termina com exit code 0 ao digitar
+  "sair", mesmo com a janela de desktop aberta
 - Caixa de texto e botão "Enviar" da janela de desktop não ficavam
   desabilitados durante o processamento (diferente do microfone e do botão
   de conta Google, que já bloqueavam) — dava pra mandar vários comandos em
