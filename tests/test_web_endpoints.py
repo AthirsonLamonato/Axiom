@@ -37,13 +37,9 @@ def client():
 def _reset_web_state():
     web_app.set_password("")
     web_app._login_attempts.clear()
-    with web_app._session_lock:
-        web_app._last_seen = 0.0
     yield
     web_app.set_password("")
     web_app._login_attempts.clear()
-    with web_app._session_lock:
-        web_app._last_seen = 0.0
 
 
 def test_login_rate_limited_after_too_many_failures(client):
@@ -58,12 +54,12 @@ def test_login_rate_limited_after_too_many_failures(client):
     assert resp.status_code == 429
 
 
-def test_login_success_sets_cookie_and_touches_session(client):
+def test_login_success_sets_signed_session_cookie(client):
     web_app.set_password("segredo")
     resp = client.post("/login", data={"password": "segredo"}, follow_redirects=False)
     assert resp.status_code == 303
     assert "pacoca_token" in resp.cookies
-    assert web_app._last_seen > 0.0
+    assert web_app._valid_session_cookie(resp.cookies["pacoca_token"]) is True
 
 
 def test_session_expires_after_timeout(client, monkeypatch):
@@ -91,15 +87,30 @@ class _FakeWebSocket:
 
 def test_websocket_rejects_token_after_session_expired(monkeypatch):
     """Regressão: WS deve respeitar security.session_timeout_min como o HTTP,
-    em vez de só validar o token (sessão nunca expirava para WS)."""
+    em vez de só validar a assinatura do token (sessão nunca expirava para WS)."""
     web_app.set_password("segredo")
-    token = web_app._token_for("segredo")
+    token = web_app._make_session_cookie()
     ws = _FakeWebSocket(token)
 
     assert web_app._valid_websocket(ws) is True
 
-    monkeypatch.setattr(web_app, "_session_expired", lambda: True)
+    monkeypatch.setattr(web_app, "_session_timeout_s", lambda: 0)
     assert web_app._valid_websocket(ws) is False
+
+
+def test_session_cookie_rejects_tampered_signature():
+    web_app.set_password("segredo")
+    token = web_app._make_session_cookie()
+    ts, _, _sig = token.partition(".")
+    tampered = f"{ts}.0000000000000000000000000000000000000000000000000000000000000000"
+    assert web_app._valid_session_cookie(tampered) is False
+
+
+def test_session_cookie_invalid_after_password_change():
+    web_app.set_password("segredo")
+    token = web_app._make_session_cookie()
+    web_app.set_password("outra-senha")
+    assert web_app._valid_session_cookie(token) is False
 
 
 def test_routines_add_rejects_missing_csrf_token(client):

@@ -8,6 +8,22 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 ## [Não lançado]
 
 ### Corrigido
+- **Cookie de sessão do dashboard** (`pacoca_token`) deixou de ser um hash estático
+  da senha (`sha256(senha)`, válido para sempre e compartilhado por todos os
+  clientes via um único relógio global em memória) e passou a ser um cookie
+  assinado (HMAC-SHA256) com timestamp de emissão embutido: cada sessão expira
+  pela própria idade, sem depender de estado global, e reiniciar o servidor
+  invalida sessões antigas (a chave de assinatura é gerada por processo)
+- `_intent_dispatch()` (core/orchestrator.py) retorna um `IntentResult`
+  (NamedTuple) em vez de uma tupla posicional de 4 elementos com um sentinel
+  `_empty` duplicado em dois pontos do código
+- `modules/intent.py` parou de reimplementar seu próprio cache TTL
+  (`_intent_cache` com `time.time()`) e passou a reusar `_TTLCache` de
+  `core/providers.py`, a mesma classe usada pelo cache de clima/finanças/busca
+- `modules/spotify_ctrl.py:_api_request()` parou de duplicar a chamada HTTP em
+  dois blocos quase idênticos (antes/depois do refresh de token 401) e passou a
+  reusar `_retry_http()` de `core/providers.py`, ganhando de graça o backoff
+  exponencial para 429/502/503 que já existia para Groq/Ollama
 - WebSocket do dashboard (`/ws/command`, `/ws/events`) só checava a expiração de
   sessão na conexão inicial — uma conexão aceita antes do timeout continuava
   processando comandos/eventos indefinidamente mesmo após a sessão expirar.

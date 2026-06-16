@@ -55,9 +55,13 @@ Exposto em `/api/metrics` (JSON) e `/metrics` (HTML visual).
 
 ### `modules/intent.py`
 Pipeline NLU de 3 camadas:
-1. `classify_local()`: TF-IDF com cache LRU, sem rede.
+1. `classify_local()`: TF-IDF com cache de comandos (TTL 300s, via `_TTLCache` de
+   `core/providers.py` — mesma classe usada pelo cache de clima/finanças/busca).
 2. `run_agentic_loop()`: Groq com tool-calling (seleção de ferramenta → execução → resposta natural).
 3. `parse_intent_ollama()`: Groq alternativa que força Ollama (evita dupla chamada ao Groq no fallback).
+
+`_intent_dispatch()` (orchestrator) retorna um `IntentResult` (NamedTuple:
+`response, provider, tool, fallback_used`) em vez de uma tupla posicional solta.
 
 ### `output/overlay.py`
 Overlay PyQt6 sempre visível. Thread-safe via `queue.Queue` + QTimer.
@@ -98,6 +102,7 @@ Telemetria:
 | Dados externos | Aviso no boot quando `ai.provider=groq` com GROQ_API_KEY |
 | Retenção | `privacy.retention_days` em config.yaml (padrão: 30 dias) |
 | Logs | Sanitizados: `Authorization: Bearer ***` nunca aparece |
+| Sessão do dashboard | Cookie assinado (HMAC-SHA256) com timestamp de emissão embutido — expira por idade própria, sem depender de um relógio global compartilhado; chave de assinatura é gerada por processo, então reiniciar o servidor invalida sessões antigas (`web/app.py:_make_session_cookie()`) |
 
 ---
 

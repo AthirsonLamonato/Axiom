@@ -13,7 +13,7 @@ def test_websocket_requires_valid_password_token():
     web_app.set_password("segredo")
     try:
         assert not web_app._valid_websocket(_WebSocket())
-        token = web_app._token_for("segredo")
+        token = web_app._make_session_cookie()
         assert web_app._valid_websocket(_WebSocket(token=token))
     finally:
         web_app.set_password("")

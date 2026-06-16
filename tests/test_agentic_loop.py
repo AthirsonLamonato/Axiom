@@ -18,10 +18,10 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 def clear_dialog_ctx():
     from modules import intent
     intent._dialog_ctx.clear()
-    intent._intent_cache.clear()
+    intent._get_intent_cache().clear()
     yield
     intent._dialog_ctx.clear()
-    intent._intent_cache.clear()
+    intent._get_intent_cache().clear()
 
 
 @pytest.fixture

@@ -15,7 +15,6 @@ import logging
 import os
 import re
 import sys
-import time
 from collections import deque
 from typing import Optional
 
@@ -213,24 +212,29 @@ _VALID_TOOLS = {t["function"]["name"] for t in TOOLS}
 
 
 # ── Cache de intents (evita round-trip ao LLM para comandos repetidos) ─
+# Reusa o _TTLCache genérico de core/providers.py (mesmo usado por clima,
+# finanças e busca) em vez de reimplementar o controle de expiração aqui.
 
-_intent_cache: dict[str, tuple[list[dict], float]] = {}
 _CACHE_TTL = 300  # segundos
+_intent_cache = None  # _TTLCache — inicializado lazy na 1ª chamada
+
+
+def _get_intent_cache():
+    global _intent_cache
+    if _intent_cache is None:
+        from core.providers import _TTLCache
+        _intent_cache = _TTLCache(ttl=_CACHE_TTL)
+    return _intent_cache
 
 
 def _cache_get(command: str) -> Optional[list[dict]]:
-    entry = _intent_cache.get(command.lower().strip())
-    if entry:
-        calls, ts = entry
-        if time.time() - ts < _CACHE_TTL:
-            return calls
-    return None
+    return _get_intent_cache().get(command.lower().strip())
 
 
 def _cache_set(command: str, calls: list[dict]):
     if not calls:  # não cacheia falhas — permite nova tentativa
         return
-    _intent_cache[command.lower().strip()] = (calls, time.time())
+    _get_intent_cache().set(command.lower().strip(), calls)
 
 
 # ── Callback de confirmação (por canal: texto, voz, dashboard) ────────

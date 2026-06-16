@@ -5,7 +5,7 @@ Recebe texto (voz ou CLI), identifica a intenção e despacha ao módulo correto
 
 import re
 import logging
-from typing import Optional, Callable
+from typing import NamedTuple, Optional, Callable
 
 from core.config import Config
 from core.profiles import init_manager
@@ -14,6 +14,17 @@ from output.notifier import notify
 
 
 logger = logging.getLogger(__name__)
+
+
+class IntentResult(NamedTuple):
+    """Resultado do pipeline NLU de 3 camadas (_intent_dispatch)."""
+    response: Optional[str]
+    provider: str
+    tool: str
+    fallback_used: bool
+
+
+_EMPTY_INTENT_RESULT = IntentResult(None, "", "", False)
 
 
 # ── Importações lazy (evita falha se dependência ausente) ──────────────
@@ -658,20 +669,18 @@ class Orchestrator:
             logger.error(f"Erro ao executar '{handler_path}': {e}", exc_info=True)
             return f"Erro ao executar o comando: {e}"
 
-    def _intent_dispatch(self, command: str) -> tuple:
+    def _intent_dispatch(self, command: str) -> IntentResult:
         """
         Interpreta o comando via NLU e executa ações.
-        Retorna (response, provider, tool, fallback_used).
         Ordem de prioridade:
           1. TF-IDF local (<5ms, sem rede) — se confiante, executa diretamente.
           2. Loop agentivo Groq — se provider in (groq, auto) e chave configurada.
           3. Ollama few-shot — fallback local sem internet.
         O registro de contexto é feito por dispatch() depois que este método retorna.
         """
-        _empty = (None, "", "", False)
         intent = _import_module("modules.intent")
         if not intent:
-            return _empty
+            return _EMPTY_INTENT_RESULT
 
         # 1. Classificador local (cache + TF-IDF) — sem chamada de rede
         local_calls = intent.classify_local(command)
@@ -680,7 +689,9 @@ class Orchestrator:
             # classify_local retorna dicts com chave "name" (não "intent")
             first = local_calls[0] if local_calls else {}
             tool = first.get("name") or first.get("intent", "")
-            return (" | ".join(responses) if responses else None, "local", tool, False)
+            return IntentResult(
+                " | ".join(responses) if responses else None, "local", tool, False
+            )
 
         # 2. Loop agentivo Groq — executa e produz resposta natural
         provider = self.config.get("ai.provider", "ollama")
@@ -697,7 +708,7 @@ class Orchestrator:
             try:
                 response = intent.run_agentic_loop(command)
                 if response:
-                    return (response, "groq", "agentic_loop", False)
+                    return IntentResult(response, "groq", "agentic_loop", False)
             except Exception as e:
                 logger.warning("run_agentic_loop falhou, usando Ollama: %s", e)
 
@@ -708,11 +719,13 @@ class Orchestrator:
         parse_fn = getattr(intent, "parse_intent_ollama", intent.parse_intent)
         actions = parse_fn(command)
         if not actions:
-            return _empty
+            return _EMPTY_INTENT_RESULT
         responses = intent.execute_actions(actions)
         first_action = actions[0] if actions else {}
         tool = first_action.get("name") or first_action.get("intent", "")
-        return (" | ".join(responses) if responses else None, "ollama", tool, True)
+        return IntentResult(
+            " | ".join(responses) if responses else None, "ollama", tool, True
+        )
 
     def _fallback_ai(self, command: str) -> str:
         """

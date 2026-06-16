@@ -112,7 +112,7 @@ class TestClassifier:
 class TestCache:
     def setup_method(self):
         from modules import intent
-        intent._intent_cache.clear()
+        intent._get_intent_cache().clear()
         self.module = intent
 
     def test_cache_hit_after_store(self):
@@ -136,9 +136,9 @@ class TestCache:
         import time as _real_time
         from modules.intent import _cache_set, _cache_get, _CACHE_TTL
         _cache_set("toca linkin park", [{"name": "control_media", "arguments": {}}])
-        # captura now() antes de mockar para evitar recursão
-        future = _real_time.time() + _CACHE_TTL + 1
-        monkeypatch.setattr("modules.intent.time.time", lambda: future)
+        # _TTLCache (core/providers.py) usa time.monotonic(), não time.time()
+        future = _real_time.monotonic() + _CACHE_TTL + 1
+        monkeypatch.setattr("core.providers.time.monotonic", lambda: future)
         assert _cache_get("toca linkin park") is None
 
 

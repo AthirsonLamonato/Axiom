@@ -6,6 +6,7 @@ Ou via voz: 'abre o dashboard' / 'python main.py --web'
 
 import asyncio
 import hashlib
+import hmac
 import html as html_lib
 import json
 import logging
@@ -27,9 +28,12 @@ DEFAULT_PORT = 7755
 # autenticadas via hx-headers (htmx) e validado nas rotas POST que alteram estado.
 _CSRF_TOKEN = secrets.token_urlsafe(32)
 
-# ── Sessão: expira por inatividade (security.session_timeout_min) ────
-_last_seen: float = 0.0
-_session_lock = threading.Lock()
+# ── Sessão: cookie assinado (HMAC) com timestamp de emissão embutido ──
+# Diferente de um simples hash da senha, o cookie por si só carrega quando foi
+# emitido — não depende de um relógio em memória compartilhado entre clientes
+# (cada sessão expira pela própria idade, não por um "_last_seen" global), e
+# reiniciar o processo invalida sessões antigas automaticamente (chave nova).
+_SESSION_SECRET = secrets.token_urlsafe(32)
 
 
 def _session_timeout_s() -> int:
@@ -40,17 +44,28 @@ def _session_timeout_s() -> int:
         return 1800
 
 
-def _touch_session() -> None:
-    global _last_seen
-    with _session_lock:
-        _last_seen = time.monotonic()
+def _sign_session(ts: str) -> str:
+    msg = f"{_token_for(_web_password)}.{ts}".encode()
+    return hmac.new(_SESSION_SECRET.encode(), msg, hashlib.sha256).hexdigest()
 
 
-def _session_expired() -> bool:
-    with _session_lock:
-        if _last_seen == 0.0:
-            return False
-        return (time.monotonic() - _last_seen) > _session_timeout_s()
+def _make_session_cookie() -> str:
+    ts = str(int(time.time()))
+    return f"{ts}.{_sign_session(ts)}"
+
+
+def _valid_session_cookie(token: str) -> bool:
+    """Valida assinatura e expiração por inatividade (security.session_timeout_min)."""
+    if not _web_password:
+        return True
+    ts_str, _, sig = token.partition(".")
+    if not sig or not hmac.compare_digest(sig, _sign_session(ts_str)):
+        return False
+    try:
+        ts = int(ts_str)
+    except ValueError:
+        return False
+    return (time.time() - ts) <= _session_timeout_s()
 
 
 # ── Rate limiting de login (por IP) ───────────────────────────────────
@@ -134,15 +149,15 @@ def _token_for(password: str) -> str:
     return hashlib.sha256(password.encode()).hexdigest()
 
 
-def _valid_token(token: str) -> bool:
+def _password_correct(password: str) -> bool:
     if not _web_password:
         return True
-    return token == _token_for(_web_password)
+    return hmac.compare_digest(_token_for(password), _token_for(_web_password))
 
 
 def _valid_websocket(websocket) -> bool:
     token = websocket.cookies.get("pacoca_token", "")
-    if not _valid_token(token) or _session_expired():
+    if not _valid_session_cookie(token):
         return False
 
     origin = websocket.headers.get("origin", "")
@@ -175,12 +190,19 @@ def _make_app():
             if request.url.path in skip or request.url.path.startswith("/ws"):
                 return await call_next(request)
             token = request.cookies.get("pacoca_token", "")
-            if not _valid_token(token) or _session_expired():
+            if not _valid_session_cookie(token):
                 resp = RedirectResponse("/login")
                 resp.delete_cookie("pacoca_token")
                 return resp
-            _touch_session()
-            return await call_next(request)
+            resp = await call_next(request)
+            # Renova o cookie a cada requisição (sessão "deslizante" por
+            # inatividade) — cada cliente tem seu próprio timestamp, sem
+            # depender de um relógio global compartilhado.
+            resp.set_cookie(
+                "pacoca_token", _make_session_cookie(),
+                httponly=True, samesite="strict",
+            )
+            return resp
 
     app.add_middleware(AuthMiddleware)
 
@@ -477,11 +499,10 @@ connectEvtWs();
                 ),
                 status_code=429,
             )
-        if _valid_token(_token_for(password)):
-            _touch_session()
+        if _password_correct(password):
             resp = RedirectResponse("/", status_code=303)
             resp.set_cookie(
-                "pacoca_token", _token_for(password),
+                "pacoca_token", _make_session_cookie(),
                 httponly=True, samesite="strict",
             )
             return resp
@@ -516,6 +537,9 @@ connectEvtWs();
             await websocket.close(code=1008)
             return
         await websocket.accept()
+        # Token capturado na conexão — sua validade (assinatura + idade)
+        # é reavaliada periodicamente, sem precisar de estado global.
+        session_token = websocket.cookies.get("pacoca_token", "")
         last_activity = time.monotonic()
         try:
             while True:
@@ -527,12 +551,12 @@ connectEvtWs();
                     if time.monotonic() - last_activity > _WS_PONG_TIMEOUT_S:
                         logger.info("ws_command: heartbeat sem resposta, encerrando conexão")
                         break
-                    if _session_expired():
+                    if not _valid_session_cookie(session_token):
                         logger.info("ws_command: sessão expirada, encerrando conexão")
                         break
                     await websocket.send_text(json.dumps({"type": "ping"}))
                     continue
-                if _session_expired():
+                if not _valid_session_cookie(session_token):
                     logger.info("ws_command: sessão expirada, encerrando conexão")
                     break
                 last_activity = time.monotonic()
@@ -545,7 +569,6 @@ connectEvtWs();
                     cmd = data.strip()
                 if not cmd:
                     continue
-                _touch_session()  # comando real via WS conta como atividade de sessão
                 if _orchestrator:
                     loop = asyncio.get_event_loop()
                     response = await loop.run_in_executor(
@@ -573,6 +596,7 @@ connectEvtWs();
             await websocket.close(code=1008)
             return
         await websocket.accept()
+        session_token = websocket.cookies.get("pacoca_token", "")
         q: _queue_module.Queue = _queue_module.Queue(maxsize=50)
         with _event_queues_lock:
             _event_queues.append(q)
@@ -595,7 +619,7 @@ connectEvtWs();
                     logger.info("ws_events: heartbeat sem resposta, encerrando conexão")
                     break
                 if now - last_ping > _WS_PING_INTERVAL_S:
-                    if _session_expired():
+                    if not _valid_session_cookie(session_token):
                         logger.info("ws_events: sessão expirada, encerrando conexão")
                         break
                     await websocket.send_text(json.dumps({"type": "ping"}))

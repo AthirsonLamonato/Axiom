@@ -337,17 +337,29 @@ def authorize(*_) -> str:
 
 def _api_request(method: str, endpoint: str, **kwargs):
     import requests
+    from core.providers import _retry_http
+
     token = _get_access_token()
     if not token:
         return None
-    resp = requests.request(
-        method,
-        f"https://api.spotify.com/v1{endpoint}",
-        headers={"Authorization": f"Bearer {token}"},
-        timeout=10,
-        **kwargs,
-    )
-    # Token expirado — renova e tenta uma vez mais
+
+    def _send(tok: str):
+        # Reusa o backoff exponencial genérico (429/502/503) já usado para
+        # Groq/Ollama em core/providers.py, em vez de reimplementar aqui.
+        return _retry_http(
+            lambda: requests.request(
+                method,
+                f"https://api.spotify.com/v1{endpoint}",
+                headers={"Authorization": f"Bearer {tok}"},
+                timeout=10,
+                **kwargs,
+            ),
+            max_attempts=2,
+        )
+
+    resp = _send(token)
+    # Token expirado — renova e tenta uma vez mais (não é um erro transiente
+    # de rede, então fica fora do _retry_http genérico)
     if resp.status_code == 401:
         logger.info("Spotify 401 — renovando token e tentando novamente.")
         # Invalida cache de token em memória forçando releitura do disco
@@ -357,13 +369,7 @@ def _api_request(method: str, endpoint: str, **kwargs):
             _save_token(token_data)
         token = _get_access_token()
         if token:
-            resp = requests.request(
-                method,
-                f"https://api.spotify.com/v1{endpoint}",
-                headers={"Authorization": f"Bearer {token}"},
-                timeout=10,
-                **kwargs,
-            )
+            resp = _send(token)
     return resp
 
 
