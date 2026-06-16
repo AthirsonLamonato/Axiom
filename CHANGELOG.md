@@ -7,6 +7,16 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ## [Não lançado]
 
+### Corrigido
+- **Fechar a janela de desktop pelo X matava o processo do Paçoca inteiro.**
+  O overlay antigo era frameless (sem botão de fechar); a nova janela tem
+  barra de título, e por padrão o Qt mata o `QApplication` quando a última
+  janela visível é fechada — o que mataria a thread do orchestrator também.
+  Corrigido com `setQuitOnLastWindowClosed(False)`: fechar agora só oculta a
+  janela (igual a `hide()`/`toggle()`), o processo continua rodando e a
+  janela pode ser reaberta com `ctrl+shift+a`. Validado abrindo, fechando e
+  reabrindo a janela de verdade
+
 ### Adicionado
 - **Janela de desktop** (`output/overlay.py`, mesmo módulo/API pública de
   antes — todos os call sites existentes continuam funcionando) — quando

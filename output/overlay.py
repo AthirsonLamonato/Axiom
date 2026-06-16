@@ -89,6 +89,11 @@ class PacocaOverlay:
         self._state = "idle"
 
         self._app = QApplication.instance() or QApplication(sys.argv)
+        # Por padrão, fechar a última janela visível mata o QApplication —
+        # como esta janela agora tem barra de título (clicável no X), isso
+        # mataria o processo do Paçoca inteiro (incluindo a thread do
+        # orchestrator). Fechar deve só ocultar, como toggle()/hide() já fazem.
+        self._app.setQuitOnLastWindowClosed(False)
         self._window = QWidget()
         self._window.setWindowTitle("Paçoca")
         self._window.resize(440, 620)
