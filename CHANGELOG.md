@@ -8,6 +8,13 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 ## [Não lançado]
 
 ### Corrigido
+- **README.md desatualizado em vários pontos**: anunciava `v1.0.0` "Lançado" com
+  links de download (`Pacoca-Setup.exe`, `.zip`) para uma release que não existe
+  no GitHub (confirmado: nenhuma release publicada); badge de testes dizia "73
+  passing" (são 222); TTS estava documentado como só `pyttsx3` (o padrão atual é
+  `edge-tts`); roadmap listava "síntese de voz neural" e "testes para web/app.py"
+  como pendentes, já implementados. Versão do banner em `main.py` atualizada de
+  v0.5.0 para v0.6.0 para bater com o `CHANGELOG`
 - **Cookie de sessão do dashboard** (`pacoca_token`) deixou de ser um hash estático
   da senha (`sha256(senha)`, válido para sempre e compartilhado por todos os
   clientes via um único relógio global em memória) e passou a ser um cookie

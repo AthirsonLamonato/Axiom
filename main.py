@@ -281,7 +281,7 @@ def main():
 ██║     ██║  ██║╚██████╗╚██████╔╝╚██████╗ ██║  ██║
 ╚═╝     ╚═╝  ╚═╝ ╚═════╝ ╚═════╝  ╚═════╝ ╚═╝  ╚═╝
 
-  Paçoca — Assistente pessoal inteligente v0.5.0
+  Paçoca — Assistente pessoal inteligente v0.6.0
   Modo: {mode} | Perfil: {profile}
   Pressione Ctrl+C para encerrar.
 """.format(

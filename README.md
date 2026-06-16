@@ -2,41 +2,21 @@
 
 > Assistente pessoal inteligente de desktop — controle por voz ou texto, 100% open-source e gratuito.
 
-![Version](https://img.shields.io/badge/version-v1.0.0-blue)
-![Python](https://img.shields.io/badge/python-3.9+-green)
+![Version](https://img.shields.io/badge/version-v0.6.0-blue)
+![Python](https://img.shields.io/badge/python-3.10+-green)
 ![License](https://img.shields.io/badge/license-MIT-orange)
-![Tests](https://img.shields.io/badge/tests-73%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/tests-222%20passing-brightgreen)
 ![CI](https://github.com/AthirsonLamonato/Pacoca/actions/workflows/tests.yml/badge.svg)
 
 Paçoca é um assistente de desktop estilo Jarvis — modular, expansível e capaz de rodar completamente offline em hardware modesto (4 GB RAM, CPU sem GPU).
 
 ---
 
-## Download
-
-**[⬇ Pacoca-Setup.exe](https://github.com/AthirsonLamonato/Pacoca/releases/download/v1.0.0/Pacoca-Setup.exe)** — Windows 64-bit · 34 MB · sem Python, sem pip install
-
-> Execute `Pacoca-Setup.exe` — o wizard baixa o app e configura tudo automaticamente.
-
-Também disponível: **[Pacoca-v1.0.0-Windows.zip](https://github.com/AthirsonLamonato/Pacoca/releases/download/v1.0.0/Pacoca-v1.0.0-Windows.zip)** (184 MB · inclui o app completo, para instalação offline)
-
----
-
 ## Instalação
 
-### Opção 1 — Executável (recomendado, apenas Windows)
-
-1. Baixe `Pacoca-Setup.exe` (34 MB) na [página de releases](https://github.com/AthirsonLamonato/Pacoca/releases/tag/v1.0.0)
-2. Execute — o wizard cuida de tudo:
-   - Baixa o app principal (~151 MB) automaticamente se necessário
-   - Baixa e instala o Ollama + modelo de IA
-   - Configura `core/config.yaml`
-   - Faz login com o Google (Calendar + Drive, opcional)
-   - Cria atalho na área de trabalho
-
-O `Pacoca.exe` traz todas as dependências Python bundled — PyQt6, faster-whisper, FastAPI, Google Auth e mais. **Não é necessário instalar Python ou qualquer pacote.**
-
-### Opção 2 — A partir do código-fonte
+> Ainda não há um instalador `.exe` publicado nas releases do GitHub — os scripts
+> `pacoca.spec`/`wizard.spec`/`setup_wizard.py` existem no repositório para build
+> local, mas instale a partir do código-fonte por enquanto.
 
 ```bash
 git clone https://github.com/AthirsonLamonato/Pacoca.git
@@ -63,16 +43,6 @@ ollama pull llama3
 ---
 
 ## Executar
-
-### Via executável
-
-```
-Pacoca/Pacoca.exe                         # modo voz (padrão)
-Pacoca/Pacoca.exe --mode text --no-tts    # modo texto, sem voz
-Pacoca/Pacoca.exe --web                   # com dashboard em localhost:7755
-```
-
-### Via Python (código-fonte)
 
 ```bash
 # Modo texto — ideal para testar sem microfone
@@ -123,7 +93,7 @@ python main.py --edit-routines
 | **Modo reunião auto** | Detecta Zoom/Teams/Slack via psutil; ativa perfil meeting e transcrição automaticamente |
 | **TTS profile-aware** | Rate e volume do TTS sincronizados ao trocar perfil |
 | **Banco de dados** | SQLite — histórico de comandos, sessões e transcrições |
-| **TTS** | pyttsx3 (offline, leve) |
+| **TTS** | edge-tts (Microsoft Neural, padrão, requer internet) com fallback automático para pyttsx3 (100% offline) |
 
 ---
 
@@ -274,7 +244,7 @@ ajuda
 
 ## Configuração
 
-Edite `core/config.yaml` (gerado automaticamente no primeiro boot do `Pacoca.exe`, ou configurado pelo wizard):
+Edite `core/config.yaml` (já vem com valores padrão no repositório):
 
 ```yaml
 # Wake word (deixe vazio para desabilitar e usar push-to-talk)
@@ -297,7 +267,7 @@ overlay:
 # TTS
 tts:
   enabled: true
-  engine: pyttsx3
+  engine: edge            # edge (online, voz neural) | pyttsx3 (offline) | coqui
 
 # Dashboard web
 web:
@@ -320,7 +290,7 @@ O plano gratuito da Groq oferece 30 requisições/minuto e 6.000 tokens/minuto �
 
 ### Google Calendar e Drive (opcional)
 
-O wizard (`Pacoca-Setup.exe`) faz o login automaticamente. Para configurar manualmente:
+Configuração manual (ainda não há instalador que automatize este passo):
 
 1. Crie um projeto em [Google Cloud Console](https://console.cloud.google.com)
 2. Ative **Calendar API** e **Drive API**
@@ -400,7 +370,7 @@ Pacoca/
 │   └── web_server.py          # inicia o servidor do dashboard
 │
 ├── output/
-│   ├── tts.py                 # pyttsx3
+│   ├── tts.py                 # edge-tts (padrão) com fallback pyttsx3/Coqui
 │   ├── overlay.py             # overlay PyQt6 thread-safe
 │   └── notifier.py            # notificações desktop
 │
@@ -419,13 +389,16 @@ Pacoca/
 │
 ├── hooks/                     # runtime hooks do PyInstaller
 │
-└── tests/                     # 73 testes (pytest)
+└── tests/                     # 222 testes (pytest)
     ├── test_config.py
     ├── test_db.py
     ├── test_orchestrator.py
     ├── test_dispatch_chain.py
     ├── test_reminders.py
-    └── test_context.py
+    ├── test_context.py
+    ├── test_providers.py      # circuit breaker, cache TTL, retry
+    ├── test_telemetry.py
+    └── test_web_endpoints.py  # auth, CSRF, rate limit, sessão do dashboard
 ```
 
 ---
@@ -438,7 +411,7 @@ Pacoca/
 | Wake word | openWakeWord (sem API key) | Local / offline |
 | LLM | Ollama (llama3 / mistral / phi3) | Local / offline |
 | LLM cloud | Groq API (llama3, free tier) | Opcional / gratuito |
-| TTS | pyttsx3 | Local / offline |
+| TTS | edge-tts (padrão, voz neural) com fallback para pyttsx3 | Gratuito / offline opcional |
 | Busca web | duckduckgo-search | Gratuito |
 | Overlay | PyQt6 | Open-source |
 | Monitoramento | psutil | Open-source |
@@ -457,9 +430,13 @@ Pacoca/
 python -m pytest tests/ -v
 ```
 
-73 testes cobrindo: config, orchestrator (roteamento), banco de dados, STT, dev tools, dispatch_chain, lembretes e memória contextual.
+222 testes (8 skipped — exigem rede/credenciais reais) cobrindo: config, orchestrator
+(roteamento), banco de dados, STT, dev tools, dispatch_chain, lembretes, memória
+contextual, providers (circuit breaker, cache, retry), telemetria e endpoints do
+dashboard web (autenticação, CSRF, rate limit, sessão).
 
-CI automático via GitHub Actions em cada push para `main` e `dev`.
+CI automático via GitHub Actions em cada push para `main`/`dev`, em matriz
+Windows + Linux.
 
 ---
 
@@ -513,15 +490,21 @@ CI automático via GitHub Actions em cada push para `main` e `dev`.
 - [x] Wizard baixa `Pacoca.exe` automaticamente se não encontrado na pasta
 - [x] openWakeWord substituindo pvporcupine (sem API key, totalmente open-source)
 
-### v1.0.0 — Lançado
-- [x] Primeiro release estável — todos os módulos integrados e testados
-- [x] Build reproduzível via `pacoca.spec` + `wizard.spec`
-- [x] Documentação completa
+### Não lançado (atual)
+- [x] Arquitetura de providers centralizada (`core/providers.py`) — circuit breaker,
+      retry exponencial, cache TTL, pool de conexões HTTP
+- [x] Telemetria de comandos (`core/telemetry.py`) — exposta em `/metrics`
+- [x] Síntese de voz neural — `edge-tts` como motor padrão (fallback automático para pyttsx3)
+- [x] Testes para `web/app.py` (auth, CSRF, rate limit, sessão) e `core/providers.py`
+- [x] Sessão do dashboard com cookie assinado (HMAC) em vez de hash estático da senha
+- [x] CI em matriz Windows + Linux
 
-### v1.1 — Próximo
-- [ ] Síntese de voz neural — vozes PT-BR mais naturais
+### Próximo
 - [ ] Streaming de resposta do LLM — tokens em tempo real no dashboard
-- [ ] Testes para `web/app.py` (endpoints, WebSocket, CRUD de rotinas)
+- [ ] Treinar modelo de wake word "Paçoca" customizado (hoje usa `hey_jarvis`)
+- [ ] Validar `pacoca.spec`/`wizard.spec` gerando um executável funcional e
+      publicar a primeira release no GitHub (`pacoca.spec`/`wizard.spec` existem
+      no repositório, mas **ainda não há nenhuma release publicada**)
 
 ---
 
