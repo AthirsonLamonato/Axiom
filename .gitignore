@@ -27,6 +27,7 @@ logs/
 # ── Credenciais e segredos ────────────────────
 core/credentials.json
 core/token.json
+core/google_token.json
 .env
 *.env
 .spotify_token.json
