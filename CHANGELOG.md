@@ -8,6 +8,11 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 ## [Não lançado]
 
 ### Adicionado
+- **`update_calendar_event`** — remarca data/hora e/ou renomeia um evento
+  existente (busca por título, mesma desambiguação do delete: nunca altera
+  se houver mais de um resultado). Fecha o CRUD completo do calendário no
+  loop agentivo: criar, ler, editar, apagar. Validado criando, remarcando e
+  apagando um evento real na agenda
 - **`delete_calendar_event`** — apaga/cancela evento do Google Calendar por
   título (busca por trecho, sem diferenciar maiúsculas/minúsculas). Nunca
   apaga se houver mais de um evento correspondente — lista as opções e pede

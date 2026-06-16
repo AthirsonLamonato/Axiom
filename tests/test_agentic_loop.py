@@ -242,6 +242,25 @@ class TestExecuteTool:
         from modules.intent import _needs_confirmation
         assert _needs_confirmation("delete_calendar_event", {"title": "x"}) is True
 
+    def test_update_calendar_event_delegates(self):
+        from modules.intent import _execute_tool
+        with patch("modules.calendar_integration.update_event", return_value="Evento atualizado.") as mock_upd:
+            result = _execute_tool(
+                "update_calendar_event",
+                {"title": "TESTE", "new_time": "18:00", "new_title": "", "day": ""},
+            )
+        mock_upd.assert_called_once_with("TESTE", "", "18:00", "", "")
+        assert "atualizado" in result.lower()
+
+    def test_update_calendar_event_requires_at_least_one_change(self):
+        from modules.intent import _check_required_args
+        result = _check_required_args("update_calendar_event", {"title": "TESTE"})
+        assert result != ""
+
+    def test_update_calendar_event_does_not_require_confirmation(self):
+        from modules.intent import _needs_confirmation
+        assert _needs_confirmation("update_calendar_event", {"title": "x"}) is False
+
     def test_open_application_delegates(self):
         from modules.intent import _execute_tool
         with patch("modules.system_control.open_app", return_value="Abrindo chrome."):

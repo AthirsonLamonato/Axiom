@@ -27,7 +27,15 @@ class _Events:
         self.deleted_send_updates = sendUpdates
         return self
 
+    def patch(self, calendarId, eventId, body, sendUpdates="none"):
+        self.patched_event_id = eventId
+        self.patched_body = body
+        self.patched_send_updates = sendUpdates
+        return self
+
     def execute(self):
+        if getattr(self, "patched_event_id", None) is not None:
+            return dict(self.patched_body)  # simula o Google ecoando os campos atualizados
         if self.deleted_event_id is not None:
             return {}
         if self.inserted_body is not None:
@@ -255,3 +263,69 @@ def test_delete_event_no_match_returns_not_found(monkeypatch):
 def test_delete_event_requires_title():
     assert "título" in calendar.delete_event("").lower()
     assert "título" in calendar.delete_event("   ").lower()
+
+
+# ── update_event ────────────────────────────────────────────────────
+
+def test_update_event_changes_time(monkeypatch):
+    items = [{
+        "id": "evt1", "summary": "[TESTE] Reunião",
+        "start": {"dateTime": "2026-06-17T16:00:00-03:00"},
+        "end": {"dateTime": "2026-06-17T17:00:00-03:00"},
+    }]
+    service = _Service(list_items=items)
+    monkeypatch.setattr(calendar, "_get_service", lambda: service)
+    monkeypatch.setattr(calendar, "_get_config", lambda: _Config())
+
+    result = calendar.update_event("TESTE", new_time="18:00")
+
+    body = service._events.patched_body
+    new_start = datetime.fromisoformat(body["start"]["dateTime"])
+    new_end = datetime.fromisoformat(body["end"]["dateTime"])
+    assert new_start.hour == 18 and new_start.minute == 0
+    assert (new_end - new_start) == timedelta(hours=1)  # duração preservada
+    assert "atualizado" in result.lower()
+
+
+def test_update_event_changes_title(monkeypatch):
+    items = [{
+        "id": "evt1", "summary": "[TESTE] Reunião",
+        "start": {"dateTime": "2026-06-17T16:00:00-03:00"},
+        "end": {"dateTime": "2026-06-17T17:00:00-03:00"},
+    }]
+    service = _Service(list_items=items)
+    monkeypatch.setattr(calendar, "_get_service", lambda: service)
+    monkeypatch.setattr(calendar, "_get_config", lambda: _Config())
+
+    calendar.update_event("TESTE", new_title="Novo título")
+
+    assert service._events.patched_body["summary"] == "Novo título"
+
+
+def test_update_event_requires_at_least_one_change(monkeypatch):
+    service = _Service(list_items=[])
+    monkeypatch.setattr(calendar, "_get_service", lambda: service)
+
+    result = calendar.update_event("TESTE")
+
+    assert "pelo menos uma mudança" in result.lower()
+    assert getattr(service._events, "patched_event_id", None) is None
+
+
+def test_update_event_multiple_matches_does_not_update(monkeypatch):
+    items = [
+        {"id": "evt1", "summary": "[TESTE] A", "start": {"dateTime": "2026-06-17T16:00:00-03:00"}},
+        {"id": "evt2", "summary": "[TESTE] B", "start": {"dateTime": "2026-06-18T10:00:00-03:00"}},
+    ]
+    service = _Service(list_items=items)
+    monkeypatch.setattr(calendar, "_get_service", lambda: service)
+    monkeypatch.setattr(calendar, "_get_config", lambda: _Config())
+
+    result = calendar.update_event("TESTE", new_time="10:00")
+
+    assert getattr(service._events, "patched_event_id", None) is None
+    assert "específico" in result.lower()
+
+
+def test_update_event_requires_title():
+    assert "título" in calendar.update_event("", new_time="10:00").lower()

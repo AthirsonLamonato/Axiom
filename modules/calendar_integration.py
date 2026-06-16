@@ -313,6 +313,36 @@ def create_event(
     return _insert_event(title or "Evento", start_dt, timezone_name, service, attendees=attendees)
 
 
+def _find_events_by_title(title: str, day: str, service) -> list[dict]:
+    """Busca eventos cujo summary contém `title` (case-insensitive).
+    day: opcional, restringe a busca a 'hoje'/'amanhã'; sem isso, busca de
+    1 dia atrás até 60 dias no futuro. Compartilhado por delete_event() e
+    update_event() — nenhuma das duas age se houver mais de um resultado."""
+    tz = _calendar_timezone()
+    now = datetime.now(tz)
+    day_norm = day.strip().lower()
+    if day_norm in ("hoje", "amanhã", "amanha"):
+        offset = 1 if day_norm in ("amanhã", "amanha") else 0
+        target = now + timedelta(days=offset)
+        time_min = target.replace(hour=0, minute=0, second=0, microsecond=0)
+        time_max = time_min + timedelta(days=1)
+    else:
+        time_min = now - timedelta(days=1)
+        time_max = now + timedelta(days=60)
+
+    result = service.events().list(
+        calendarId="primary",
+        timeMin=time_min.isoformat(),
+        timeMax=time_max.isoformat(),
+        singleEvents=True,
+        orderBy="startTime",
+        maxResults=50,
+    ).execute()
+
+    needle = title.strip().lower()
+    return [ev for ev in result.get("items", []) if needle in ev.get("summary", "").lower()]
+
+
 def delete_event(title: str, day: str = "", *_) -> str:
     """Apaga um evento pelo título (busca por trecho, sem diferenciar
     maiúsculas/minúsculas). 'day' (hoje/amanhã, opcional) restringe a busca a
@@ -328,33 +358,11 @@ def delete_event(title: str, day: str = "", *_) -> str:
     except Exception as e:
         return f"Erro ao conectar com o Google Calendar: {e}"
 
-    tz = _calendar_timezone()
-    now = datetime.now(tz)
-    day_norm = day.strip().lower()
-    if day_norm in ("hoje", "amanhã", "amanha"):
-        offset = 1 if day_norm in ("amanhã", "amanha") else 0
-        target = now + timedelta(days=offset)
-        time_min = target.replace(hour=0, minute=0, second=0, microsecond=0)
-        time_max = time_min + timedelta(days=1)
-    else:
-        time_min = now - timedelta(days=1)
-        time_max = now + timedelta(days=60)
-
     try:
-        result = service.events().list(
-            calendarId="primary",
-            timeMin=time_min.isoformat(),
-            timeMax=time_max.isoformat(),
-            singleEvents=True,
-            orderBy="startTime",
-            maxResults=50,
-        ).execute()
+        matches = _find_events_by_title(title, day, service)
     except Exception as e:
         logger.error("Erro ao buscar eventos para apagar: %s", e, exc_info=True)
         return f"Erro ao buscar eventos: {e}"
-
-    needle = title.strip().lower()
-    matches = [ev for ev in result.get("items", []) if needle in ev.get("summary", "").lower()]
 
     if not matches:
         return f"Não encontrei nenhum evento com '{title}' no período buscado."
@@ -374,6 +382,84 @@ def delete_event(title: str, day: str = "", *_) -> str:
     except Exception as e:
         logger.error("Erro ao apagar evento: %s", e, exc_info=True)
         return f"Erro ao apagar evento: {e}"
+
+
+def update_event(
+    title: str, new_day: str = "", new_time: str = "", new_title: str = "",
+    day: str = "", *_,
+) -> str:
+    """Remarca (data/hora) ou renomeia um evento existente, encontrado por
+    título. Pelo menos um de new_day/new_time/new_title deve ser informado.
+    'day' (opcional) restringe a busca pelo evento original a hoje/amanhã —
+    igual a delete_event(), nunca altera se houver mais de um resultado."""
+    if not title or not title.strip():
+        return "Preciso do título (ou parte dele) do evento a alterar."
+    if not (new_day.strip() or new_time.strip() or new_title.strip()):
+        return "Preciso de pelo menos uma mudança: novo dia, novo horário ou novo título."
+
+    try:
+        service = _get_service()
+    except (FileNotFoundError, RuntimeError) as e:
+        return str(e)
+    except Exception as e:
+        return f"Erro ao conectar com o Google Calendar: {e}"
+
+    try:
+        matches = _find_events_by_title(title, day, service)
+    except Exception as e:
+        logger.error("Erro ao buscar eventos para alterar: %s", e, exc_info=True)
+        return f"Erro ao buscar eventos: {e}"
+
+    if not matches:
+        return f"Não encontrei nenhum evento com '{title}' no período buscado."
+    if len(matches) > 1:
+        lines = [f"Encontrei {len(matches)} eventos com '{title}' — seja mais específico:"]
+        lines += [f"  • {_format_event(ev)}" for ev in matches]
+        return "\n".join(lines)
+
+    ev = matches[0]
+    cur_start_str = ev.get("start", {}).get("dateTime")
+    if not cur_start_str:
+        return "Esse evento é de dia todo — alteração de data/horário ainda não é suportada para esse tipo."
+    cur_start = datetime.fromisoformat(cur_start_str)
+    cur_end_str = ev.get("end", {}).get("dateTime")
+    duration = (datetime.fromisoformat(cur_end_str) - cur_start) if cur_end_str else timedelta(hours=1)
+
+    target_date = _resolve_day(new_day, datetime.now()).date() if new_day.strip() else cur_start.date()
+    if new_time.strip():
+        try:
+            hour, minute = (int(x) for x in new_time.strip().split(":"))
+        except (ValueError, AttributeError):
+            hour, minute = cur_start.hour, cur_start.minute
+    else:
+        hour, minute = cur_start.hour, cur_start.minute
+
+    new_start = datetime(target_date.year, target_date.month, target_date.day, hour, minute)
+    new_end = new_start + duration
+    timezone_name = _get_config().get("calendar.timezone", "America/Sao_Paulo")
+
+    patch_body = {
+        "start": {"dateTime": new_start.isoformat(), "timeZone": timezone_name},
+        "end": {"dateTime": new_end.isoformat(), "timeZone": timezone_name},
+    }
+    if new_title.strip():
+        clean = new_title.strip()
+        patch_body["summary"] = clean[0].upper() + clean[1:]
+
+    try:
+        updated = service.events().patch(
+            calendarId="primary",
+            eventId=ev["id"],
+            body=patch_body,
+            sendUpdates="all" if ev.get("attendees") else "none",
+        ).execute()
+        return (
+            f"Evento atualizado: '{updated.get('summary', ev.get('summary'))}' — "
+            f"{new_start.strftime('%d/%m %H:%M')} a {new_end.strftime('%H:%M')}"
+        )
+    except Exception as e:
+        logger.error("Erro ao atualizar evento: %s", e, exc_info=True)
+        return f"Erro ao atualizar evento: {e}"
 
 
 def auth_calendar(*_) -> str:

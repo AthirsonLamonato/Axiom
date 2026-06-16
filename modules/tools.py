@@ -174,6 +174,25 @@ class DeleteCalendarEventArgs(BaseModel):
         return v.strip() if isinstance(v, str) else v
 
 
+class UpdateCalendarEventArgs(BaseModel):
+    title: str = Field(..., min_length=1, description="Título (ou parte dele) do evento a alterar")
+    new_day: str = Field("", description="Novo dia ('hoje', 'amanhã' ou AAAA-MM-DD), opcional")
+    new_time: str = Field("", description="Novo horário HH:MM (24h), opcional")
+    new_title: str = Field("", description="Novo título, opcional")
+    day: str = Field("", description="Opcional: 'hoje' ou 'amanhã', pra restringir a busca pelo evento original")
+
+    @field_validator("title", mode="before")
+    @classmethod
+    def strip_title(cls, v: str) -> str:
+        return v.strip() if isinstance(v, str) else v
+
+    @model_validator(mode="after")
+    def at_least_one_change(self) -> "UpdateCalendarEventArgs":
+        if not (self.new_day or self.new_time or self.new_title):
+            raise ValueError("informe ao menos um de new_day/new_time/new_title")
+        return self
+
+
 # ── Executores (lazy imports) ─────────────────────────────────────────
 
 def _exec_open_application(a: OpenApplicationArgs) -> str:
@@ -274,6 +293,11 @@ def _exec_delete_calendar_event(a: DeleteCalendarEventArgs) -> str:
     return calendar_integration.delete_event(a.title, a.day)
 
 
+def _exec_update_calendar_event(a: UpdateCalendarEventArgs) -> str:
+    from modules import calendar_integration
+    return calendar_integration.update_event(a.title, a.new_day, a.new_time, a.new_title, a.day)
+
+
 # ── Definição de ferramenta ───────────────────────────────────────────
 
 @dataclass
@@ -370,6 +394,12 @@ REGISTRY: dict[str, ToolDef] = {
         executor=_exec_delete_calendar_event,
         risk="high",
         requires_confirmation=True,  # destrutivo e irreversível
+    ),
+    "update_calendar_event": ToolDef(
+        schema_model=UpdateCalendarEventArgs,
+        executor=_exec_update_calendar_event,
+        risk="medium",
+        requires_confirmation=False,  # reversível (pode remarcar de volta)
     ),
 }
 

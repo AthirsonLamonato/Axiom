@@ -265,6 +265,24 @@ TOOLS = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "update_calendar_event",
+            "description": "Remarca (data/hora) ou renomeia um evento existente do Google Calendar, encontrado por título. Use quando o usuário pedir para mudar, remarcar, adiar ou renomear uma reunião/evento. Informe ao menos um de new_day/new_time/new_title.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "title": {"type": "string", "description": "Título (ou parte dele) do evento a alterar"},
+                    "new_day": {"type": "string", "description": "Novo dia ('hoje', 'amanhã' ou AAAA-MM-DD), opcional"},
+                    "new_time": {"type": "string", "description": "Novo horário HH:MM (24h), opcional"},
+                    "new_title": {"type": "string", "description": "Novo título, opcional"},
+                    "day": {"type": "string", "description": "Opcional: 'hoje' ou 'amanhã', pra restringir a busca pelo evento original"},
+                },
+                "required": ["title"],
+            },
+        },
+    },
 ]
 
 _VALID_TOOLS = {t["function"]["name"] for t in TOOLS}
