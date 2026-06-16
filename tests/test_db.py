@@ -20,7 +20,7 @@ def _make_connect(db_path):
 
 @pytest.fixture
 def fresh_db(tmp_path, monkeypatch):
-    db_path = str(tmp_path / "axiom_test.db")
+    db_path = str(tmp_path / "pacoca_test.db")
     monkeypatch.setattr(db, "DB_PATH", db_path)
     monkeypatch.setattr(db, "_connect", _make_connect(db_path))
     db.init()

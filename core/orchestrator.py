@@ -67,6 +67,7 @@ ROUTES: list[tuple[str, str, bool]] = [
     (r"cria\s+branch\s+(.+)",             "modules.dev_tools:git_create_branch", False),
     (r"(branch|ramo)\s+atual",            "modules.dev_tools:git_branch_current",False),
     (r"(roda|executa)\s+(os\s+)?testes",  "modules.dev_tools:run_tests",        False),
+    (r"formata(?:r)?\s+(?:o\s+)?c[óo]digo", "modules.dev_tools:format_code",    False),
 
     # Overlay específico (antes de "abre/fecha" genérico)
     (r"abr[ae]\s+o\s+overlay",               "output.overlay:show",                False),
@@ -227,6 +228,11 @@ ROUTES: list[tuple[str, str, bool]] = [
     (r"(?:faz?|faz\s+um?|executa)\s+backup",  "modules.backup:backup_all",          False),
     (r"backup\s+(?:agora|local|drive)",        "modules.backup:backup_all",          False),
 
+    # Integrações e manutenção
+    (r"(status|estado)\s+das?\s+integra[çc][oõ]es?", "core.orchestrator:integration_status", False),
+    (r"(testa|verifica)\s+(as?\s+)?integra[çc][oõ]es?", "core.orchestrator:integration_status", False),
+    (r"limpa\s+(os\s+)?dados\s+antigos",               "core.orchestrator:cleanup_old_data",   False),
+
     # Meta
     (r"^(ajuda|help|\?)$",                 "core.orchestrator:list_commands",    False),
 ]
@@ -288,6 +294,32 @@ def learning_report(*_) -> str:
         return f"Erro ao gerar relatório: {e}"
 
 
+def cleanup_old_data(*_) -> str:
+    """Remove dados de histórico antigos conforme política de retenção."""
+    try:
+        from core.config import Config
+        from storage.db import cleanup_old_data as _cleanup
+        days = Config().get("privacy.retention_days", 30)
+        return _cleanup(days=days)
+    except Exception as e:
+        return f"Erro na limpeza: {e}"
+
+
+def integration_status(*_) -> str:
+    """Verifica e retorna o status de todas as integrações configuradas."""
+    try:
+        from web.app import _check_integrations
+        integrations = _check_integrations()
+        lines = ["Status das integrações:"]
+        for name, info in integrations.items():
+            mark = "✓" if info.get("ok") else "✗"
+            detail = info.get("detail", "")
+            lines.append(f"  {mark} {name}: {detail}")
+        return "\n".join(lines)
+    except Exception as e:
+        return f"Erro ao verificar integrações: {e}"
+
+
 def list_commands(*_) -> str:
     """Lista todos os comandos disponíveis (built-in + plugins)."""
     try:
@@ -341,6 +373,7 @@ class Orchestrator:
         self._plugin_routes: list = []
         self._all_routes: list = list(ROUTES)
         self._last_profile: str = ""
+        self._tts_done = False  # True quando _fallback_ai fez TTS via streaming
         self._load_plugins()
         try:
             from modules import web_server
@@ -417,13 +450,15 @@ class Orchestrator:
                 learner = _import_module("modules.learner")
                 corrected = learner.correct_transcription(command) if learner else command
 
+                self._tts_done = False
                 response = self.dispatch_chain(corrected)
                 if response:
                     print(f"\n  Paçoca: {response}\n")
                     if overlay:
                         overlay.show_message(response)
                         overlay.set_state("speaking")
-                    self.tts.speak(response)
+                    if not self._tts_done:
+                        self.tts.speak(response)
 
                 if learner:
                     success = bool(response and "não entendi" not in response.lower()
@@ -482,13 +517,15 @@ class Orchestrator:
                 learner = _import_module("modules.learner")
                 corrected = learner.correct_transcription(command) if learner else command
 
+                self._tts_done = False
                 response = self.dispatch_chain(corrected)
                 if response:
                     print(f"\n  Paçoca: {response}\n")
                     if overlay:
                         overlay.show_message(response)
                         overlay.set_state("speaking")
-                    self.tts.speak(response)
+                    if not self._tts_done:
+                        self.tts.speak(response)
 
                 # Registra interação para aprendizado
                 if learner:
@@ -509,27 +546,56 @@ class Orchestrator:
 
         _t0 = _time.monotonic()
         _route_matched = ""
+        _provider = ""
+        _tool = ""
+        _fallback_used = False
         response: Optional[str] = None
+
+        overlay = _import_module("output.overlay")
 
         for pattern, handler_path, needs_confirm in self._all_routes:
             match = re.search(pattern, command_lower)
             if match:
                 if needs_confirm and self.config.get("security.confirm_critical"):
+                    if overlay:
+                        overlay.set_state_detail("processing", "Aguardando confirmação")
                     if not self._confirm(command):
                         return "Ação cancelada."
                 _route_matched = handler_path
+                _provider = "local"
+                _tool = handler_path.split(":")[-1]
+                # Overlay: label descritivo baseado no módulo
+                if overlay:
+                    _mod = handler_path.split(":")[0].replace("modules.", "").replace("_", " ")
+                    overlay.set_state_detail("processing", f"Executando {_mod}")
                 response = self._call_handler(handler_path, match)
                 break
 
         if response is None:
-            response = self._intent_dispatch(command)
+            if overlay:
+                overlay.set_state_detail("processing", "Analisando comando")
+            result = self._intent_dispatch(command)
+            response, _provider, _tool, _fallback_used = result
             if response:
                 _route_matched = "intent"
 
         if response is None:
+            if overlay:
+                try:
+                    from core.providers import _circuit_is_open
+                    _lbl = "Usando IA local" if _circuit_is_open() else "Consultando Groq"
+                except Exception:
+                    _lbl = "Consultando IA"
+                overlay.set_state_detail("processing", _lbl)
             response = self._fallback_ai(command)
             if response:
                 _route_matched = "fallback_ai"
+                _fallback_used = True
+                try:
+                    from core.providers import _circuit_is_open
+                    _provider = "ollama" if _circuit_is_open() else "groq"
+                except Exception:
+                    _provider = "groq"
 
         # Telemetria
         try:
@@ -537,8 +603,11 @@ class Orchestrator:
             record_command(
                 command=command,
                 route=_route_matched,
+                tool=_tool,
+                provider=_provider,
                 latency_s=_time.monotonic() - _t0,
                 success=bool(response and "Erro" not in (response or "")[:20]),
+                fallback_used=_fallback_used,
             )
         except Exception:
             pass
@@ -589,51 +658,105 @@ class Orchestrator:
             logger.error(f"Erro ao executar '{handler_path}': {e}", exc_info=True)
             return f"Erro ao executar o comando: {e}"
 
-    def _intent_dispatch(self, command: str) -> Optional[str]:
+    def _intent_dispatch(self, command: str) -> tuple:
         """
         Interpreta o comando via NLU e executa ações.
+        Retorna (response, provider, tool, fallback_used).
         Ordem de prioridade:
           1. TF-IDF local (<5ms, sem rede) — se confiante, executa diretamente.
-          2. Loop agentivo Groq — se provider=groq e chave configurada.
+          2. Loop agentivo Groq — se provider in (groq, auto) e chave configurada.
           3. Ollama few-shot — fallback local sem internet.
         O registro de contexto é feito por dispatch() depois que este método retorna.
         """
+        _empty = (None, "", "", False)
         intent = _import_module("modules.intent")
         if not intent:
-            return None
+            return _empty
 
         # 1. Classificador local (cache + TF-IDF) — sem chamada de rede
         local_calls = intent.classify_local(command)
         if local_calls:
             responses = intent.execute_actions(local_calls)
-            return " | ".join(responses) if responses else None
+            # classify_local retorna dicts com chave "name" (não "intent")
+            first = local_calls[0] if local_calls else {}
+            tool = first.get("name") or first.get("intent", "")
+            return (" | ".join(responses) if responses else None, "local", tool, False)
 
         # 2. Loop agentivo Groq — executa e produz resposta natural
-        import os as _os
         provider = self.config.get("ai.provider", "ollama")
-        api_key  = self.config.get("ai.groq_api_key", "") or _os.environ.get("GROQ_API_KEY", "")
-        if provider == "groq" and api_key:
+        try:
+            from core.providers import _resolve_key
+            api_key = _resolve_key("ai.groq_api_key", "GROQ_API_KEY", self.config)
+        except Exception:
+            import os as _os
+            api_key = self.config.get("ai.groq_api_key", "") or _os.environ.get("GROQ_API_KEY", "")
+        if provider in ("groq", "auto") and api_key:
+            _ov = _import_module("output.overlay")
+            if _ov:
+                _ov.set_state_detail("processing", "Consultando Groq")
             try:
                 response = intent.run_agentic_loop(command)
                 if response:
-                    return response
+                    return (response, "groq", "agentic_loop", False)
             except Exception as e:
                 logger.warning("run_agentic_loop falhou, usando Ollama: %s", e)
 
         # 3. Pipeline Ollama — usa parse_intent_ollama para não chamar Groq novamente
+        _ov = _import_module("output.overlay")
+        if _ov:
+            _ov.set_state_detail("processing", "Usando IA local")
         parse_fn = getattr(intent, "parse_intent_ollama", intent.parse_intent)
         actions = parse_fn(command)
         if not actions:
-            return None
+            return _empty
         responses = intent.execute_actions(actions)
-        return " | ".join(responses) if responses else None
+        first_action = actions[0] if actions else {}
+        tool = first_action.get("name") or first_action.get("intent", "")
+        return (" | ".join(responses) if responses else None, "ollama", tool, True)
 
     def _fallback_ai(self, command: str) -> str:
-        """Repassa ao LLM quando nenhuma rota bate."""
+        """
+        Repassa ao LLM quando nenhuma rota bate.
+        Usa streaming se TTS estiver ativo — fala frase por frase enquanto o LLM gera,
+        e sinaliza _tts_done para que o loop de voz/texto não duplique a fala.
+        """
         summarizer = _import_module("modules.summarizer")
-        if summarizer:
-            return summarizer.ask_ai(command)
-        return "Não entendi o comando. Tente novamente."
+        if not summarizer:
+            return "Não entendi o comando. Tente novamente."
+
+        ask_stream = getattr(summarizer, "ask_ai_stream", None)
+        if ask_stream and self.tts.enabled:
+            try:
+                gen = ask_stream(command)
+                # Fala frase por frase (bloqueante neste thread) e coleta o texto completo
+                full_text = self._stream_and_collect(gen)
+                if full_text:
+                    self._tts_done = True
+                    return full_text
+            except Exception as e:
+                logger.warning("ask_ai_stream falhou, usando ask_ai: %s", e)
+
+        return summarizer.ask_ai(command)
+
+    def _stream_and_collect(self, gen) -> str:
+        """Fala um gerador de chunks frase por frase e retorna o texto completo."""
+        import re as _re
+        sent_end = _re.compile(r'(?<=[.!?])\s+')
+        buffer = ""
+        full = ""
+        for chunk in gen:
+            full += chunk
+            buffer += chunk
+            parts = sent_end.split(buffer)
+            if len(parts) > 1:
+                for sentence in parts[:-1]:
+                    s = sentence.strip()
+                    if s:
+                        self.tts._speak_sync(s)
+                buffer = parts[-1]
+        if buffer.strip():
+            self.tts._speak_sync(buffer.strip())
+        return full.strip()
 
     def dispatch_chain(self, command: str) -> Optional[str]:
         """Executa múltiplos comandos encadeados separados por conectores naturais."""
@@ -651,10 +774,17 @@ class Orchestrator:
         responses = []
         for part in parts:
             part = part.strip()
-            if part:
-                resp = self.dispatch(part)
-                if resp:
-                    responses.append(resp)
+            if not part:
+                continue
+            self._tts_done = False
+            resp = self.dispatch(part)
+            if resp:
+                responses.append(resp)
+                if not self._tts_done:
+                    self.tts.speak(resp)
+        # Cada parte já foi falada (streaming ou speak() acima) — sinaliza ao
+        # chamador para não falar o texto combinado de novo.
+        self._tts_done = True
         return " | ".join(responses) if responses else None
 
     def _matches_route(self, text: str) -> bool:

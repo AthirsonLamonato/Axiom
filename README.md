@@ -129,6 +129,9 @@ python main.py --edit-routines
 
 ## Comandos disponíveis
 
+> Lista completa e sempre atualizada em [docs/comandos.md](docs/comandos.md) ou no
+> dashboard web em `/docs` (`python main.py --web`).
+
 ### Sistema
 ```
 abre o VS Code

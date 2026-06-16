@@ -10,7 +10,9 @@ import html as html_lib
 import json
 import logging
 import queue as _queue_module
+import secrets
 import threading
+import time
 from datetime import datetime
 from typing import Optional
 from urllib.parse import quote, urlsplit
@@ -20,6 +22,83 @@ logger = logging.getLogger(__name__)
 _orchestrator = None
 _web_password: str = ""
 DEFAULT_PORT = 7755
+
+# Token sincronizador de CSRF — gerado uma vez por processo, injetado nas páginas
+# autenticadas via hx-headers (htmx) e validado nas rotas POST que alteram estado.
+_CSRF_TOKEN = secrets.token_urlsafe(32)
+
+# ── Sessão: expira por inatividade (security.session_timeout_min) ────
+_last_seen: float = 0.0
+_session_lock = threading.Lock()
+
+
+def _session_timeout_s() -> int:
+    try:
+        from core.config import Config
+        return max(1, int(Config().get("security.session_timeout_min", 30))) * 60
+    except Exception:
+        return 1800
+
+
+def _touch_session() -> None:
+    global _last_seen
+    with _session_lock:
+        _last_seen = time.monotonic()
+
+
+def _session_expired() -> bool:
+    with _session_lock:
+        if _last_seen == 0.0:
+            return False
+        return (time.monotonic() - _last_seen) > _session_timeout_s()
+
+
+# ── Rate limiting de login (por IP) ───────────────────────────────────
+_login_attempts: dict = {}
+_login_attempts_lock = threading.Lock()
+
+
+def _login_max_attempts() -> int:
+    try:
+        from core.config import Config
+        return max(1, int(Config().get("security.login_max_attempts", 5)))
+    except Exception:
+        return 5
+
+
+def _login_window_s() -> int:
+    try:
+        from core.config import Config
+        return max(1, int(Config().get("security.login_window_s", 60)))
+    except Exception:
+        return 60
+
+
+def _login_rate_limited(ip: str) -> bool:
+    now = time.monotonic()
+    window = _login_window_s()
+    with _login_attempts_lock:
+        # Varre todas as IPs (não só a atual) para não acumular entradas
+        # esquecidas de IPs que tentaram uma vez e nunca mais voltaram.
+        for other_ip in [k for k, v in _login_attempts.items()
+                          if not any(now - t < window for t in v)]:
+            del _login_attempts[other_ip]
+        attempts = [t for t in _login_attempts.get(ip, []) if now - t < window]
+        if attempts:
+            _login_attempts[ip] = attempts
+        else:
+            _login_attempts.pop(ip, None)
+        return len(attempts) >= _login_max_attempts()
+
+
+def _record_login_failure(ip: str) -> None:
+    with _login_attempts_lock:
+        _login_attempts.setdefault(ip, []).append(time.monotonic())
+
+
+# ── Heartbeat de WebSocket ─────────────────────────────────────────────
+_WS_PING_INTERVAL_S = 30
+_WS_PONG_TIMEOUT_S = 90
 
 # ── Bus de eventos (thread-safe → WebSocket clients) ─────────────────
 _event_queues: list = []
@@ -63,7 +142,7 @@ def _valid_token(token: str) -> bool:
 
 def _valid_websocket(websocket) -> bool:
     token = websocket.cookies.get("pacoca_token", "")
-    if not _valid_token(token):
+    if not _valid_token(token) or _session_expired():
         return False
 
     origin = websocket.headers.get("origin", "")
@@ -96,8 +175,11 @@ def _make_app():
             if request.url.path in skip or request.url.path.startswith("/ws"):
                 return await call_next(request)
             token = request.cookies.get("pacoca_token", "")
-            if not _valid_token(token):
-                return RedirectResponse("/login")
+            if not _valid_token(token) or _session_expired():
+                resp = RedirectResponse("/login")
+                resp.delete_cookie("pacoca_token")
+                return resp
+            _touch_session()
             return await call_next(request)
 
     app.add_middleware(AuthMiddleware)
@@ -125,7 +207,7 @@ def _make_app():
 </head>
 <body>
 <div class="card">
-  <h1>⚡ AXIOM</h1>
+  <h1>⚡ Paçoca</h1>
   <form method="post" action="/login">
     <input type="password" name="password" placeholder="Senha do dashboard" autofocus>
     <button type="submit">Entrar</button>
@@ -218,7 +300,10 @@ def _make_app():
 </style>
 </head>
 <body>
-<h1>⚡ AXIOM <span id="ws-status">● conectando...</span></h1>
+<h1>⚡ Paçoca <span id="ws-status">● conectando...</span></h1>
+<p style="color:#8b949e;font-size:0.82em;margin-bottom:16px">
+  <a href="/" style="color:#58a6ff">Dashboard</a> · <a href="/metrics">Métricas</a> · <a href="/integrations">Integrações</a> · <a href="/docs">Documentação</a>
+</p>
 
 <div class="grid">
   <!-- Status -->
@@ -307,6 +392,12 @@ function connectCmdWs() {
     document.getElementById('ws-status').className = 'ok';
   };
   cmdWs.onmessage = (e) => {
+    if (e.data.startsWith('{')) {
+      try {
+        const msg = JSON.parse(e.data);
+        if (msg.type === 'ping') { cmdWs.send(JSON.stringify({type: 'pong'})); return; }
+      } catch {}
+    }
     document.getElementById('cmd-response').innerHTML = e.data;
   };
   cmdWs.onclose = () => {
@@ -346,6 +437,7 @@ function connectEvtWs() {
   evtWs.onmessage = (e) => {
     let evt;
     try { evt = JSON.parse(e.data); } catch { return; }
+    if (evt.type === 'ping') { evtWs.send(JSON.stringify({type: 'pong'})); return; }
     const list = document.getElementById('events-list');
     const empty = list.querySelector('.empty');
     if (empty) empty.remove();
@@ -376,11 +468,24 @@ connectEvtWs();
         return HTMLResponse(_LOGIN_HTML.format(error=""))
 
     @app.post("/login")
-    async def login_post(password: str = Form(...)):
+    async def login_post(request: Request, password: str = Form(...)):
+        ip = request.client.host if request.client else "unknown"
+        if _login_rate_limited(ip):
+            return HTMLResponse(
+                _LOGIN_HTML.format(
+                    error='<p class="err">Muitas tentativas. Aguarde 1 minuto.</p>'
+                ),
+                status_code=429,
+            )
         if _valid_token(_token_for(password)):
+            _touch_session()
             resp = RedirectResponse("/", status_code=303)
-            resp.set_cookie("pacoca_token", _token_for(password), httponly=True)
+            resp.set_cookie(
+                "pacoca_token", _token_for(password),
+                httponly=True, samesite="strict",
+            )
             return resp
+        _record_login_failure(ip)
         return HTMLResponse(
             _LOGIN_HTML.format(error='<p class="err">Senha incorreta.</p>'),
             status_code=401,
@@ -396,7 +501,12 @@ connectEvtWs();
 
     @app.get("/", response_class=HTMLResponse)
     async def dashboard():
-        return HTMLResponse(content=_HTML)
+        page = _HTML.replace(
+            "<body>",
+            f'<body hx-headers=\'{{"X-CSRF-Token": "{_CSRF_TOKEN}"}}\'>',
+            1,
+        )
+        return HTMLResponse(content=page)
 
     # ── WebSocket: execução de comandos ───────────────────────────────
 
@@ -406,11 +516,24 @@ connectEvtWs();
             await websocket.close(code=1008)
             return
         await websocket.accept()
+        last_activity = time.monotonic()
         try:
             while True:
-                data = await websocket.receive_text()
+                try:
+                    data = await asyncio.wait_for(
+                        websocket.receive_text(), timeout=_WS_PING_INTERVAL_S
+                    )
+                except asyncio.TimeoutError:
+                    if time.monotonic() - last_activity > _WS_PONG_TIMEOUT_S:
+                        logger.info("ws_command: heartbeat sem resposta, encerrando conexão")
+                        break
+                    await websocket.send_text(json.dumps({"type": "ping"}))
+                    continue
+                last_activity = time.monotonic()
                 try:
                     payload = json.loads(data)
+                    if payload.get("type") == "pong":
+                        continue
                     cmd = payload.get("command", "").strip()
                 except Exception:
                     cmd = data.strip()
@@ -446,13 +569,27 @@ connectEvtWs();
         q: _queue_module.Queue = _queue_module.Queue(maxsize=50)
         with _event_queues_lock:
             _event_queues.append(q)
+        last_activity = time.monotonic()
+        last_ping = time.monotonic()
         try:
             while True:
                 try:
                     payload = q.get_nowait()
                     await websocket.send_text(payload)
                 except _queue_module.Empty:
-                    await asyncio.sleep(0.3)
+                    pass
+                try:
+                    await asyncio.wait_for(websocket.receive_text(), timeout=0.3)
+                    last_activity = time.monotonic()
+                except asyncio.TimeoutError:
+                    pass
+                now = time.monotonic()
+                if now - last_activity > _WS_PONG_TIMEOUT_S:
+                    logger.info("ws_events: heartbeat sem resposta, encerrando conexão")
+                    break
+                if now - last_ping > _WS_PING_INTERVAL_S:
+                    await websocket.send_text(json.dumps({"type": "ping"}))
+                    last_ping = now
         except (WebSocketDisconnect, Exception):
             pass
         finally:
@@ -608,11 +745,14 @@ connectEvtWs();
 
     @app.post("/api/routines/add", response_class=HTMLResponse)
     async def routines_add(
+        request: Request,
         name: str = Form(...),
         label: str = Form(...),
         action: str = Form(...),
         target: str = Form(""),
     ):
+        if request.headers.get("x-csrf-token") != _CSRF_TOKEN:
+            return HTMLResponse('<div class="empty">Token CSRF inválido.</div>', status_code=403)
         if _orchestrator:
             try:
                 import yaml
@@ -636,7 +776,9 @@ connectEvtWs();
         return await routines_html()
 
     @app.post("/api/routines/delete/{name}", response_class=HTMLResponse)
-    async def routines_delete(name: str):
+    async def routines_delete(request: Request, name: str):
+        if request.headers.get("x-csrf-token") != _CSRF_TOKEN:
+            return HTMLResponse('<div class="empty">Token CSRF inválido.</div>', status_code=403)
         if _orchestrator:
             try:
                 import yaml
@@ -686,9 +828,308 @@ connectEvtWs();
         return JSONResponse(_check_integrations())
 
     @app.post("/api/integrations/test/{name}")
-    async def test_integration(name: str):
+    async def test_integration(name: str, request: Request):
+        if request.headers.get("x-csrf-token") != _CSRF_TOKEN:
+            return JSONResponse({"error": "Token CSRF inválido."}, status_code=403)
         result = _test_integration(name)
         return JSONResponse(result)
+
+    # ── Páginas extras ────────────────────────────────────────────────
+
+    @app.get("/integrations", response_class=HTMLResponse)
+    async def integrations_page():
+        data = _check_integrations()
+        rows = ""
+        for name, info in data.items():
+            ok = info.get("ok", False)
+            mark = "✓" if ok else "✗"
+            color = "#3fb950" if ok else "#f85149"
+            detail = html_lib.escape(str(info.get("detail", "")))
+            cb = info.get("circuit_breaker", {})
+            extra = ""
+            if cb:
+                extra = f' <span style="color:#8b949e;font-size:0.82em">(CB: {cb.get("failures",0)} falhas, open={cb.get("open",False)})</span>'
+            rows += (
+                f'<tr>'
+                f'<td style="color:{color};font-size:1.1em;width:24px">{mark}</td>'
+                f'<td style="font-weight:bold">{html_lib.escape(name)}</td>'
+                f'<td>{detail}{extra}</td>'
+                f'<td><button onclick="testIntegration(\'{html_lib.escape(name)}\')" '
+                f'id="btn-{html_lib.escape(name)}" style="padding:4px 10px;font-size:0.85em">Testar</button></td>'
+                f'</tr>'
+            )
+        return HTMLResponse(f"""<!DOCTYPE html>
+<html lang="pt-BR"><head><meta charset="UTF-8">
+<title>Paçoca — Integrações</title>
+<style>
+  body{{background:#0d1117;color:#c9d1d9;font-family:'Segoe UI',monospace;padding:24px;font-size:14px}}
+  h1{{color:#58a6ff;margin-bottom:16px}}
+  table{{width:100%;border-collapse:collapse}}
+  th{{color:#8b949e;font-size:0.72em;text-transform:uppercase;padding:8px;text-align:left;border-bottom:1px solid #21262d}}
+  td{{padding:8px;border-bottom:1px solid #21262d}}
+  button{{background:#238636;color:#fff;border:none;border-radius:6px;padding:6px 14px;cursor:pointer}}
+  button:hover{{background:#2ea043}}
+  #result{{margin-top:16px;background:#161b22;border:1px solid #21262d;border-radius:8px;padding:12px;
+           white-space:pre;font-size:0.88em}}
+  a{{color:#58a6ff}}
+</style>
+</head><body>
+<h1>⚡ Paçoca — Integrações</h1>
+<p style="color:#8b949e;margin-bottom:12px"><a href="/">Dashboard</a> · <a href="/metrics">Métricas</a> · <a href="/integrations" style="color:#58a6ff">Integrações</a> · <a href="/docs">Documentação</a></p>
+<table>
+<tr><th></th><th>Integração</th><th>Status</th><th>Ação</th></tr>
+{rows}
+</table>
+<div id="result" style="display:none"></div>
+<script>
+async function testIntegration(name) {{
+  const btn = document.getElementById('btn-' + name);
+  btn.textContent = 'Testando...'; btn.disabled = true;
+  const r = await fetch('/api/integrations/test/' + name, {{method:'POST', headers:{{'X-CSRF-Token':'{_CSRF_TOKEN}'}}}});
+  const data = await r.json();
+  const box = document.getElementById('result');
+  box.style.display = 'block';
+  box.textContent = name + ': ' + JSON.stringify(data, null, 2);
+  btn.textContent = 'Testar'; btn.disabled = false;
+}}
+</script>
+</body></html>""")
+
+    @app.get("/docs", response_class=HTMLResponse)
+    async def docs_page():
+        try:
+            from core.orchestrator import ROUTES
+        except Exception:
+            ROUTES = []
+
+        # Agrupa rotas por módulo
+        groups: dict[str, list[tuple]] = {}
+        for item in ROUTES:
+            pattern, target, confirm = item[0], item[1], item[2]
+            module = target.split(":")[0].split(".")[-1]
+            groups.setdefault(module, []).append((pattern, target.split(":")[-1], confirm))
+
+        _GROUP_LABELS = {
+            "spotify_ctrl":        "🎵 Spotify",
+            "dev_tools":           "💻 Dev Tools & Git",
+            "overlay":             "🪟 Overlay",
+            "web_server":          "🌐 Dashboard Web",
+            "system_control":      "⚙️ Sistema",
+            "transcription":       "🎙️ Transcrição",
+            "obsidian":            "📓 Obsidian",
+            "summarizer":          "📝 Resumos & IA",
+            "finance":             "💰 Finanças",
+            "weather":             "🌤️ Clima",
+            "routines":            "🔄 Rotinas",
+            "productivity":        "📊 Produtividade & Timer",
+            "meeting_detector":    "📡 Detector de Reunião",
+            "profiles":            "👤 Perfis",
+            "calendar_integration":"📅 Calendário",
+            "stt":                 "🎤 STT & Idioma",
+            "reminders":           "⏰ Lembretes",
+            "clipboard_tools":     "📋 Clipboard",
+            "screen_reader":       "👁️ Leitura de Tela",
+            "context":             "🧠 Contexto",
+            "plugin_loader":       "🔌 Plugins",
+            "orchestrator":        "🤖 Assistente & Memória",
+            "backup":              "💾 Backup",
+        }
+
+        sections_html = ""
+        for mod, routes in groups.items():
+            label = _GROUP_LABELS.get(mod, f"📦 {mod}")
+            rows = ""
+            for pattern, fn, confirm in routes:
+                safe_p = html_lib.escape(pattern)
+                safe_f = html_lib.escape(fn)
+                warn = ' <span style="color:#f0883e;font-size:0.8em">⚠ confirmação</span>' if confirm else ""
+                rows += f'<tr><td class="pat"><code>{safe_p}</code></td><td class="fn">{safe_f}{warn}</td></tr>'
+            sections_html += f"""
+            <div class="section">
+              <h2>{html_lib.escape(label)}</h2>
+              <table><tr><th>Padrão de comando</th><th>Função</th></tr>{rows}</table>
+            </div>"""
+
+        return HTMLResponse(f"""<!DOCTYPE html>
+<html lang="pt-BR"><head><meta charset="UTF-8">
+<title>Paçoca — Documentação</title>
+<style>
+  *{{box-sizing:border-box;margin:0;padding:0}}
+  body{{background:#0d1117;color:#c9d1d9;font-family:'Segoe UI',monospace;padding:24px;font-size:14px}}
+  h1{{color:#58a6ff;margin-bottom:4px;font-size:1.4em;letter-spacing:2px}}
+  h2{{color:#e3b341;font-size:0.8em;text-transform:uppercase;letter-spacing:1px;
+      margin:0 0 8px;padding:6px 10px;background:#1c1a10;border-left:3px solid #e3b341;border-radius:0 4px 4px 0}}
+  .nav{{margin:10px 0 20px;display:flex;gap:16px;font-size:0.85em;border-bottom:1px solid #21262d;padding-bottom:12px}}
+  .nav a{{color:#8b949e;text-decoration:none}} .nav a:hover,.nav a.active{{color:#58a6ff}}
+  .section{{background:#161b22;border:1px solid #21262d;border-radius:8px;padding:14px 16px;margin-bottom:14px}}
+  table{{width:100%;border-collapse:collapse}}
+  th{{color:#8b949e;font-size:0.72em;text-transform:uppercase;padding:5px 8px;text-align:left;border-bottom:1px solid #21262d}}
+  td{{padding:4px 8px;border-bottom:1px solid #0d1117;vertical-align:top}}
+  td.pat{{width:55%;font-size:0.82em}} td.fn{{font-size:0.82em;color:#79c0ff}}
+  code{{background:#0d1117;padding:1px 5px;border-radius:4px;font-family:monospace;color:#c9d1d9;font-size:0.95em}}
+  .two-col{{display:grid;grid-template-columns:1fr 1fr;gap:14px}}
+  .kbd{{background:#21262d;color:#c9d1d9;border:1px solid #30363d;border-radius:4px;
+        padding:2px 8px;font-family:monospace;font-size:0.85em}}
+  .info-table td{{padding:6px 10px;color:#8b949e}} .info-table td:first-child{{color:#c9d1d9;width:160px}}
+  .info-table tr:hover td{{background:#21262d}}
+  .badge{{display:inline-block;padding:1px 8px;border-radius:10px;font-size:0.78em;background:#1f3a5f;color:#58a6ff}}
+  .subtitle{{color:#8b949e;font-size:0.82em;margin-bottom:16px}}
+  @media(max-width:700px){{.two-col{{grid-template-columns:1fr}}}}
+</style>
+</head><body>
+<h1>⚡ Paçoca — Documentação</h1>
+<p class="subtitle">Referência completa de comandos, atalhos, configuração e arquitetura.</p>
+<nav class="nav">
+  <a href="/">Dashboard</a>
+  <a href="/metrics">Métricas</a>
+  <a href="/integrations">Integrações</a>
+  <a href="/docs" class="active">Documentação</a>
+</nav>
+
+<div class="two-col" style="margin-bottom:14px">
+  <!-- Atalhos de teclado -->
+  <div class="section">
+    <h2>⌨️ Atalhos de Teclado</h2>
+    <table class="info-table">
+      <tr><td><span class="kbd">Ctrl+Shift+A</span></td><td>Mostrar / ocultar overlay</td></tr>
+      <tr><td><span class="kbd">Ctrl+Shift+Space</span></td><td>Push-to-talk (captura voz sem wake word)</td></tr>
+      <tr><td><span class="kbd">Ctrl+Shift+T</span></td><td>Iniciar transcrição</td></tr>
+      <tr><td><span class="kbd">Ctrl+Shift+S</span></td><td>Parar transcrição</td></tr>
+    </table>
+  </div>
+
+  <!-- Modos de execução -->
+  <div class="section">
+    <h2>🚀 Modos de Execução</h2>
+    <table class="info-table">
+      <tr><td><code>--mode text</code></td><td>Entrada por teclado (sem microfone)</td></tr>
+      <tr><td><code>--mode voice</code></td><td>Wake word + STT (requer requirements-voice.txt)</td></tr>
+      <tr><td><code>--no-tts</code></td><td>Desativa Text-to-Speech</td></tr>
+      <tr><td><code>--no-overlay</code></td><td>Desativa janela flutuante</td></tr>
+      <tr><td><code>--profile work</code></td><td>Perfil ativo: work / casual / focus / meeting / night</td></tr>
+      <tr><td><code>--web</code></td><td>Inicia dashboard web em localhost:7755</td></tr>
+      <tr><td><code>--edit-routines</code></td><td>Editor interativo de rotinas no terminal</td></tr>
+    </table>
+  </div>
+
+  <!-- Arquitetura -->
+  <div class="section">
+    <h2>🏗️ Arquitetura NLU</h2>
+    <table class="info-table">
+      <tr><td>Camada 1 — Regex</td><td>&lt;1ms · {len(ROUTES)} rotas em ROUTES</td></tr>
+      <tr><td>Camada 2 — TF-IDF</td><td>&lt;5ms · scikit-learn · classify_local()</td></tr>
+      <tr><td>Camada 3 — LLM</td><td>Groq (online) → Ollama (fallback local)</td></tr>
+      <tr><td>Circuit breaker</td><td>3 falhas → pausa 120s</td></tr>
+      <tr><td>Truncagem</td><td>Contexto ≤ 24 000 chars, garante sempre</td></tr>
+      <tr><td>Streaming TTS</td><td>Fala por frases durante geração do LLM</td></tr>
+    </table>
+  </div>
+
+  <!-- Configuração -->
+  <div class="section">
+    <h2>⚙️ Config (core/config.yaml)</h2>
+    <table class="info-table">
+      <tr><td><code>ai.provider</code></td><td>groq (padrão) | ollama</td></tr>
+      <tr><td><code>ai.model</code></td><td>llama3 | mistral | phi3</td></tr>
+      <tr><td><code>ai.groq_model</code></td><td>llama-3.1-8b-instant (padrão)</td></tr>
+      <tr><td><code>stt.model</code></td><td>tiny | base | small | medium | large</td></tr>
+      <tr><td><code>tts.engine</code></td><td>edge | pyttsx3 | coqui</td></tr>
+      <tr><td><code>overlay.position</code></td><td>top-left | top-right | bottom-left | bottom-right</td></tr>
+      <tr><td><code>privacy.retention_days</code></td><td>dias de histórico (0 = sem limpeza)</td></tr>
+      <tr><td><code>obsidian.vault_path</code></td><td>caminho para vault Markdown</td></tr>
+      <tr><td><code>web.password</code></td><td>senha do dashboard (vazio = sem auth)</td></tr>
+    </table>
+  </div>
+</div>
+
+<!-- Comandos por categoria -->
+<div class="section" style="margin-bottom:14px">
+  <h2>📚 Todos os Comandos ({len(ROUTES)} rotas)</h2>
+  <p style="color:#8b949e;font-size:0.8em;margin-bottom:12px">
+    Padrões regex — capture groups <code>(.+)</code> capturam o argumento do comando.
+    <span style="color:#f0883e">⚠ confirmação</span> = ação crítica que pede confirmação antes de executar.
+  </p>
+  <div class="two-col">
+    {"".join(f'<div>{s}</div>' for s in (sections_html or "<p style='color:#8b949e'>Nenhuma rota encontrada.</p>").split("</div>") if s.strip())}
+  </div>
+</div>
+
+<p style="color:#8b949e;font-size:0.72em;text-align:center;margin-top:8px">
+  Paçoca · <a href="https://github.com/AthirsonLamonato/Pacoca" style="color:#58a6ff">github.com/AthirsonLamonato/Pacoca</a>
+</p>
+</body></html>""")
+
+    @app.get("/metrics", response_class=HTMLResponse)
+    async def metrics_page():
+        try:
+            from core.telemetry import get_summary, get_recent
+            summary = get_summary()
+            recent = get_recent(20)
+        except Exception:
+            summary, recent = {}, []
+
+        total = summary.get("total_commands", 0)
+        success = round(summary.get("success_rate", 0) * 100, 1)
+        avg_lat = summary.get("avg_latency_ms", 0)
+        fallback = round(summary.get("fallback_rate", 0) * 100, 1)
+        providers_html = ""
+        for p, cnt in (summary.get("providers", {}) or {}).items():
+            providers_html += f'<span style="margin-right:12px"><b style="color:#58a6ff">{html_lib.escape(str(cnt))}</b> {html_lib.escape(str(p))}</span>'
+        llm_html = ""
+        for p, stats in (summary.get("llm", {}) or {}).items():
+            llm_html += (
+                f'<tr><td>{html_lib.escape(str(p))}</td>'
+                f'<td>{stats.get("calls",0)}</td>'
+                f'<td>{stats.get("total_tokens",0)}</td>'
+                f'<td>{stats.get("avg_latency_ms",0)} ms</td></tr>'
+            )
+        rows_html = ""
+        for r in recent:
+            ts = datetime.fromtimestamp(r.get("ts", 0)).strftime("%H:%M:%S")
+            route = html_lib.escape(str(r.get("route","")[:30]))
+            prov = html_lib.escape(str(r.get("provider","")[:10]))
+            lat = r.get("latency_ms", 0)
+            ok = "✓" if r.get("success") else "✗"
+            color = "#3fb950" if r.get("success") else "#f85149"
+            fallb = "⚡" if r.get("fallback") else ""
+            rows_html += f'<tr><td>{ts}</td><td>{route}</td><td>{prov}</td><td>{lat} ms</td><td style="color:{color}">{ok} {fallb}</td></tr>'
+
+        return HTMLResponse(f"""<!DOCTYPE html>
+<html lang="pt-BR"><head><meta charset="UTF-8">
+<title>Paçoca — Métricas</title>
+<style>
+  body{{background:#0d1117;color:#c9d1d9;font-family:'Segoe UI',monospace;padding:24px;font-size:14px}}
+  h1{{color:#58a6ff;margin-bottom:16px}}
+  h2{{color:#8b949e;font-size:0.75em;text-transform:uppercase;letter-spacing:1px;margin:16px 0 8px}}
+  .stat-row{{display:flex;gap:24px;flex-wrap:wrap;margin-bottom:16px}}
+  .stat{{text-align:center}}
+  .stat-val{{font-size:1.8em;font-weight:bold;color:#58a6ff}}
+  .stat-lbl{{font-size:0.7em;color:#8b949e;text-transform:uppercase}}
+  table{{width:100%;border-collapse:collapse;margin-bottom:16px}}
+  th{{color:#8b949e;font-size:0.72em;text-transform:uppercase;padding:6px 8px;text-align:left;border-bottom:1px solid #21262d}}
+  td{{padding:6px 8px;border-bottom:1px solid #161b22;font-size:0.88em}}
+  a{{color:#58a6ff}}
+</style>
+</head><body>
+<h1>⚡ Paçoca — Métricas</h1>
+<p style="color:#8b949e;margin-bottom:12px"><a href="/">Dashboard</a> · <a href="/metrics" style="color:#58a6ff">Métricas</a> · <a href="/integrations">Integrações</a> · <a href="/docs">Documentação</a></p>
+<div class="stat-row">
+  <div class="stat"><div class="stat-val">{total}</div><div class="stat-lbl">Comandos</div></div>
+  <div class="stat"><div class="stat-val">{success}%</div><div class="stat-lbl">Sucesso</div></div>
+  <div class="stat"><div class="stat-val">{avg_lat} ms</div><div class="stat-lbl">Latência média</div></div>
+  <div class="stat"><div class="stat-val">{fallback}%</div><div class="stat-lbl">Fallback</div></div>
+</div>
+<h2>Provedores usados</h2>
+<p>{providers_html or '<span style="color:#8b949e">Nenhum comando ainda.</span>'}</p>
+<h2>Chamadas LLM por provedor</h2>
+<table><tr><th>Provedor</th><th>Chamadas</th><th>Tokens total</th><th>Latência média</th></tr>
+{llm_html or '<tr><td colspan="4" style="color:#8b949e">Nenhuma chamada LLM registrada.</td></tr>'}
+</table>
+<h2>Últimos 20 comandos</h2>
+<table><tr><th>Hora</th><th>Rota</th><th>Provedor</th><th>Latência</th><th>Status</th></tr>
+{rows_html or '<tr><td colspan="5" style="color:#8b949e">Nenhum comando ainda.</td></tr>'}
+</table>
+</body></html>""")
 
     return app
 
@@ -756,51 +1197,65 @@ def _get_status_data() -> dict:
 
 
 def _check_integrations() -> dict:
-    """Verifica status de cada integração: chave, token, conectividade."""
-    import os
+    """
+    Verifica status de cada integração: chave, token, conectividade.
+    Cada entrada inclui os campos 'ok' (bool) e 'detail' (str) para uso em
+    respostas por voz, além de campos detalhados para o dashboard.
+    """
+    import os, time as _t
+    from pathlib import Path
     results: dict[str, dict] = {}
 
     # Groq
     groq_key = os.environ.get("GROQ_API_KEY", "")
+    try:
+        from core.providers import _groq_failures, _groq_open_until, _circuit_is_open
+        cb_open = _t.monotonic() < _groq_open_until
+        cb_failures = _groq_failures
+    except Exception:
+        cb_open, cb_failures = False, 0
+    groq_ok = bool(groq_key) and not cb_open
     results["groq"] = {
+        "ok": groq_ok,
+        "detail": "chave configurada" if groq_key else "sem GROQ_API_KEY",
         "configured": bool(groq_key),
-        "key_hint": f"***{groq_key[-4:]}" if len(groq_key) > 4 else ("ok" if groq_key else ""),
+        "key_hint": f"***{groq_key[-4:]}" if len(groq_key) > 4 else ("configurada" if groq_key else ""),
+        "circuit_breaker": {"failures": cb_failures, "open": cb_open},
     }
+    if cb_open:
+        results["groq"]["detail"] = f"circuit breaker aberto ({cb_failures} falhas)"
 
     # Ollama
     try:
         import requests as _req
         r = _req.get("http://localhost:11434/api/tags", timeout=2)
-        results["ollama"] = {"configured": True, "reachable": r.ok,
-                             "models": [m["name"] for m in r.json().get("models", [])[:5]] if r.ok else []}
+        models = [m["name"] for m in r.json().get("models", [])[:5]] if r.ok else []
+        results["ollama"] = {
+            "ok": r.ok, "detail": f"{len(models)} modelos" if models else "sem modelos",
+            "configured": True, "reachable": r.ok, "models": models,
+        }
     except Exception:
-        results["ollama"] = {"configured": False, "reachable": False}
+        results["ollama"] = {"ok": False, "detail": "indisponível", "configured": False, "reachable": False}
 
     # Spotify
-    from pathlib import Path
     token_path = Path(".spotify_token.json")
+    spotify_ok = token_path.exists()
     results["spotify"] = {
-        "configured": token_path.exists(),
-        "token_file": str(token_path) if token_path.exists() else None,
+        "ok": spotify_ok,
+        "detail": "autorizado" if spotify_ok else "não autorizado (diga: autoriza o Spotify)",
+        "configured": spotify_ok,
+        "token_file": str(token_path) if spotify_ok else None,
     }
 
     # Google Calendar
     cal_token = Path("core/google_token.json")
+    cal_ok = cal_token.exists()
     results["google_calendar"] = {
-        "configured": cal_token.exists(),
-        "token_file": str(cal_token) if cal_token.exists() else None,
+        "ok": cal_ok,
+        "detail": "autorizado" if cal_ok else "não autorizado",
+        "configured": cal_ok,
+        "token_file": str(cal_token) if cal_ok else None,
     }
-
-    # Circuit breaker status
-    try:
-        from core.providers import _groq_failures, _groq_open_until
-        import time
-        results["groq"]["circuit_breaker"] = {
-            "failures": _groq_failures,
-            "open": time.monotonic() < _groq_open_until,
-        }
-    except Exception:
-        pass
 
     return results
 
@@ -811,11 +1266,18 @@ def _test_integration(name: str) -> dict:
     t0 = time.monotonic()
     try:
         if name == "groq":
-            from core.providers import get_client
+            # Testa Groq diretamente, sem fallback para Ollama
+            from core.providers import get_client, _record_groq_failure
             from core.config import Config
             client = get_client(Config())
-            resp = client.chat([{"role": "user", "content": "ping"}], max_tokens=5)
-            return {"ok": bool(resp), "latency_ms": round((time.monotonic()-t0)*1000, 1), "response": resp[:50]}
+            if not client._get_groq_key():
+                return {"ok": False, "error": "GROQ_API_KEY não configurada", "latency_ms": 0}
+            try:
+                data = client._groq_raw([{"role": "user", "content": "responda só: ok"}], max_tokens=5)
+                resp = (data["choices"][0]["message"].get("content") or "").strip()
+                return {"ok": True, "latency_ms": round((time.monotonic()-t0)*1000, 1), "response": resp[:50], "provider": "groq"}
+            except Exception as exc:
+                return {"ok": False, "error": str(exc), "latency_ms": round((time.monotonic()-t0)*1000, 1), "provider": "groq"}
 
         if name == "ollama":
             import requests as _req

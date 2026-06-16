@@ -44,6 +44,10 @@ def init():
                 filepath   TEXT NOT NULL,
                 duration_s INTEGER
             );
+
+            CREATE INDEX IF NOT EXISTS idx_command_history_ts ON command_history (ts);
+            CREATE INDEX IF NOT EXISTS idx_transcriptions_ts ON transcriptions (ts);
+            CREATE INDEX IF NOT EXISTS idx_sessions_started_at ON sessions (started_at);
         """)
     logger.info("Banco de dados inicializado")
 
@@ -71,3 +75,78 @@ def log_transcription(filepath: str, duration_s: int = 0):
             "INSERT INTO transcriptions (ts, filepath, duration_s) VALUES (?,?,?)",
             (datetime.now().isoformat(), filepath, duration_s),
         )
+
+
+def cleanup_old_data(days: int = 30) -> str:
+    """
+    Remove dados antigos do banco e arquivos de log/transcrição.
+    Política: mantém os últimos `days` dias.
+    days <= 0 é tratado como desabilitado (retorna sem apagar nada).
+    """
+    if days <= 0:
+        return "Limpeza ignorada: privacy.retention_days=0 (desabilitado)."
+
+    import os
+    from pathlib import Path
+    from datetime import timedelta
+
+    cutoff_dt = datetime.now() - timedelta(days=days)
+    cutoff_str = cutoff_dt.isoformat()
+
+    removed: dict = {"commands": 0, "transcriptions": 0, "sessions": 0, "files": 0}
+    with _connect() as conn:
+        cur = conn.execute("DELETE FROM command_history WHERE ts < ?", (cutoff_str,))
+        removed["commands"] = cur.rowcount
+        cur = conn.execute("DELETE FROM transcriptions WHERE ts < ?", (cutoff_str,))
+        removed["transcriptions"] = cur.rowcount
+        # Tabela de sessões (se existir)
+        try:
+            cur = conn.execute(
+                "DELETE FROM sessions WHERE started_at < ? AND ended_at IS NOT NULL",
+                (cutoff_str,),
+            )
+            removed["sessions"] = cur.rowcount
+        except Exception:
+            pass
+
+    # Remove arquivos antigos: transcrições (.md, .txt), áudios (.wav, .mp3)
+    _FILE_GLOBS = ["*.md", "*.txt", "*.wav", "*.mp3", "*.flac"]
+    _SEARCH_DIRS = [
+        Path("data/transcriptions"),
+        Path("data/audio"),
+        Path("data/recordings"),
+    ]
+    for d in _SEARCH_DIRS:
+        if d.exists():
+            for pattern in _FILE_GLOBS:
+                for f in d.glob(pattern):
+                    try:
+                        if datetime.fromtimestamp(f.stat().st_mtime) < cutoff_dt:
+                            f.unlink()
+                            removed["files"] += 1
+                    except Exception:
+                        pass
+
+    # Limpa entradas antigas na knowledge base (se suportado)
+    try:
+        from storage.knowledge_base import cleanup_old_entries
+        kb_removed = cleanup_old_entries(cutoff_str)
+        if kb_removed:
+            removed["kb_entries"] = kb_removed
+    except Exception:
+        pass
+
+    # Trunca log se maior que 50 MB
+    log_path = Path("logs/pacoca.log")
+    if log_path.exists() and log_path.stat().st_size > 50 * 1024 * 1024:
+        try:
+            lines = log_path.read_text(encoding="utf-8", errors="ignore").splitlines()
+            log_path.write_text("\n".join(lines[-5000:]) + "\n", encoding="utf-8")
+            removed["log_truncated"] = True
+        except Exception:
+            pass
+
+    logger.info("Limpeza: %s", removed)
+    parts = [f"{v} {k}" for k, v in removed.items() if isinstance(v, int) and v > 0]
+    summary = ", ".join(parts) if parts else "nada a remover"
+    return f"Limpeza concluída (últimos {days} dias mantidos): {summary}."

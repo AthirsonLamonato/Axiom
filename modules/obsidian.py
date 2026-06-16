@@ -1,7 +1,7 @@
 """
 modules/obsidian.py — Exportação para Obsidian / qualquer vault Markdown
 Exporta notas, transcrições e sumários para o vault configurado.
-Config: obsidian.vault_path  (ex: C:/Users/user/Documents/Obsidian/Axiom)
+Config: obsidian.vault_path  (ex: C:/Users/user/Documents/Obsidian/Pacoca)
 """
 
 import logging
@@ -116,7 +116,7 @@ def daily_note(*_) -> str:
 
     lines = [
         f"---\ndate: {today_str}\ntags: [pacoca, diário]\n---\n",
-        f"# {today.strftime('%d/%m/%Y')} — Nota Diária Axiom\n",
+        f"# {today.strftime('%d/%m/%Y')} — Nota Diária Paçoca\n",
     ]
 
     if today_rows:
@@ -146,9 +146,9 @@ def export_notes_plugin(*_) -> str:
         content = f.read()
 
     ts = datetime.now()
-    filename = f"Notas Axiom {ts.strftime('%Y-%m-%d')}.md"
+    filename = f"Notas Paçoca {ts.strftime('%Y-%m-%d')}.md"
     filepath = os.path.join(vault_dir, filename)
 
-    frontmatter = f"---\ndate: {ts.strftime('%Y-%m-%d')}\ntags: [axiom, notas]\n---\n\n"
+    frontmatter = f"---\ndate: {ts.strftime('%Y-%m-%d')}\ntags: [pacoca, notas]\n---\n\n"
     _write_note(filepath, frontmatter + content)
     return f"Notas exportadas para: {filepath}"

@@ -5,6 +5,60 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ---
 
+## [Não lançado]
+
+### Adicionado
+- **Segurança do dashboard web** — rate limiting de login (5 tentativas/60s por IP),
+  expiração de sessão por inatividade (`security.session_timeout_min`) e token CSRF
+  sincronizado para requisições htmx que alteram estado
+- Testes para `core/providers.py`, `core/telemetry.py` e endpoints web
+  (`tests/test_providers.py`, `tests/test_telemetry.py`, `tests/test_web_endpoints.py`)
+
+### Corrigido
+- Documentação (`docs/`) atualizada para refletir `security.session_timeout_min`,
+  pool de conexões HTTP compartilhado e as proteções do dashboard web
+- CI (`.github/workflows/tests.yml`) agora roda em matriz `windows-latest` +
+  `ubuntu-latest` (antes só Windows) e usa Python 3.10 (antes 3.9), alinhado com o
+  requisito de compatibilidade Windows/Linux do projeto
+- **`dispatch_chain()`** não ficava mais mudo: quando uma parte do comando
+  encadeado era respondida via streaming (TTS já falado) e outra não, a fala da
+  parte não-streamada era descartada por engano — agora cada parte fala
+  individualmente o que ainda não foi dito
+- **WebSocket do dashboard** (`/ws/command`, `/ws/events`) agora respeita
+  `security.session_timeout_min` na conexão — antes só validava o token,
+  ignorando a expiração de sessão que já valia para as rotas HTTP
+- `POST /api/integrations/test/{name}` passou a exigir o token CSRF, como as
+  demais rotas que alteram estado
+- Circuit breaker e sessão HTTP compartilhada (`core/providers.py`) agora usam
+  `threading.Lock` — havia uma corrida de dados possível entre o loop de voz/texto
+  e o dashboard web acessando o mesmo estado concorrentemente
+- `_login_attempts` (rate limit de login) não acumula mais entradas de IPs que
+  nunca mais voltaram a tentar logar
+- Limites de rate limiting de login (`security.login_max_attempts`,
+  `security.login_window_s`) agora são configuráveis via `config.yaml` em vez de
+  hardcoded
+
+---
+
+## [0.6.0] — 2026-06-15
+
+### Adicionado
+- **`core/providers.py` centralizado** — cliente HTTP único para Groq/Ollama/clima/
+  finanças/busca, com circuit breaker (3 falhas → pausa 120s), retry exponencial
+  para 429/502/503, cache TTL em memória (`_TTLCache`) e truncamento de contexto
+  (`_truncate_messages`, limite de 24k chars)
+- **`core/telemetry.py`** — registro por comando (rota, ferramenta, provedor,
+  latência, tokens, sucesso, fallback), exposto em `/api/metrics` e `/metrics`
+- **NLU de 3 camadas** (regex → TF-IDF → LLM agentic loop) com `ToolRegistry` em
+  `modules/tools.py`
+- Aviso de privacidade no boot quando `ai.provider: groq` está ativo
+
+### Alterado
+- Renaming geral de "axiom" para "Paçoca" em módulos internos
+- Tokens OAuth (Spotify, Google Calendar) salvos com `chmod 600`
+
+---
+
 ## [0.5.0] — 2026-05-08
 
 ### Alterado

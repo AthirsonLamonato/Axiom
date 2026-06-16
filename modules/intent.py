@@ -884,6 +884,7 @@ def run_agentic_loop(command: str) -> str:
         try:
             data = _groq_call(api_key, model, messages)
         except Exception as e:
+            # _groq_raw() já registrou a falha no circuit breaker — não duplicar
             logger.warning("run_agentic_loop: chamada Groq falhou (turn %d): %s", turn, e)
             break
 

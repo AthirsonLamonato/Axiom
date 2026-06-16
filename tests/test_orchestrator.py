@@ -22,7 +22,7 @@ def config(tmp_path):
         "security": {"confirm_critical": False, "critical_commands": []},
         "routines": {},
         "logging": {"level": "WARNING", "file": "logs/pacoca.log", "max_mb": 10},
-        "wake_word": {"keyword": "axiom"},
+        "wake_word": {"keyword": "paçoca"},
     }
     path = tmp_path / "config.yaml"
     path.write_text(yaml.dump(data), encoding="utf-8")

@@ -4,11 +4,13 @@ Suporta edge-tts (recomendado), pyttsx3 (offline) e Coqui TTS (offline, mais nat
 """
 
 import logging
+import re
 import threading
 import subprocess
 import tempfile
 import os
 import platform
+from typing import Generator
 
 logger = logging.getLogger(__name__)
 
@@ -151,6 +153,36 @@ class TTS:
             subprocess.run(["mpg123", "-q", path], capture_output=True)
         finally:
             os.unlink(path)
+
+    def speak_stream(self, generator: Generator[str, None, None]):
+        """
+        Fala o texto de um gerador chunk por chunk, quebrando em frases.
+        Permite TTS responsivo durante streaming do LLM — o usuário ouve
+        a primeira frase antes que o LLM termine de gerar.
+        """
+        if not self.enabled:
+            for _ in generator:  # drena o gerador
+                pass
+            return
+
+        _SENT_END = re.compile(r'(?<=[.!?])\s+')
+        buffer = ""
+
+        def _flush(text: str):
+            text = text.strip()
+            if text:
+                self._speak_sync(text)
+
+        for chunk in generator:
+            buffer += chunk
+            # Divide em frases completas (mantém a última que pode estar incompleta)
+            parts = _SENT_END.split(buffer)
+            if len(parts) > 1:
+                for sentence in parts[:-1]:
+                    _flush(sentence)
+                buffer = parts[-1]
+
+        _flush(buffer)
 
     def set_rate(self, rate: int):
         if self.engine_name == "pyttsx3" and self._engine:

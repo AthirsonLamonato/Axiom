@@ -58,6 +58,9 @@ overlay:
 # ── Segurança ─────────────────────────────────
 security:
   confirm_critical: true     # pede confirmação para ações críticas
+  session_timeout_min: 30    # dashboard web: logout automático após N min de inatividade
+  login_max_attempts: 5      # dashboard web: máx. tentativas de senha por IP na janela abaixo
+  login_window_s: 60         # dashboard web: janela (segundos) do rate limit de login
   critical_commands:
     - fechar tudo
     - deletar
@@ -99,9 +102,15 @@ backup:
   daily_time: "23:30"        # horário do backup automático (HH:MM)
   google_drive:
     enabled: false           # true após configurar credenciais OAuth
-    folder_name: Pacoca Backups
+    folder_name: Paçoca Backups
     credentials_path: core/credentials.json
     token_path: core/google_token.json
+
+# ── Privacidade e retenção de dados ──────────
+privacy:
+  retention_days: 30          # dias de histórico a manter (0 = sem limpeza automática)
+  # Quando ai.provider=groq, comandos são enviados para a API do Groq (online).
+  # Para processamento 100% local, use ai.provider=ollama.
 
 # ── Logs ──────────────────────────────────────
 logging:

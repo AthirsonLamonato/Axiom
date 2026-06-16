@@ -182,6 +182,8 @@ class PacocaOverlay:
                     self._do_show_message(*args)
                 elif cmd == "state":
                     self._do_set_state(*args)
+                elif cmd == "state_detail":
+                    self._do_set_state_detail(*args)
                 elif cmd == "show":
                     self._fade_in()
                 elif cmd == "hide":
@@ -203,12 +205,15 @@ class PacocaOverlay:
         self._hide_timer.start(duration_ms)
 
     def _do_set_state(self, state: str):
+        self._do_set_state_detail(state, "")
+
+    def _do_set_state_detail(self, state: str, detail: str):
         self._state = state
         dot, color = STATES.get(state, ("●", "#555577"))
         self._state_dot.setText(dot)
         self._state_dot.setStyleSheet(f"color: {color}; background: transparent; border: none;")
-        self._state_label.setText(state.capitalize())
-        # Mostra a janela quando ativo, esconde quando ocioso (sem mensagem pendente)
+        label = detail if detail else state.capitalize()
+        self._state_label.setText(label)
         if state == "idle":
             if not self._msg_label.text():
                 self._fade_out()
@@ -286,6 +291,12 @@ def set_state(state: str):
     """Define estado visual: idle | listening | processing | speaking"""
     if _instance:
         _msg_queue.put(("state", state))
+
+
+def set_state_detail(state: str, detail: str):
+    """Define estado visual com rótulo descritivo. Ex: processing, 'Consultando Groq'"""
+    if _instance:
+        _msg_queue.put(("state_detail", state, detail))
 
 
 def show(*_) -> str:

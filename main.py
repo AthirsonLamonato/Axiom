@@ -28,7 +28,7 @@ if getattr(sys, "frozen", False):
             shutil.copy2(_bundled_cfg, _user_cfg)
 
     # 3. Sinaliza o caminho do config para core/config.py
-    os.environ["AXIOM_CONFIG_PATH"] = str(_user_cfg)
+    os.environ["PACOCA_CONFIG_PATH"] = str(_user_cfg)
 
     # 4. Plugins: copia para local editável se ainda não existir
     _user_plugins = _EXE_DIR / "plugins"
@@ -179,6 +179,48 @@ def _edit_routines(config):
             print("  Comando inválido. Use: l, a, r, s")
 
 
+def _check_external_data_consent(config) -> None:
+    """
+    Mostra aviso quando o Paçoca está configurado para enviar dados para serviços externos
+    (Groq API). O aviso é mostrado apenas uma vez por sessão, não bloqueia o boot.
+    """
+    try:
+        from core.providers import _resolve_key
+        groq_key = _resolve_key("ai.groq_api_key", "GROQ_API_KEY", config)
+    except Exception:
+        import os
+        groq_key = os.environ.get("GROQ_API_KEY", "") or config.get("ai.groq_api_key", "")
+    provider  = config.get("ai.provider", "ollama")
+    if groq_key and provider in ("groq", "auto"):
+        print(
+            "\n  [!] Aviso de privacidade: comandos e contexto de conversa serão enviados\n"
+            "      para a API do Groq (https://groq.com) para processamento.\n"
+            "      Para usar apenas IA local, defina 'ai.provider: ollama' em config.yaml\n"
+            "      ou remova a GROQ_API_KEY do ambiente.\n"
+        )
+
+
+def _schedule_data_retention(config) -> None:
+    """Agenda limpeza automática de dados antigos em background."""
+    retention_days = config.get("privacy.retention_days", 30)
+    if not retention_days:
+        return
+    import threading
+
+    def _cleanup():
+        try:
+            from storage.db import cleanup_old_data
+            result = cleanup_old_data(days=retention_days)
+            import logging
+            logging.getLogger(__name__).info(result)
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning("Limpeza de dados falhou: %s", e)
+
+    t = threading.Thread(target=_cleanup, daemon=True, name="data-retention")
+    t.start()
+
+
 def main():
     signal.signal(signal.SIGINT, shutdown)
     signal.signal(signal.SIGTERM, shutdown)
@@ -246,6 +288,12 @@ def main():
         mode=args.mode,
         profile=config.get("profile.active", "work"),
     ))
+
+    # Avisa quando dados serão enviados para serviços externos
+    _check_external_data_consent(config)
+
+    # Limpeza automática de dados antigos (executa em background, não bloqueia)
+    _schedule_data_retention(config)
 
     orchestrator = Orchestrator(config)
 

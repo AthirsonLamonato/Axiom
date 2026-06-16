@@ -93,7 +93,7 @@ def _upload_to_drive(local_path: str, config) -> str:
         logger.error("Erro ao conectar Drive: %s", e, exc_info=True)
         return f"Erro ao conectar com o Google Drive: {e}"
 
-    folder_name = config.get("backup.google_drive.folder_name", "Axiom Backups")
+    folder_name = config.get("backup.google_drive.folder_name", "Paçoca Backups")
 
     try:
         folder_id = _get_or_create_drive_folder(service, folder_name)

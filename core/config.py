@@ -8,7 +8,11 @@ import yaml
 from typing import Any
 
 
-CONFIG_PATH = os.environ.get("AXIOM_CONFIG_PATH") or os.path.join(os.path.dirname(__file__), "config.yaml")
+CONFIG_PATH = (
+    os.environ.get("PACOCA_CONFIG_PATH")
+    or os.environ.get("AXIOM_CONFIG_PATH")  # retrocompatibilidade com builds antigos
+    or os.path.join(os.path.dirname(__file__), "config.yaml")
+)
 
 
 class Config:

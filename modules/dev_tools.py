@@ -214,3 +214,24 @@ def run_tests(*_) -> str:
         return "Timeout: testes demoraram mais de 2 minutos."
     except Exception as e:
         return f"Erro ao rodar testes: {e}"
+
+
+def format_code(*_) -> str:
+    """Formata o código do projeto com black + isort, se instalados."""
+    results = []
+    for tool in ("black", "isort"):
+        try:
+            result = subprocess.run(
+                [os.sys.executable, "-m", tool, "."],
+                capture_output=True, text=True, timeout=60,
+            )
+            output = (result.stdout + result.stderr).strip().splitlines()
+            tail = "\n".join(output[-5:]) if output else "sem alterações"
+            results.append(f"{tool}: {'ok' if result.returncode == 0 else 'erro'}\n{tail}")
+        except FileNotFoundError:
+            results.append(f"{tool}: não instalado (pip install {tool})")
+        except subprocess.TimeoutExpired:
+            results.append(f"{tool}: timeout (mais de 60s)")
+        except Exception as e:
+            results.append(f"{tool}: erro — {e}")
+    return "\n\n".join(results)

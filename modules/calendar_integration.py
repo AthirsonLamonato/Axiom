@@ -2,7 +2,7 @@
 modules/calendar_integration.py — Integração com Google Calendar
 Requer: google-api-python-client, google-auth-oauthlib (já em requirements.txt)
 Credenciais: coloque credentials.json em core/credentials.json e execute
-  'axiom, autoriza calendário' uma vez para gerar o token.
+  'paçoca, autoriza calendário' uma vez para gerar o token.
 """
 
 import logging
@@ -59,6 +59,11 @@ def _get_service():
             creds = flow.run_local_server(port=0)
         with open(token_path, "w", encoding="utf-8") as f:
             f.write(creds.to_json())
+        try:
+            import os as _os
+            _os.chmod(token_path, 0o600)
+        except Exception:
+            pass
         logger.info("Token do Google Calendar salvo em %s", token_path)
 
     return build("calendar", "v3", credentials=creds)

@@ -207,6 +207,12 @@ def _has_api_credentials() -> bool:
 def _load_token() -> dict | None:
     if _TOKEN_FILE.exists():
         try:
+            import os as _os
+            # Garante permissão restrita mesmo em arquivo existente criado antes do fix
+            try:
+                _os.chmod(_TOKEN_FILE, 0o600)
+            except Exception:
+                pass
             return json.loads(_TOKEN_FILE.read_text())
         except Exception:
             pass
@@ -215,6 +221,11 @@ def _load_token() -> dict | None:
 
 def _save_token(data: dict):
     _TOKEN_FILE.write_text(json.dumps(data))
+    try:
+        import os as _os
+        _os.chmod(_TOKEN_FILE, 0o600)
+    except Exception:
+        pass
 
 
 def _get_access_token() -> str | None:
@@ -336,6 +347,23 @@ def _api_request(method: str, endpoint: str, **kwargs):
         timeout=10,
         **kwargs,
     )
+    # Token expirado — renova e tenta uma vez mais
+    if resp.status_code == 401:
+        logger.info("Spotify 401 — renovando token e tentando novamente.")
+        # Invalida cache de token em memória forçando releitura do disco
+        token_data = _load_token()
+        if token_data:
+            token_data.pop("expires_at", None)
+            _save_token(token_data)
+        token = _get_access_token()
+        if token:
+            resp = requests.request(
+                method,
+                f"https://api.spotify.com/v1{endpoint}",
+                headers={"Authorization": f"Bearer {token}"},
+                timeout=10,
+                **kwargs,
+            )
     return resp
 
 

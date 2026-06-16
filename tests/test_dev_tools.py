@@ -9,7 +9,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from modules.dev_tools import (
     git_status, git_log, git_branch_current,
     create_file, _resolve_file, explain_file,
-    git_create_branch, run_tests,
+    git_create_branch, run_tests, format_code,
 )
 
 
@@ -137,3 +137,37 @@ def test_run_tests_uses_pytest_when_tests_directory_exists(tmp_path, monkeypatch
 
     assert captured["command"][1:4] == ["-m", "pytest", "tests"]
     assert "Testes passaram" in result
+
+
+# ── format_code ──────────────────────────────────────────────────────
+
+def test_format_code_runs_black_and_isort(monkeypatch):
+    calls = []
+
+    class Result:
+        returncode = 0
+        stdout = "1 file reformatted"
+        stderr = ""
+
+    def fake_run(command, **kwargs):
+        calls.append(command)
+        return Result()
+
+    monkeypatch.setattr("modules.dev_tools.subprocess.run", fake_run)
+    result = format_code()
+
+    assert len(calls) == 2
+    assert calls[0][1:3] == ["-m", "black"]
+    assert calls[1][1:3] == ["-m", "isort"]
+    assert "black: ok" in result
+    assert "isort: ok" in result
+
+
+def test_format_code_reports_missing_tool(monkeypatch):
+    def fake_run(command, **kwargs):
+        raise FileNotFoundError()
+
+    monkeypatch.setattr("modules.dev_tools.subprocess.run", fake_run)
+    result = format_code()
+
+    assert "não instalado" in result

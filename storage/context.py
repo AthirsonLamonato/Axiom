@@ -30,7 +30,7 @@ def build_context_prompt(new_prompt: str) -> str:
     if not turns:
         return new_prompt
     history = "\n".join(
-        f"Usuário: {cmd}\nAxiom: {resp}"
+        f"Usuário: {cmd}\nPaçoca: {resp}"
         for cmd, resp in turns[-5:]  # máx. 5 turnos para não inflar o prompt
     )
     return (

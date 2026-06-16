@@ -367,3 +367,18 @@ def show_memories(mem_type: str = "") -> str:
         for item in items:
             lines.append(f"  [{item['importance']:.1f}] {item['content']}")
     return "\n".join(lines).strip()
+
+
+def cleanup_old_entries(cutoff_iso: str) -> int:
+    """Remove memórias com importância baixa criadas antes de cutoff_iso. Retorna contagem."""
+    try:
+        with _lock:
+            with _connect() as conn:
+                cur = conn.execute(
+                    "DELETE FROM memories WHERE created_at < ? AND importance < 0.4",
+                    (cutoff_iso,),
+                )
+                return cur.rowcount
+    except Exception:
+        return 0
+

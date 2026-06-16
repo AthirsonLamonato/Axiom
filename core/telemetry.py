@@ -112,9 +112,16 @@ def get_summary(last_n: int = 100) -> dict:
     for l in llms:
         p = l.provider
         if p not in llm_by_provider:
-            llm_by_provider[p] = {"calls": 0, "total_tokens": 0, "avg_latency_ms": 0.0}
+            llm_by_provider[p] = {"calls": 0, "total_tokens": 0, "total_latency_ms": 0.0}
         llm_by_provider[p]["calls"] += 1
         llm_by_provider[p]["total_tokens"] += l.prompt_tokens + l.completion_tokens
+        llm_by_provider[p]["total_latency_ms"] += l.latency_s * 1000
+
+    # Compute avg from accumulated totals
+    for p_stats in llm_by_provider.values():
+        total_ms = p_stats.pop("total_latency_ms", 0.0)
+        n = p_stats["calls"]
+        p_stats["avg_latency_ms"] = round(total_ms / n, 1) if n else 0.0
 
     return {
         "total_commands": total,

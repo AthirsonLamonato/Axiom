@@ -1,0 +1,212 @@
+"""
+tests/test_providers.py — Testes unitários e de integração do core/providers.py
+
+Unitários (rodam sempre):
+  - Circuit breaker: abertura, reset, estado
+  - TTL cache: hit/miss/expiração
+  - _truncate_messages: preserva sistema + tail; conta tool_calls
+  - _msg_chars: content + tool_calls
+
+Integração (requer GROQ_API_KEY e/ou Ollama rodando):
+  - Marcados com @pytest.mark.integration
+  - Rode com: pytest -m integration tests/test_providers.py
+"""
+
+import time
+import pytest
+
+
+# ── Unit: circuit breaker ────────────────────────────────────────────
+
+
+def _reset_cb():
+    import core.providers as p
+    p._groq_failures = 0
+    p._groq_open_until = 0.0
+
+
+def test_circuit_breaker_opens_after_threshold():
+    import core.providers as p
+    _reset_cb()
+    assert not p._circuit_is_open()
+    for _ in range(p._CB_THRESHOLD):
+        p._record_groq_failure()
+    assert p._circuit_is_open()
+    _reset_cb()
+
+
+def test_circuit_breaker_resets_on_success():
+    import core.providers as p
+    _reset_cb()
+    p._record_groq_failure()
+    p._record_groq_failure()
+    assert p._groq_failures == 2
+    p._record_groq_success()
+    assert p._groq_failures == 0
+    assert not p._circuit_is_open()
+
+
+def test_circuit_breaker_below_threshold_does_not_open():
+    import core.providers as p
+    _reset_cb()
+    for _ in range(p._CB_THRESHOLD - 1):
+        p._record_groq_failure()
+    assert not p._circuit_is_open()
+    _reset_cb()
+
+
+# ── Unit: TTL cache ──────────────────────────────────────────────────
+
+
+def test_ttl_cache_miss_returns_none():
+    from core.providers import _TTLCache
+    cache = _TTLCache(ttl=60)
+    assert cache.get("missing") is None
+
+
+def test_ttl_cache_hit_returns_value():
+    from core.providers import _TTLCache
+    cache = _TTLCache(ttl=60)
+    cache.set("k", "v")
+    assert cache.get("k") == "v"
+
+
+def test_ttl_cache_expires():
+    from core.providers import _TTLCache
+    cache = _TTLCache(ttl=0)  # TTL = 0 → expira imediatamente
+    cache.set("k", "v")
+    time.sleep(0.01)
+    assert cache.get("k") is None
+
+
+def test_ttl_cache_clear():
+    from core.providers import _TTLCache
+    cache = _TTLCache(ttl=60)
+    cache.set("a", 1)
+    cache.clear()
+    assert cache.get("a") is None
+
+
+# ── Unit: _msg_chars ─────────────────────────────────────────────────
+
+
+def test_msg_chars_content_only():
+    from core.providers import _msg_chars
+    m = {"role": "user", "content": "hello world"}
+    assert _msg_chars(m) == len("hello world")
+
+
+def test_msg_chars_with_tool_calls():
+    from core.providers import _msg_chars
+    m = {
+        "role": "assistant",
+        "content": "",
+        "tool_calls": [{"function": {"name": "open_app", "arguments": '{"app":"code"}'}}],
+    }
+    chars = _msg_chars(m)
+    assert chars > 0
+
+
+def test_msg_chars_none_content():
+    from core.providers import _msg_chars
+    m = {"role": "assistant", "content": None}
+    assert _msg_chars(m) == 0
+
+
+# ── Unit: _truncate_messages ──────────────────────────────────────────
+
+
+def test_truncate_preserves_short_context():
+    from core.providers import _truncate_messages
+    msgs = [
+        {"role": "system", "content": "sys"},
+        {"role": "user", "content": "hello"},
+        {"role": "assistant", "content": "world"},
+    ]
+    result = _truncate_messages(msgs, max_chars=10_000)
+    assert result == msgs
+
+
+def test_truncate_removes_oldest_non_system():
+    from core.providers import _truncate_messages
+    sys_msg = {"role": "system", "content": "s" * 100}
+    old = {"role": "user", "content": "x" * 10_000}
+    recent1 = {"role": "user", "content": "recent1"}
+    recent2 = {"role": "assistant", "content": "recent2"}
+    msgs = [sys_msg, old, recent1, recent2]
+    result = _truncate_messages(msgs, max_chars=1_000)
+    assert sys_msg in result
+    assert recent1 in result
+    assert recent2 in result
+    # O antigo deve ter sido removido
+    assert old not in result
+
+
+def test_truncate_always_preserves_system():
+    from core.providers import _truncate_messages
+    sys_msg = {"role": "system", "content": "s" * 5}
+    msgs = [sys_msg] + [{"role": "user", "content": "x" * 5000} for _ in range(10)]
+    result = _truncate_messages(msgs, max_chars=500)
+    assert sys_msg in result
+
+
+# ── Integration: Groq (requer GROQ_API_KEY) ──────────────────────────
+
+
+@pytest.mark.integration
+def test_groq_chat_returns_text():
+    import os
+    if not os.environ.get("GROQ_API_KEY"):
+        pytest.skip("GROQ_API_KEY não configurada")
+    from core.providers import get_client
+    from core.config import Config
+    client = get_client(Config())
+    resp = client.chat([{"role": "user", "content": "responda apenas: ok"}], max_tokens=10)
+    assert isinstance(resp, str)
+    assert len(resp) > 0
+
+
+@pytest.mark.integration
+def test_groq_circuit_breaker_records_failure_on_bad_key():
+    import os
+    from unittest.mock import patch
+    import core.providers as p
+    _reset_cb()
+    original_key = os.environ.get("GROQ_API_KEY", "")
+    try:
+        with patch.dict(os.environ, {"GROQ_API_KEY": "invalid-key-test"}):
+            p._client = None  # força novo client com chave inválida
+            client = p.get_client()
+            client._groq_key = None
+            try:
+                client._groq_raw([{"role": "user", "content": "test"}], max_tokens=5)
+            except Exception:
+                pass
+        assert p._groq_failures >= 1
+    finally:
+        _reset_cb()
+        p._client = None
+        if original_key:
+            os.environ["GROQ_API_KEY"] = original_key
+        elif "GROQ_API_KEY" in os.environ:
+            del os.environ["GROQ_API_KEY"]
+
+
+# ── Integration: Ollama (requer Ollama rodando em localhost:11434) ────
+
+
+@pytest.mark.integration
+def test_ollama_chat_returns_text():
+    import requests
+    try:
+        r = requests.get("http://localhost:11434/api/tags", timeout=2)
+        if not r.ok:
+            pytest.skip("Ollama não está respondendo")
+    except Exception:
+        pytest.skip("Ollama não está acessível")
+
+    from core.providers import get_client
+    from core.config import Config
+    client = get_client(Config())
+    resp = client._ollama_chat([{"role": "user", "content": "responda apenas: ok"}], max_tokens=10)
+    assert isinstance(resp, str)

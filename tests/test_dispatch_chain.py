@@ -23,7 +23,7 @@ def config(tmp_path):
         "plugins": {"enabled": False},
         "routines": {},
         "logging": {"level": "WARNING", "file": "logs/pacoca.log", "max_mb": 10},
-        "wake_word": {"keyword": "axiom"},
+        "wake_word": {"keyword": "paçoca"},
     }
     path = tmp_path / "config.yaml"
     path.write_text(yaml.dump(data), encoding="utf-8")
@@ -104,6 +104,29 @@ def test_dispatch_chain_e_simples_nao_divide_desconhecido(orc, monkeypatch):
     monkeypatch.setattr(orc, "dispatch", lambda cmd: chamadas.append(cmd) or "ok")
     orc.dispatch_chain("xyzxyz e volume 50")
     assert len(chamadas) == 1
+
+
+def test_dispatch_chain_fala_parte_nao_streamada(orc, monkeypatch):
+    """Regressão: se uma parte do encadeamento já falou via streaming
+    (_tts_done=True), as demais partes não devem ficar mudas — cada uma
+    deve ser falada individualmente, e o chamador não deve falar o texto
+    combinado de novo (orc._tts_done deve terminar True)."""
+    falas = []
+    monkeypatch.setattr(orc.tts, "speak", lambda texto: falas.append(texto))
+
+    def fake_dispatch(cmd):
+        if "horas" in cmd:
+            orc._tts_done = True  # simula resposta já falada via streaming
+            return "são 10h"
+        return f"resp:{cmd}"
+
+    monkeypatch.setattr(orc, "dispatch", fake_dispatch)
+    result = orc.dispatch_chain("que horas são e depois volume 50")
+
+    assert "são 10h" in result
+    assert "resp:volume 50" in result
+    assert falas == ["resp:volume 50"]   # só a parte não-streamada foi falada aqui
+    assert orc._tts_done is True          # chamador não deve falar o texto combinado de novo
 
 
 def test_dashboard_route_antes_do_abre_generico():

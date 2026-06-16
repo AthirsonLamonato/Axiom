@@ -9,12 +9,15 @@ Funcionalidades:
   - Métricas opcionais: latência, tokens, provedor usado
 """
 
+import json
 import logging
 import random
+import threading
 import time
 from typing import Any, Generator, Optional
 
 import requests
+from requests.adapters import HTTPAdapter
 
 logger = logging.getLogger(__name__)
 
@@ -22,9 +25,11 @@ logger = logging.getLogger(__name__)
 _CB_THRESHOLD = 3        # falhas consecutivas antes de abrir o circuito
 _CB_RESET_SECS = 120     # segundos antes de testar Groq novamente
 
-# Estado do circuit breaker (módulo-level — compartilhado no processo)
+# Estado do circuit breaker (módulo-level — compartilhado no processo,
+# mutado por threads concorrentes: dashboard web + loop de voz/texto)
 _groq_failures: int = 0
 _groq_open_until: float = 0.0
+_circuit_lock = threading.Lock()
 
 # ── Timeouts padrão por serviço (segundos) ───────────────────────────
 TIMEOUTS = {
@@ -39,6 +44,21 @@ TIMEOUTS = {
 _GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
 _GROQ_STREAM_URL = "https://api.groq.com/openai/v1/chat/completions"
 
+# ── Sessão HTTP compartilhada com connection pool ─────────────────────
+_http_session: Optional[requests.Session] = None
+_session_lock = threading.Lock()
+
+
+def _get_session() -> requests.Session:
+    global _http_session
+    with _session_lock:
+        if _http_session is None:
+            _http_session = requests.Session()
+            adapter = HTTPAdapter(pool_connections=4, pool_maxsize=8, max_retries=0)
+            _http_session.mount("https://", adapter)
+            _http_session.mount("http://", adapter)
+        return _http_session
+
 
 # ── Helpers ───────────────────────────────────────────────────────────
 
@@ -51,33 +71,37 @@ def _redact_auth(headers: dict) -> dict:
 
 
 def _circuit_is_open() -> bool:
-    return time.monotonic() < _groq_open_until
+    with _circuit_lock:
+        return time.monotonic() < _groq_open_until
 
 
 def _record_groq_failure() -> None:
     global _groq_failures, _groq_open_until
-    _groq_failures += 1
-    if _groq_failures >= _CB_THRESHOLD:
-        _groq_open_until = time.monotonic() + _CB_RESET_SECS
-        logger.warning(
-            "Circuit breaker ABERTO: Groq falhou %d vezes consecutivas. "
-            "Usando Ollama por %ds.",
-            _groq_failures, _CB_RESET_SECS,
-        )
+    with _circuit_lock:
+        _groq_failures += 1
+        if _groq_failures >= _CB_THRESHOLD:
+            _groq_open_until = time.monotonic() + _CB_RESET_SECS
+            logger.warning(
+                "Circuit breaker ABERTO: Groq falhou %d vezes consecutivas. "
+                "Usando Ollama por %ds.",
+                _groq_failures, _CB_RESET_SECS,
+            )
 
 
 def _record_groq_success() -> None:
     global _groq_failures, _groq_open_until
-    if _groq_failures > 0:
-        logger.info("Circuit breaker FECHADO: Groq respondeu com sucesso.")
-    _groq_failures = 0
-    _groq_open_until = 0.0
+    with _circuit_lock:
+        if _groq_failures > 0:
+            logger.info("Circuit breaker FECHADO: Groq respondeu com sucesso.")
+        _groq_failures = 0
+        _groq_open_until = 0.0
 
 
 def _retry_http(fn, *, max_attempts: int = 3, base_delay: float = 1.0) -> requests.Response:
     """
     Executa fn() com retry exponencial para erros recuperáveis.
     Recuperável: 429 (rate limit), 502/503 (server error), ConnectionError, Timeout.
+    fn pode receber a sessão compartilhada via _get_session().
     """
     for attempt in range(max_attempts):
         try:
@@ -196,7 +220,7 @@ class LLMClient:
                     return self._groq_stream(messages, tools, tool_choice, max_tokens)
                 return self._groq_chat(messages, tools, tool_choice, max_tokens)
             except Exception as e:
-                _record_groq_failure()
+                # _groq_raw() / _groq_stream() já registraram a falha — não duplicar
                 logger.warning("Groq falhou (%s) — usando Ollama como fallback.", e)
 
         # Fallback para Ollama (sem suporte a tools)
@@ -240,15 +264,20 @@ class LLMClient:
         body = self._groq_body(messages, tools, tool_choice, max_tokens)
         logger.debug("Groq request: model=%s tools=%s", body["model"], bool(tools))
 
-        resp = _retry_http(
-            lambda: requests.post(_GROQ_URL, headers=headers, json=body,
-                                  timeout=TIMEOUTS["groq"]),
-        )
-        if resp.status_code == 401:
-            self._groq_key = None  # invalida cache da chave
-            raise RuntimeError("Groq 401 — verifique a GROQ_API_KEY.")
-        resp.raise_for_status()
-        data = resp.json()
+        try:
+            session = _get_session()
+            resp = _retry_http(
+                lambda: session.post(_GROQ_URL, headers=headers, json=body,
+                                     timeout=TIMEOUTS["groq"]),
+            )
+            if resp.status_code == 401:
+                self._groq_key = None
+                raise RuntimeError("Groq 401 — verifique a GROQ_API_KEY.")
+            resp.raise_for_status()
+            data = resp.json()
+        except Exception:
+            _record_groq_failure()
+            raise
 
         _record_groq_success()
         latency = time.monotonic() - t0
@@ -256,7 +285,6 @@ class LLMClient:
         logger.debug("Groq OK: %.2fs | tokens in=%s out=%s",
                      latency, usage.get("prompt_tokens", "?"), usage.get("completion_tokens", "?"))
 
-        # Registra métricas de observabilidade
         _emit_metric("groq", latency, usage)
         return data
 
@@ -268,9 +296,11 @@ class LLMClient:
                      max_tokens=1024) -> Generator[str, None, None]:
         headers = self._groq_headers()
         body = self._groq_body(messages, tools, tool_choice, max_tokens, stream=True)
+        _started = False  # True quando o primeiro chunk foi emitido
         try:
-            with requests.post(_GROQ_STREAM_URL, headers=headers, json=body,
-                               stream=True, timeout=TIMEOUTS["groq"]) as resp:
+            session = _get_session()
+            with session.post(_GROQ_STREAM_URL, headers=headers, json=body,
+                              stream=True, timeout=TIMEOUTS["groq"]) as resp:
                 if resp.status_code == 401:
                     self._groq_key = None
                     raise RuntimeError("Groq 401 — verifique a GROQ_API_KEY.")
@@ -285,25 +315,32 @@ class LLMClient:
                     if raw == "[DONE]":
                         break
                     try:
-                        import json
                         chunk = json.loads(raw)
                         delta = chunk["choices"][0].get("delta", {})
                         text = delta.get("content") or ""
                         if text:
+                            _started = True
                             yield text
                     except Exception:
                         pass
         except Exception as e:
             _record_groq_failure()
-            logger.warning("Groq stream falhou: %s — sem fallback de streaming", e)
+            if _started:
+                # Já emitimos chunks — não há como fazer fallback limpo
+                logger.warning("Groq stream interrompido após início: %s", e)
+            else:
+                logger.info("Groq stream falhou antes do primeiro chunk — fallback Ollama: %s", e)
+                yield from self._ollama_stream(messages, max_tokens)
 
     # ── Ollama ──────────────────────────────────────────────────────
 
     def _ollama_chat(self, messages: list[dict], max_tokens: int = 1024) -> str:
         url = self._ollama_url() + "/api/chat"
         try:
+            session = _get_session()
+            t0 = time.monotonic()
             resp = _retry_http(
-                lambda: requests.post(
+                lambda: session.post(
                     url,
                     json={
                         "model": self._ollama_model(),
@@ -316,7 +353,6 @@ class LLMClient:
                 max_attempts=2,
             )
             resp.raise_for_status()
-            t0 = time.monotonic()
             content = resp.json().get("message", {}).get("content", "").strip()
             _emit_metric("ollama", time.monotonic() - t0, {})
             return content
@@ -395,29 +431,74 @@ def cached_get(cache: _TTLCache, key: str, fn):
 
 # ── Truncagem de contexto ─────────────────────────────────────────────
 
+def _msg_chars(m: dict) -> int:
+    """Conta chars de uma mensagem incluindo content e tool_calls."""
+    total = len(m.get("content") or "")
+    for tc in m.get("tool_calls", []):
+        total += len(json.dumps(tc.get("function", {}), ensure_ascii=False))
+    return total
+
+
 def _truncate_messages(messages: list[dict], max_chars: int = 24_000) -> list[dict]:
     """
     Trunca as mensagens mais antigas se o total de caracteres exceder max_chars.
-    Preserva sempre a mensagem de sistema e as 2 últimas mensagens.
+    Estratégia em cascata:
+      1. Remove mensagens antigas do head (preservando system + as 2 mais recentes).
+      2. Se system + tail ainda excederem, distribui o orçamento disponível entre as
+         tail messages (da mais antiga para a mais nova), truncando content se necessário.
+    Garante que a saída SEMPRE cabe em max_chars.
     """
-    total = sum(len(m.get("content") or "") for m in messages)
+    total = sum(_msg_chars(m) for m in messages)
     if total <= max_chars:
         return messages
 
     system = [m for m in messages if m.get("role") == "system"]
     others = [m for m in messages if m.get("role") != "system"]
 
-    # Preserva as 2 últimas (comando atual + contexto imediato)
-    tail = others[-2:] if len(others) >= 2 else others
+    tail = others[-2:] if len(others) >= 2 else list(others)
     head = others[:-2] if len(others) >= 2 else []
 
-    # Remove do início até caber
-    while head and sum(len(m.get("content") or "") for m in system + head + tail) > max_chars:
+    # Passo 1: remove mensagens do head (sem truncar content)
+    while head and sum(_msg_chars(m) for m in system + head + tail) > max_chars:
         head.pop(0)
 
     truncated = system + head + tail
+
+    # Passo 2: se ainda excede, distribui orçamento pelo tail com truncagem de content
+    if sum(_msg_chars(m) for m in truncated) > max_chars:
+        sys_chars = sum(_msg_chars(m) for m in system)
+        budget_tail = max_chars - sys_chars  # orçamento restante para as tail messages
+
+        if budget_tail <= 0:
+            # System sozinho excede — trunca system e tenta preservar a mensagem mais recente
+            s = system[0] if system else None
+            if not s:
+                return tail[-1:] if tail else []
+            content = s.get("content", "")
+            tail_chars = _msg_chars(tail[-1]) if tail else 0
+            sys_budget = max(0, max_chars - tail_chars)
+            if sys_budget < 10:
+                return tail[-1:] if tail else []
+            return [{**s, "content": content[:sys_budget - 1] + "…"}] + (tail[-1:] if tail else [])
+
+        # Distribui o orçamento do tail da mensagem mais antiga para a mais nova
+        new_tail: list[dict] = []
+        remaining = budget_tail
+        for m in tail:
+            mc = _msg_chars(m)
+            if mc <= remaining:
+                new_tail.append(m)
+                remaining -= mc
+            elif remaining > 20:
+                content = m.get("content") or ""
+                new_tail.append({**m, "content": content[:remaining - 1] + "…"})
+                remaining = 0
+            # else: descarta mensagem (sem espaço)
+
+        truncated = system + new_tail
+
     logger.debug("Contexto truncado: %d → %d chars",
-                 total, sum(len(m.get("content") or "") for m in truncated))
+                 total, sum(_msg_chars(m) for m in truncated))
     return truncated
 
 
