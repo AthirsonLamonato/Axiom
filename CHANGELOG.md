@@ -8,6 +8,13 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 ## [Não lançado]
 
 ### Corrigido
+- Caixa de texto e botão "Enviar" da janela de desktop não ficavam
+  desabilitados durante o processamento (diferente do microfone e do botão
+  de conta Google, que já bloqueavam) — dava pra mandar vários comandos em
+  cima do outro enquanto um ainda esperava resposta do Groq/Ollama. Agora
+  ambos desabilitam ao enviar e reabilitam quando a resposta chega (ou em
+  caso de erro). Validado enviando um comando real e observando o estado
+  da caixa de texto antes/durante/depois
 - **Fechar a janela de desktop pelo X matava o processo do Paçoca inteiro.**
   O overlay antigo era frameless (sem botão de fechar); a nova janela tem
   barra de título, e por padrão o Qt mata o `QApplication` quando a última

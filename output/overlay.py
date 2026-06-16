@@ -219,6 +219,8 @@ class PacocaOverlay:
         if not text:
             return
         self._input.clear()
+        self._input.setEnabled(False)
+        self._send_btn.setEnabled(False)
         self._append_chat("Você", text)
         threading.Thread(target=self._dispatch_command, args=(text, "texto"), daemon=True).start()
 
@@ -252,6 +254,7 @@ class PacocaOverlay:
     def _dispatch_command(self, text: str, origem: str):
         if _orchestrator is None:
             _msg_queue.put(("chat", "Paçoca", "Orchestrator não disponível ainda."))
+            _msg_queue.put(("input_done",))
             return
         _msg_queue.put(("state_detail", "processing", "Processando"))
         try:
@@ -266,6 +269,7 @@ class PacocaOverlay:
             _msg_queue.put(("chat", "Paçoca", f"Erro: {e}"))
         finally:
             _msg_queue.put(("state_detail", "idle", ""))
+            _msg_queue.put(("input_done",))
 
     # ── Poll da queue (thread Qt) ───────────────────────────────────────
 
@@ -296,6 +300,10 @@ class PacocaOverlay:
                     self._append_chat("Paçoca", f"Não consegui usar o microfone: {args[0]}")
                     self._mic_btn.setEnabled(True)
                     self._do_set_state_detail("idle", "")
+                elif cmd == "input_done":
+                    self._input.setEnabled(True)
+                    self._send_btn.setEnabled(True)
+                    self._input.setFocus()
         except queue.Empty:
             pass
 
