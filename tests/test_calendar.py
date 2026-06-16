@@ -6,9 +6,12 @@ from modules import calendar_integration as calendar
 
 
 class _Events:
-    def __init__(self):
+    def __init__(self, list_items=None):
         self.params = None
         self.inserted_body = None
+        self.deleted_event_id = None
+        self.deleted_send_updates = None
+        self._list_items = list_items if list_items is not None else []
 
     def list(self, **kwargs):
         self.params = kwargs
@@ -19,15 +22,22 @@ class _Events:
         self.send_updates = sendUpdates
         return self
 
+    def delete(self, calendarId, eventId, sendUpdates="none"):
+        self.deleted_event_id = eventId
+        self.deleted_send_updates = sendUpdates
+        return self
+
     def execute(self):
+        if self.deleted_event_id is not None:
+            return {}
         if self.inserted_body is not None:
             return {"summary": self.inserted_body["summary"]}
-        return {"items": []}
+        return {"items": self._list_items}
 
 
 class _Service:
-    def __init__(self):
-        self._events = _Events()
+    def __init__(self, list_items=None):
+        self._events = _Events(list_items=list_items)
 
     def events(self):
         return self._events
@@ -183,3 +193,65 @@ def test_create_event_without_attendees_does_not_send_updates(monkeypatch):
     body = service._events.inserted_body
     assert "attendees" not in body
     assert service._events.send_updates == "none"
+
+
+# ── delete_event ────────────────────────────────────────────────────
+
+def test_delete_event_deletes_unique_match(monkeypatch):
+    items = [{"id": "evt1", "summary": "[TESTE v3] Reunião", "start": {"dateTime": "2026-06-17T16:00:00-03:00"}}]
+    service = _Service(list_items=items)
+    monkeypatch.setattr(calendar, "_get_service", lambda: service)
+    monkeypatch.setattr(calendar, "_get_config", lambda: _Config())
+
+    result = calendar.delete_event("TESTE v3")
+
+    assert service._events.deleted_event_id == "evt1"
+    assert service._events.deleted_send_updates == "none"
+    assert "apagado" in result.lower()
+
+
+def test_delete_event_sends_updates_when_attendees_present(monkeypatch):
+    items = [{
+        "id": "evt1", "summary": "[TESTE v3] Reunião",
+        "start": {"dateTime": "2026-06-17T16:00:00-03:00"},
+        "attendees": [{"email": "a@x.com"}],
+    }]
+    service = _Service(list_items=items)
+    monkeypatch.setattr(calendar, "_get_service", lambda: service)
+    monkeypatch.setattr(calendar, "_get_config", lambda: _Config())
+
+    calendar.delete_event("TESTE v3")
+
+    assert service._events.deleted_send_updates == "all"
+
+
+def test_delete_event_multiple_matches_does_not_delete(monkeypatch):
+    items = [
+        {"id": "evt1", "summary": "[TESTE] Reunião A", "start": {"dateTime": "2026-06-17T16:00:00-03:00"}},
+        {"id": "evt2", "summary": "[TESTE] Reunião B", "start": {"dateTime": "2026-06-18T10:00:00-03:00"}},
+    ]
+    service = _Service(list_items=items)
+    monkeypatch.setattr(calendar, "_get_service", lambda: service)
+    monkeypatch.setattr(calendar, "_get_config", lambda: _Config())
+
+    result = calendar.delete_event("TESTE")
+
+    assert service._events.deleted_event_id is None  # nada apagado
+    assert "Reunião A" in result and "Reunião B" in result
+    assert "específico" in result.lower()
+
+
+def test_delete_event_no_match_returns_not_found(monkeypatch):
+    service = _Service(list_items=[])
+    monkeypatch.setattr(calendar, "_get_service", lambda: service)
+    monkeypatch.setattr(calendar, "_get_config", lambda: _Config())
+
+    result = calendar.delete_event("Reunião inexistente")
+
+    assert service._events.deleted_event_id is None
+    assert "não encontrei" in result.lower()
+
+
+def test_delete_event_requires_title():
+    assert "título" in calendar.delete_event("").lower()
+    assert "título" in calendar.delete_event("   ").lower()

@@ -226,6 +226,22 @@ class TestExecuteTool:
         mock_next.assert_called_once_with()
         assert "dentista" in result
 
+    def test_delete_calendar_event_delegates(self):
+        from modules.intent import _execute_tool
+        with patch("modules.calendar_integration.delete_event", return_value="Evento apagado.") as mock_del:
+            result = _execute_tool("delete_calendar_event", {"title": "TESTE v3", "day": "amanhã"})
+        mock_del.assert_called_once_with("TESTE v3", "amanhã")
+        assert "apagado" in result.lower()
+
+    def test_delete_calendar_event_requires_title(self):
+        from modules.intent import _check_required_args
+        result = _check_required_args("delete_calendar_event", {})
+        assert result != ""
+
+    def test_delete_calendar_event_requires_confirmation(self):
+        from modules.intent import _needs_confirmation
+        assert _needs_confirmation("delete_calendar_event", {"title": "x"}) is True
+
     def test_open_application_delegates(self):
         from modules.intent import _execute_tool
         with patch("modules.system_control.open_app", return_value="Abrindo chrome."):

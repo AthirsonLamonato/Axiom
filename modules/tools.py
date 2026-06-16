@@ -164,6 +164,16 @@ class CreateCalendarEventArgs(BaseModel):
         return v
 
 
+class DeleteCalendarEventArgs(BaseModel):
+    title: str = Field(..., min_length=1, description="Título (ou parte dele) do evento a apagar")
+    day: str = Field("", description="Opcional: 'hoje' ou 'amanhã', pra restringir a busca")
+
+    @field_validator("title", mode="before")
+    @classmethod
+    def strip_title(cls, v: str) -> str:
+        return v.strip() if isinstance(v, str) else v
+
+
 # ── Executores (lazy imports) ─────────────────────────────────────────
 
 def _exec_open_application(a: OpenApplicationArgs) -> str:
@@ -259,6 +269,11 @@ def _exec_create_calendar_event(a: CreateCalendarEventArgs) -> str:
     return calendar_integration.create_event(a.title, a.day, a.time, a.attendees or None)
 
 
+def _exec_delete_calendar_event(a: DeleteCalendarEventArgs) -> str:
+    from modules import calendar_integration
+    return calendar_integration.delete_event(a.title, a.day)
+
+
 # ── Definição de ferramenta ───────────────────────────────────────────
 
 @dataclass
@@ -349,6 +364,12 @@ REGISTRY: dict[str, ToolDef] = {
         schema_model=CreateCalendarEventArgs,
         executor=_exec_create_calendar_event,
         risk="low",  # mesmo nível da rota direta de voz (add_event não exige confirmação)
+    ),
+    "delete_calendar_event": ToolDef(
+        schema_model=DeleteCalendarEventArgs,
+        executor=_exec_delete_calendar_event,
+        risk="high",
+        requires_confirmation=True,  # destrutivo e irreversível
     ),
 }
 

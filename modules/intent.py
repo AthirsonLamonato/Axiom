@@ -250,6 +250,21 @@ TOOLS = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "delete_calendar_event",
+            "description": "Apaga/cancela um evento do Google Calendar pelo título. Use quando o usuário pedir para apagar, cancelar ou remover uma reunião/evento.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "title": {"type": "string", "description": "Título (ou parte dele) do evento a apagar"},
+                    "day": {"type": "string", "description": "Opcional: 'hoje' ou 'amanhã', pra restringir a busca"},
+                },
+                "required": ["title"],
+            },
+        },
+    },
 ]
 
 _VALID_TOOLS = {t["function"]["name"] for t in TOOLS}

@@ -8,6 +8,12 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 ## [Não lançado]
 
 ### Adicionado
+- **`delete_calendar_event`** — apaga/cancela evento do Google Calendar por
+  título (busca por trecho, sem diferenciar maiúsculas/minúsculas). Nunca
+  apaga se houver mais de um evento correspondente — lista as opções e pede
+  pra ser específico. Requer confirmação explícita (ação destrutiva/
+  irreversível), tanto na rota direta de voz ("apaga o evento X") quanto no
+  loop agentivo. Validado apagando eventos de teste reais
 - **Convidados em eventos de calendário** — `create_event()`/`add_event()`
   agora aceitam `attendees` (e-mails); `add_event()` extrai e-mails
   mencionados na frase automaticamente (ex: "reunião com x@y.com"). O Google

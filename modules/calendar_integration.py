@@ -313,6 +313,69 @@ def create_event(
     return _insert_event(title or "Evento", start_dt, timezone_name, service, attendees=attendees)
 
 
+def delete_event(title: str, day: str = "", *_) -> str:
+    """Apaga um evento pelo título (busca por trecho, sem diferenciar
+    maiúsculas/minúsculas). 'day' (hoje/amanhã, opcional) restringe a busca a
+    um dia; sem 'day', busca nos próximos 60 dias. Nunca apaga se houver mais
+    de um evento correspondente — lista as opções e pede para ser específico."""
+    if not title or not title.strip():
+        return "Preciso do título (ou parte dele) do evento a apagar."
+
+    try:
+        service = _get_service()
+    except (FileNotFoundError, RuntimeError) as e:
+        return str(e)
+    except Exception as e:
+        return f"Erro ao conectar com o Google Calendar: {e}"
+
+    tz = _calendar_timezone()
+    now = datetime.now(tz)
+    day_norm = day.strip().lower()
+    if day_norm in ("hoje", "amanhã", "amanha"):
+        offset = 1 if day_norm in ("amanhã", "amanha") else 0
+        target = now + timedelta(days=offset)
+        time_min = target.replace(hour=0, minute=0, second=0, microsecond=0)
+        time_max = time_min + timedelta(days=1)
+    else:
+        time_min = now - timedelta(days=1)
+        time_max = now + timedelta(days=60)
+
+    try:
+        result = service.events().list(
+            calendarId="primary",
+            timeMin=time_min.isoformat(),
+            timeMax=time_max.isoformat(),
+            singleEvents=True,
+            orderBy="startTime",
+            maxResults=50,
+        ).execute()
+    except Exception as e:
+        logger.error("Erro ao buscar eventos para apagar: %s", e, exc_info=True)
+        return f"Erro ao buscar eventos: {e}"
+
+    needle = title.strip().lower()
+    matches = [ev for ev in result.get("items", []) if needle in ev.get("summary", "").lower()]
+
+    if not matches:
+        return f"Não encontrei nenhum evento com '{title}' no período buscado."
+    if len(matches) > 1:
+        lines = [f"Encontrei {len(matches)} eventos com '{title}' — seja mais específico:"]
+        lines += [f"  • {_format_event(ev)}" for ev in matches]
+        return "\n".join(lines)
+
+    ev = matches[0]
+    try:
+        service.events().delete(
+            calendarId="primary",
+            eventId=ev["id"],
+            sendUpdates="all" if ev.get("attendees") else "none",
+        ).execute()
+        return f"Evento '{ev.get('summary', '(sem título)')}' apagado."
+    except Exception as e:
+        logger.error("Erro ao apagar evento: %s", e, exc_info=True)
+        return f"Erro ao apagar evento: {e}"
+
+
 def auth_calendar(*_) -> str:
     """Abre o fluxo OAuth para autorizar o Google Calendar."""
     try:

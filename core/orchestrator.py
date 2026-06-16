@@ -179,6 +179,8 @@ ROUTES: list[tuple[str, str, bool]] = [
                                                   "modules.calendar_integration:get_next_event",   False),
     (r"(?:adiciona|marca|cria)\s+(?:no\s+calendário|no\s+calendario|evento|reunião|reuniao)\s+(.+)",
                                                   "modules.calendar_integration:add_event",        False),
+    (r"(?:apaga|cancela|remove)\s+(?:o\s+)?(?:evento|reunião|reuniao)\s+(.+)",
+                                                  "modules.calendar_integration:delete_event",     True),
     (r"autoriza\s+(calendário|calendario|google\s+calendar)",
                                                   "modules.calendar_integration:auth_calendar",    False),
 
