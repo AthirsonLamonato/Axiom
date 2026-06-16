@@ -136,3 +136,10 @@ class TestPublicInterface:
         from output.overlay import toggle
         result = toggle()
         assert isinstance(result, str)
+
+    def test_set_orchestrator_stores_reference(self):
+        import output.overlay as ov
+        sentinel = object()
+        ov.set_orchestrator(sentinel)
+        assert ov._orchestrator is sentinel
+        ov.set_orchestrator(None)  # não deixa estado vazando entre testes

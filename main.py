@@ -297,6 +297,10 @@ def main():
 
     orchestrator = Orchestrator(config)
 
+    if _overlay_enabled:
+        from output import overlay as _overlay_mod
+        _overlay_mod.set_orchestrator(orchestrator)
+
     if args.web:
         from modules import web_server
         print(web_server.start())

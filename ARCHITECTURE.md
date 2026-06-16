@@ -80,7 +80,17 @@ Pipeline NLU de 3 camadas:
 `response, provider, tool, fallback_used`) em vez de uma tupla posicional solta.
 
 ### `output/overlay.py`
-Overlay PyQt6 sempre visível. Thread-safe via `queue.Queue` + QTimer.
+Janela de desktop do Paçoca (PyQt6) — quando `overlay.enabled: true`, é a
+interface gráfica completa: histórico de conversa, caixa de texto, botão de
+microfone (captura um comando único via `input.stt.listen_once()`) e botão
+de conta Google (reusa `modules.calendar_integration.auth_calendar()`).
+Quando desabilitada, o Paçoca roda só por texto/voz no terminal.
+
+Thread-safe via `queue.Queue` + `QTimer` — toda interação (texto digitado,
+clique no microfone, login Google) dispara uma thread em background que
+chama `Orchestrator.dispatch_chain()` (injetado via `set_orchestrator()`,
+chamado por `main.py` depois que o orchestrator é criado) e devolve a
+resposta pela mesma queue, nunca tocando widgets fora da thread do Qt.
 - `set_state(state)`: estados simples (idle/listening/processing/speaking).
 - `set_state_detail(state, detail)`: rótulo descritivo, ex: `"processing", "Consultando Groq"`.
 

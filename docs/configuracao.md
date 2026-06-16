@@ -115,13 +115,28 @@ tts:
 ```yaml
 overlay:
   enabled: true
-  position: top-left        # top-left | top-right | bottom-left | bottom-right
-  duration_ms: 4000           # tempo de exibição de cada mensagem
-  opacity: 0.92
+  position: top-left        # não usado mais — ver nota abaixo
+  duration_ms: 4000           # não usado mais — ver nota abaixo
+  opacity: 0.92                # não usado mais — ver nota abaixo
 ```
 
-Janela PyQt6 frameless, always-on-top. Histórico das últimas 3 mensagens incluído.
-Atalho `ctrl+shift+a` mostra/oculta.
+`overlay.enabled` agora controla a **janela de desktop completa** do Paçoca
+(`output/overlay.py`), não mais um pequeno aviso flutuante:
+- Histórico de conversa completo (não só as últimas mensagens)
+- Caixa de texto para digitar comandos
+- Botão de microfone — captura um único comando de voz (`input.stt.listen_once()`)
+- Botão de conta Google — dispara o mesmo OAuth de `autoriza calendário`
+  (Calendar + Drive) e mostra se está conectado
+
+Quando `enabled: false` (ou `--no-overlay`), nada disso existe — o Paçoca
+roda só por texto/voz no terminal, exatamente como sem essa funcionalidade.
+
+`position`, `duration_ms` e `opacity` eram usados pelo overlay pequeno antigo
+(canto da tela, fade automático) e **não têm efeito na janela atual** — ela é
+uma janela normal, centralizada, sem fechamento automático. Mantidos no
+config por compatibilidade, sem quebrar configs existentes.
+
+Atalho `ctrl+shift+a` mostra/oculta a janela.
 
 ---
 

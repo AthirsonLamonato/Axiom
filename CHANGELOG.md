@@ -7,6 +7,23 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ## [Não lançado]
 
+### Adicionado
+- **Janela de desktop** (`output/overlay.py`, mesmo módulo/API pública de
+  antes — todos os call sites existentes continuam funcionando) — quando
+  `overlay.enabled: true` (padrão), abre uma interface completa: histórico
+  de conversa, caixa de texto para digitar comandos, botão de microfone
+  (captura um comando de voz único via `input.stt.listen_once()`) e botão de
+  conta Google (reusa o OAuth já existente de Calendar/Drive). Quando
+  `enabled: false` (ou `--no-overlay`), nada muda — roda só por texto/voz no
+  terminal, como antes desta funcionalidade. Toda interação roda em thread
+  de fundo e some pela mesma fila thread-safe que já existia, sem travar a
+  janela durante chamadas ao Groq/Ollama. Validado abrindo a janela de
+  verdade (screenshot) e despachando um comando real de ponta a ponta
+- `position`/`duration_ms`/`opacity` de `overlay.*` não têm mais efeito (a
+  janela agora é uma janela normal centralizada, sem fade nem fechamento
+  automático) — mantidos no config por compatibilidade, documentado em
+  `docs/configuracao.md`
+
 ### Corrigido
 - **`cleanup_old_entries()` (storage/knowledge_base.py) nunca removia nada.**
   A query filtrava por uma coluna `created_at` que não existe na tabela

@@ -65,7 +65,7 @@ python main.py --edit-routines
 | Módulo | O que faz |
 |---|---|
 | **STT** | Transcrição via Whisper (`faster-whisper`). Calibração automática de ruído; VAD por energia RMS. Push-to-talk `ctrl+shift+space` por padrão; wake word via openWakeWord (sem API key, modelo customizável) |
-| **Overlay** | Janela flutuante PyQt6: estado (idle / listening / processing / speaking), histórico dos 3 últimos comandos, fade animado. Toggle: `ctrl+shift+a` |
+| **Janela de desktop** | Interface PyQt6 (`overlay.enabled: true`): histórico de conversa, caixa de texto, botão de microfone (comando de voz único) e botão de conta Google (Calendar/Drive). Toggle: `ctrl+shift+a`. Desabilitada, roda só por texto/voz no terminal |
 | **Transcrição** | Captura microfone ou loopback do sistema (Windows: WASAPI · Linux: PulseAudio). Auto-save a cada 5 min |
 | **Resumo / IA** | Resumo e explicações via Ollama (local) com fallback para Groq API (gratuito) |
 | **Pesquisa** | Roteamento automático: perguntas factuais/atuais → DuckDuckGo + IA; demais → LLM local |
@@ -259,10 +259,9 @@ ai:
   provider: ollama        # ollama | groq
   model: llama3           # llama3 | mistral | phi3
 
-# Overlay
+# Janela de desktop (texto + microfone + conta Google)
 overlay:
-  enabled: true
-  position: top-right     # top-left | top-right | bottom-left | bottom-right
+  enabled: true            # false = só texto/voz no terminal, sem GUI
 
 # TTS
 tts:
@@ -371,7 +370,7 @@ Pacoca/
 │
 ├── output/
 │   ├── tts.py                 # edge-tts (padrão) com fallback pyttsx3/Coqui
-│   ├── overlay.py             # overlay PyQt6 thread-safe
+│   ├── overlay.py             # janela de desktop PyQt6 (texto/mic/conta Google), thread-safe
 │   └── notifier.py            # notificações desktop
 │
 ├── storage/
