@@ -206,126 +206,179 @@ def _make_app():
 
     app.add_middleware(AuthMiddleware)
 
+    # ── CSS compartilhado (tema Cyber Blue/Cyan) ─────────────────────────
+    # Única fonte de estilo para as 5 páginas (login, dashboard, integrações,
+    # docs, métricas) — evita duplicar as mesmas regras em cada template.
+    _SHARED_CSS = """
+:root{
+  --bg-0:#04060c; --bg-1:#060912; --bg-2:#0a1622;
+  --card-bg:rgba(13,22,36,0.72); --card-border:rgba(0,229,255,0.16); --card-border-hover:rgba(0,229,255,0.4);
+  --accent:#00e5ff; --accent-2:#3df0ff; --accent-glow:rgba(0,229,255,0.45);
+  --text:#d8f3ff; --muted:#7a93ab; --success:#3fb950; --danger:#f85149; --warn:#f0883e;
+  --radius:10px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  background:radial-gradient(circle at 15% -10%, #0d2233 0%, var(--bg-1) 45%, var(--bg-0) 100%);
+  color:var(--text); font-family:'Inter','Segoe UI',system-ui,-apple-system,sans-serif;
+  font-size:14px; min-height:100vh; padding:24px;
+}
+h1{
+  font-size:1.5em; letter-spacing:3px; margin-bottom:16px; font-weight:700;
+  background:linear-gradient(90deg,var(--accent) 0%,var(--accent-2) 60%,#9df9ff 100%);
+  -webkit-background-clip:text; background-clip:text; color:transparent;
+  filter:drop-shadow(0 0 14px var(--accent-glow));
+  display:inline-flex; align-items:center; gap:8px;
+}
+h2{color:var(--muted); font-size:0.75em; text-transform:uppercase; letter-spacing:1.5px; margin-bottom:10px; font-weight:600}
+a{color:var(--accent-2); text-decoration:none; transition:color .15s}
+a:hover{color:var(--accent); text-decoration:underline}
+
+.grid{display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:16px}
+.card{
+  background:var(--card-bg); border:1px solid var(--card-border); border-radius:var(--radius);
+  padding:16px; backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px);
+  box-shadow:0 4px 24px rgba(0,0,0,0.35); transition:border-color .2s, box-shadow .2s;
+}
+.card:hover{border-color:var(--card-border-hover); box-shadow:0 0 24px -4px var(--accent-glow), 0 4px 24px rgba(0,0,0,0.35)}
+.card.full{grid-column:1 / -1}
+
+.login-body{display:flex; align-items:center; justify-content:center; height:100vh}
+.login-card{width:340px}
+
+.badge{display:inline-block; padding:2px 10px; border-radius:12px; font-size:0.78em; font-weight:bold; margin:2px}
+.badge-work{background:rgba(0,229,255,0.12); color:var(--accent-2)}
+.badge-casual{background:rgba(192,132,252,0.12); color:#c084fc}
+.badge-focus{background:rgba(248,81,73,0.12); color:var(--danger)}
+.badge-meeting{background:rgba(63,185,80,0.12); color:var(--success)}
+.badge-night{background:rgba(122,147,171,0.12); color:var(--muted)}
+.badge-default{background:rgba(216,243,255,0.06); color:var(--text)}
+
+.stat-row{display:flex; gap:24px; flex-wrap:wrap}
+.stat{text-align:center}
+.stat-val{font-size:1.9em; font-weight:bold; color:var(--accent-2); text-shadow:0 0 16px var(--accent-glow)}
+.stat-lbl{font-size:0.7em; color:var(--muted); text-transform:uppercase; letter-spacing:0.5px}
+
+.cmd-row{display:flex; gap:8px}
+input[type=text], input[type=password]{
+  background:rgba(4,8,14,0.6); border:1px solid rgba(0,229,255,0.18); color:var(--text);
+  padding:9px 12px; border-radius:8px; flex:1; font-size:14px; outline:none;
+  transition:border-color .15s, box-shadow .15s; width:100%;
+}
+input[type=text]:focus, input[type=password]:focus{border-color:var(--accent); box-shadow:0 0 0 3px rgba(0,229,255,0.12)}
+
+button{
+  background:linear-gradient(135deg,#0090a8,#00b8d4); color:#04141a; border:none; border-radius:8px;
+  padding:9px 18px; cursor:pointer; font-size:14px; font-weight:600; letter-spacing:.3px;
+  transition:transform .12s, box-shadow .12s, filter .12s;
+}
+button:hover{filter:brightness(1.1); box-shadow:0 0 18px -2px var(--accent-glow); transform:translateY(-1px)}
+button:active{transform:translateY(0)}
+button.danger{background:linear-gradient(135deg,#6e1a1a,#a8302f); color:#fff}
+button.danger:hover{box-shadow:0 0 18px -2px rgba(248,81,73,0.5)}
+
+.response-box{
+  background:rgba(4,8,14,0.6); border-left:3px solid var(--accent); padding:10px 14px;
+  border-radius:0 8px 8px 0; margin-top:12px; white-space:pre-wrap; color:var(--accent-2); font-size:0.9em;
+}
+.connecting{border-left-color:var(--muted); color:var(--muted)}
+
+table{width:100%; border-collapse:collapse}
+th{color:var(--muted); font-size:0.72em; text-transform:uppercase; letter-spacing:.5px; padding:6px 8px; text-align:left; border-bottom:1px solid var(--card-border)}
+td{padding:6px 8px; border-bottom:1px solid rgba(255,255,255,0.04); font-size:0.88em}
+tr:hover td{background:rgba(0,229,255,0.04)}
+td.ts{color:var(--muted); white-space:nowrap; width:80px}
+td.cmd{color:var(--text); max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+td.resp{color:var(--muted); font-size:0.85em; max-width:260px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+
+.reminder-row{padding:6px 0; border-bottom:1px solid var(--card-border)}
+.reminder-row:last-child{border-bottom:none}
+.reminder-time{color:var(--accent-2); font-weight:bold; margin-right:8px}
+
+.event-row{padding:5px 0; border-bottom:1px solid var(--card-border); font-size:0.88em}
+.event-row:last-child{border-bottom:none}
+.event-ts{color:var(--muted); margin-right:6px; font-size:0.8em}
+.event-type-reminder{color:var(--warn)}
+.event-type-meeting{color:var(--success)}
+.event-type-info{color:var(--accent-2)}
+
+.routine-row{display:flex; align-items:center; justify-content:space-between; padding:6px 0; border-bottom:1px solid var(--card-border)}
+.routine-row:last-child{border-bottom:none}
+.routine-name{color:var(--accent-2); font-weight:bold; margin-right:8px}
+.routine-steps{color:var(--muted); font-size:0.82em}
+
+.add-form{margin-top:12px; display:flex; gap:8px; flex-wrap:wrap}
+.add-form input{min-width:120px; flex:1}
+.empty{color:var(--muted); font-style:italic}
+
+#ws-status{font-size:0.72em; color:var(--muted); margin-left:8px}
+#ws-status.ok{color:var(--success)}
+#ws-status.ok::before{content:'';display:inline-block;width:6px;height:6px;border-radius:50%;
+  background:var(--success); margin-right:4px; box-shadow:0 0 6px var(--success); animation:pacoca-pulse 1.6s ease-in-out infinite}
+@keyframes pacoca-pulse{0%,100%{opacity:1}50%{opacity:.35}}
+
+.nav{margin:10px 0 20px; display:flex; gap:16px; font-size:0.85em; border-bottom:1px solid var(--card-border); padding-bottom:12px}
+.nav a{color:var(--muted)}
+.nav a:hover, .nav a.active{color:var(--accent-2)}
+
+.section{background:var(--card-bg); border:1px solid var(--card-border); border-radius:var(--radius);
+  padding:14px 16px; margin-bottom:14px; backdrop-filter:blur(10px)}
+.section h2{color:#ffd479; font-size:0.8em; text-transform:uppercase; letter-spacing:1px; margin:0 0 8px;
+  padding:6px 10px; background:rgba(240,180,80,0.08); border-left:3px solid var(--warn); border-radius:0 4px 4px 0}
+
+td.pat{width:55%; font-size:0.82em}
+td.fn{font-size:0.82em; color:var(--accent-2)}
+code{background:rgba(4,8,14,0.6); padding:1px 5px; border-radius:4px; font-family:monospace; color:var(--text); font-size:0.95em}
+.two-col{display:grid; grid-template-columns:1fr 1fr; gap:14px}
+.command-list{display:flex; flex-direction:column; gap:14px}
+.kbd{background:rgba(216,243,255,0.06); color:var(--text); border:1px solid rgba(0,229,255,0.2); border-radius:4px;
+  padding:2px 8px; font-family:monospace; font-size:0.85em}
+.info-table td{padding:6px 10px; color:var(--muted)}
+.info-table td:first-child{color:var(--text); width:160px}
+.info-table tr:hover td{background:rgba(0,229,255,0.05)}
+.subtitle{color:var(--muted); font-size:0.82em; margin-bottom:16px}
+
+.err{color:var(--danger); font-size:0.85em; margin-top:10px}
+
+@media(max-width:700px){.two-col{grid-template-columns:1fr} .grid{grid-template-columns:1fr}}
+"""
+
     # ── HTML ──────────────────────────────────────────────────────────
 
-    _LOGIN_HTML = """<!DOCTYPE html>
+    _LOGIN_HTML = ("""<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8"><title>Paçoca — Login</title>
-<style>
-  *{{box-sizing:border-box;margin:0;padding:0}}
-  body{{background:#0d1117;color:#c9d1d9;font-family:'Segoe UI',monospace;
-       display:flex;align-items:center;justify-content:center;height:100vh}}
-  .card{{background:#161b22;border:1px solid #21262d;border-radius:8px;padding:32px;width:320px}}
-  h1{{color:#58a6ff;font-size:1.4em;letter-spacing:2px;margin-bottom:24px}}
-  input{{background:#0d1117;border:1px solid #30363d;color:#c9d1d9;padding:8px 12px;
-         border-radius:6px;width:100%;font-size:14px;outline:none}}
-  input:focus{{border-color:#58a6ff}}
-  button{{background:#238636;color:#fff;border:none;border-radius:6px;
-          padding:8px 16px;cursor:pointer;font-size:14px;width:100%;margin-top:12px}}
-  button:hover{{background:#2ea043}}
-  .err{{color:#f85149;font-size:0.85em;margin-top:10px}}
-</style>
+<style>""" + _SHARED_CSS + """</style>
 </head>
-<body>
-<div class="card">
+<body class="login-body">
+<div class="card login-card">
   <h1>⚡ Paçoca</h1>
   <form method="post" action="/login">
     <input type="password" name="password" placeholder="Senha do dashboard" autofocus>
-    <button type="submit">Entrar</button>
+    <button type="submit" style="width:100%;margin-top:12px">Entrar</button>
   </form>
-  {error}
+  {ERROR}
 </div>
-</body></html>"""
+</body></html>""")
 
-    _HTML = """<!DOCTYPE html>
+    _HTML = ("""<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Paçoca Dashboard</title>
 <script src="https://unpkg.com/htmx.org@1.9.10"></script>
-<style>
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body {
-    background: #0d1117; color: #c9d1d9; font-family: 'Segoe UI', monospace;
-    padding: 24px; font-size: 14px;
-  }
-  h1 { color: #58a6ff; font-size: 1.4em; margin-bottom: 16px; letter-spacing: 2px; }
-  h2 { color: #8b949e; font-size: 0.75em; text-transform: uppercase;
-       letter-spacing: 1px; margin-bottom: 10px; }
-  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
-  .card {
-    background: #161b22; border: 1px solid #21262d; border-radius: 8px; padding: 16px;
-  }
-  .card.full { grid-column: 1 / -1; }
-  .badge { display: inline-block; padding: 2px 10px; border-radius: 12px;
-           font-size: 0.78em; font-weight: bold; margin: 2px; }
-  .badge-work    { background: #1f3a5f; color: #58a6ff; }
-  .badge-casual  { background: #2d2040; color: #c084fc; }
-  .badge-focus   { background: #3d1c1c; color: #f85149; }
-  .badge-meeting { background: #1c3328; color: #3fb950; }
-  .badge-night   { background: #1c1c2e; color: #8b949e; }
-  .badge-default { background: #21262d; color: #c9d1d9; }
-  .stat-row { display: flex; gap: 24px; flex-wrap: wrap; }
-  .stat { text-align: center; }
-  .stat-val { font-size: 1.8em; font-weight: bold; color: #58a6ff; }
-  .stat-lbl { font-size: 0.7em; color: #8b949e; text-transform: uppercase; }
-  .cmd-row { display: flex; gap: 8px; }
-  input[type=text], input[type=password] {
-    background: #0d1117; border: 1px solid #30363d; color: #c9d1d9;
-    padding: 8px 12px; border-radius: 6px; flex: 1;
-    font-size: 14px; outline: none;
-  }
-  input[type=text]:focus, input[type=password]:focus { border-color: #58a6ff; }
-  button {
-    background: #238636; color: #fff; border: none; border-radius: 6px;
-    padding: 8px 16px; cursor: pointer; font-size: 14px;
-  }
-  button:hover { background: #2ea043; }
-  button.danger { background: #6e1a1a; }
-  button.danger:hover { background: #8b2020; }
-  .response-box {
-    background: #0d1117; border-left: 3px solid #58a6ff;
-    padding: 10px 14px; border-radius: 0 6px 6px 0;
-    margin-top: 12px; white-space: pre-wrap; color: #79c0ff; font-size: 0.9em;
-  }
-  .connecting { border-left-color: #8b949e; color: #8b949e; }
-  table { width: 100%; border-collapse: collapse; }
-  th { color: #8b949e; font-size: 0.72em; text-transform: uppercase;
-       padding: 6px 8px; text-align: left; border-bottom: 1px solid #21262d; }
-  td { padding: 6px 8px; border-bottom: 1px solid #161b22; font-size: 0.88em; }
-  td.ts   { color: #8b949e; white-space: nowrap; width: 80px; }
-  td.cmd  { color: #c9d1d9; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  td.resp { color: #8b949e; font-size: 0.85em; max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .reminder-row { padding: 6px 0; border-bottom: 1px solid #21262d; }
-  .reminder-row:last-child { border-bottom: none; }
-  .reminder-time { color: #58a6ff; font-weight: bold; margin-right: 8px; }
-  .event-row { padding: 5px 0; border-bottom: 1px solid #21262d; font-size: 0.88em; }
-  .event-row:last-child { border-bottom: none; }
-  .event-ts  { color: #8b949e; margin-right: 6px; font-size: 0.8em; }
-  .event-type-reminder { color: #f0883e; }
-  .event-type-meeting  { color: #3fb950; }
-  .event-type-info     { color: #58a6ff; }
-  .routine-row { display: flex; align-items: center; justify-content: space-between;
-                 padding: 6px 0; border-bottom: 1px solid #21262d; }
-  .routine-row:last-child { border-bottom: none; }
-  .routine-name { color: #58a6ff; font-weight: bold; margin-right: 8px; }
-  .routine-steps { color: #8b949e; font-size: 0.82em; }
-  .add-form { margin-top: 12px; display: flex; gap: 8px; flex-wrap: wrap; }
-  .add-form input { min-width: 120px; flex: 1; }
-  .empty { color: #8b949e; font-style: italic; }
-  a { color: #58a6ff; text-decoration: none; }
-  a:hover { text-decoration: underline; }
-  #ws-status { font-size: 0.72em; color: #8b949e; margin-left: 8px; }
-  #ws-status.ok { color: #3fb950; }
-</style>
+<style>""" + _SHARED_CSS + """</style>
 </head>
 <body>
 <h1>⚡ Paçoca <span id="ws-status">● conectando...</span></h1>
-<p style="color:#8b949e;font-size:0.82em;margin-bottom:16px">
-  <a href="/" style="color:#58a6ff">Dashboard</a> · <a href="/metrics">Métricas</a> · <a href="/integrations">Integrações</a> · <a href="/docs">Documentação</a>
-</p>
+<nav class="nav">
+  <a href="/" class="active">Dashboard</a>
+  <a href="/metrics">Métricas</a>
+  <a href="/integrations">Integrações</a>
+  <a href="/docs">Documentação</a>
+</nav>
 
 <div class="grid">
   <!-- Status -->
@@ -399,7 +452,7 @@ def _make_app():
   </div>
 </div>
 
-<p style="color:#8b949e;font-size:0.72em;text-align:center;margin-top:8px;">
+<p style="color:var(--muted);font-size:0.72em;text-align:center;margin-top:8px;">
   Paçoca Dashboard — <a href="/api/status">JSON</a>
 </p>
 
@@ -481,21 +534,21 @@ function connectEvtWs() {
 connectEvtWs();
 </script>
 </body>
-</html>"""
+</html>""")
 
     # ── Rotas de autenticação ─────────────────────────────────────────
 
     @app.get("/login", response_class=HTMLResponse)
     async def login_page():
-        return HTMLResponse(_LOGIN_HTML.format(error=""))
+        return HTMLResponse(_LOGIN_HTML.replace("{ERROR}", ""))
 
     @app.post("/login")
     async def login_post(request: Request, password: str = Form(...)):
         ip = request.client.host if request.client else "unknown"
         if _login_rate_limited(ip):
             return HTMLResponse(
-                _LOGIN_HTML.format(
-                    error='<p class="err">Muitas tentativas. Aguarde 1 minuto.</p>'
+                _LOGIN_HTML.replace(
+                    "{ERROR}", '<p class="err">Muitas tentativas. Aguarde 1 minuto.</p>'
                 ),
                 status_code=429,
             )
@@ -508,7 +561,7 @@ connectEvtWs();
             return resp
         _record_login_failure(ip)
         return HTMLResponse(
-            _LOGIN_HTML.format(error='<p class="err">Senha incorreta.</p>'),
+            _LOGIN_HTML.replace("{ERROR}", '<p class="err">Senha incorreta.</p>'),
             status_code=401,
         )
 
@@ -580,7 +633,7 @@ connectEvtWs();
                 esc = html_lib.escape(response or "")
                 await websocket.send_text(
                     f'<div class="response-box">'
-                    f'<span style="color:#8b949e;font-size:0.8em">[{ts}]</span> {esc}'
+                    f'<span style="color:var(--muted);font-size:0.8em">[{ts}]</span> {esc}'
                     f'</div>'
                 )
         except WebSocketDisconnect:
@@ -709,8 +762,8 @@ connectEvtWs();
             short_resp = html_lib.escape(str(short_resp))
             rows += (
                 f'<div style="margin-bottom:8px">'
-                f'<div style="color:#c9d1d9">» {cmd}</div>'
-                f'<div style="color:#8b949e;font-size:0.85em;padding-left:12px">{short_resp}</div>'
+                f'<div style="color:var(--text)">» {cmd}</div>'
+                f'<div style="color:var(--muted);font-size:0.85em;padding-left:12px">{short_resp}</div>'
                 f'</div>'
             )
         return HTMLResponse(rows)
@@ -877,12 +930,12 @@ connectEvtWs();
         for name, info in data.items():
             ok = info.get("ok", False)
             mark = "✓" if ok else "✗"
-            color = "#3fb950" if ok else "#f85149"
+            color = "var(--success)" if ok else "var(--danger)"
             detail = html_lib.escape(str(info.get("detail", "")))
             cb = info.get("circuit_breaker", {})
             extra = ""
             if cb:
-                extra = f' <span style="color:#8b949e;font-size:0.82em">(CB: {cb.get("failures",0)} falhas, open={cb.get("open",False)})</span>'
+                extra = f' <span style="color:var(--muted);font-size:0.82em">(CB: {cb.get("failures",0)} falhas, open={cb.get("open",False)})</span>'
             rows += (
                 f'<tr>'
                 f'<td style="color:{color};font-size:1.1em;width:24px">{mark}</td>'
@@ -895,26 +948,22 @@ connectEvtWs();
         return HTMLResponse(f"""<!DOCTYPE html>
 <html lang="pt-BR"><head><meta charset="UTF-8">
 <title>Paçoca — Integrações</title>
-<style>
-  body{{background:#0d1117;color:#c9d1d9;font-family:'Segoe UI',monospace;padding:24px;font-size:14px}}
-  h1{{color:#58a6ff;margin-bottom:16px}}
-  table{{width:100%;border-collapse:collapse}}
-  th{{color:#8b949e;font-size:0.72em;text-transform:uppercase;padding:8px;text-align:left;border-bottom:1px solid #21262d}}
-  td{{padding:8px;border-bottom:1px solid #21262d}}
-  button{{background:#238636;color:#fff;border:none;border-radius:6px;padding:6px 14px;cursor:pointer}}
-  button:hover{{background:#2ea043}}
-  #result{{margin-top:16px;background:#161b22;border:1px solid #21262d;border-radius:8px;padding:12px;
-           white-space:pre;font-size:0.88em}}
-  a{{color:#58a6ff}}
-</style>
+<style>{_SHARED_CSS}</style>
 </head><body>
 <h1>⚡ Paçoca — Integrações</h1>
-<p style="color:#8b949e;margin-bottom:12px"><a href="/">Dashboard</a> · <a href="/metrics">Métricas</a> · <a href="/integrations" style="color:#58a6ff">Integrações</a> · <a href="/docs">Documentação</a></p>
+<nav class="nav">
+  <a href="/">Dashboard</a>
+  <a href="/metrics">Métricas</a>
+  <a href="/integrations" class="active">Integrações</a>
+  <a href="/docs">Documentação</a>
+</nav>
+<div class="card">
 <table>
 <tr><th></th><th>Integração</th><th>Status</th><th>Ação</th></tr>
 {rows}
 </table>
-<div id="result" style="display:none"></div>
+</div>
+<div id="result" class="response-box" style="display:none"></div>
 <script>
 async function testIntegration(name) {{
   const btn = document.getElementById('btn-' + name);
@@ -955,6 +1004,7 @@ async function testIntegration(name) {{
             "finance":             "💰 Finanças",
             "weather":             "🌤️ Clima",
             "routines":            "🔄 Rotinas",
+            "briefing":            "☀️ Briefing Diário",
             "productivity":        "📊 Produtividade & Timer",
             "meeting_detector":    "📡 Detector de Reunião",
             "profiles":            "👤 Perfis",
@@ -976,7 +1026,7 @@ async function testIntegration(name) {{
             for pattern, fn, confirm in routes:
                 safe_p = html_lib.escape(pattern)
                 safe_f = html_lib.escape(fn)
-                warn = ' <span style="color:#f0883e;font-size:0.8em">⚠ confirmação</span>' if confirm else ""
+                warn = ' <span style="color:var(--warn);font-size:0.8em">⚠ confirmação</span>' if confirm else ""
                 rows += f'<tr><td class="pat"><code>{safe_p}</code></td><td class="fn">{safe_f}{warn}</td></tr>'
             sections_html += f"""
             <div class="section">
@@ -987,29 +1037,7 @@ async function testIntegration(name) {{
         return HTMLResponse(f"""<!DOCTYPE html>
 <html lang="pt-BR"><head><meta charset="UTF-8">
 <title>Paçoca — Documentação</title>
-<style>
-  *{{box-sizing:border-box;margin:0;padding:0}}
-  body{{background:#0d1117;color:#c9d1d9;font-family:'Segoe UI',monospace;padding:24px;font-size:14px}}
-  h1{{color:#58a6ff;margin-bottom:4px;font-size:1.4em;letter-spacing:2px}}
-  h2{{color:#e3b341;font-size:0.8em;text-transform:uppercase;letter-spacing:1px;
-      margin:0 0 8px;padding:6px 10px;background:#1c1a10;border-left:3px solid #e3b341;border-radius:0 4px 4px 0}}
-  .nav{{margin:10px 0 20px;display:flex;gap:16px;font-size:0.85em;border-bottom:1px solid #21262d;padding-bottom:12px}}
-  .nav a{{color:#8b949e;text-decoration:none}} .nav a:hover,.nav a.active{{color:#58a6ff}}
-  .section{{background:#161b22;border:1px solid #21262d;border-radius:8px;padding:14px 16px;margin-bottom:14px}}
-  table{{width:100%;border-collapse:collapse}}
-  th{{color:#8b949e;font-size:0.72em;text-transform:uppercase;padding:5px 8px;text-align:left;border-bottom:1px solid #21262d}}
-  td{{padding:4px 8px;border-bottom:1px solid #0d1117;vertical-align:top}}
-  td.pat{{width:55%;font-size:0.82em}} td.fn{{font-size:0.82em;color:#79c0ff}}
-  code{{background:#0d1117;padding:1px 5px;border-radius:4px;font-family:monospace;color:#c9d1d9;font-size:0.95em}}
-  .two-col{{display:grid;grid-template-columns:1fr 1fr;gap:14px}}
-  .kbd{{background:#21262d;color:#c9d1d9;border:1px solid #30363d;border-radius:4px;
-        padding:2px 8px;font-family:monospace;font-size:0.85em}}
-  .info-table td{{padding:6px 10px;color:#8b949e}} .info-table td:first-child{{color:#c9d1d9;width:160px}}
-  .info-table tr:hover td{{background:#21262d}}
-  .badge{{display:inline-block;padding:1px 8px;border-radius:10px;font-size:0.78em;background:#1f3a5f;color:#58a6ff}}
-  .subtitle{{color:#8b949e;font-size:0.82em;margin-bottom:16px}}
-  @media(max-width:700px){{.two-col{{grid-template-columns:1fr}}}}
-</style>
+<style>{_SHARED_CSS}</style>
 </head><body>
 <h1>⚡ Paçoca — Documentação</h1>
 <p class="subtitle">Referência completa de comandos, atalhos, configuração e arquitetura.</p>
@@ -1079,17 +1107,17 @@ async function testIntegration(name) {{
 <!-- Comandos por categoria -->
 <div class="section" style="margin-bottom:14px">
   <h2>📚 Todos os Comandos ({len(ROUTES)} rotas)</h2>
-  <p style="color:#8b949e;font-size:0.8em;margin-bottom:12px">
+  <p style="color:var(--muted);font-size:0.8em;margin-bottom:12px">
     Padrões regex — capture groups <code>(.+)</code> capturam o argumento do comando.
-    <span style="color:#f0883e">⚠ confirmação</span> = ação crítica que pede confirmação antes de executar.
+    <span style="color:var(--warn)">⚠ confirmação</span> = ação crítica que pede confirmação antes de executar.
   </p>
-  <div class="two-col">
-    {"".join(f'<div>{s}</div>' for s in (sections_html or "<p style='color:#8b949e'>Nenhuma rota encontrada.</p>").split("</div>") if s.strip())}
+  <div class="command-list">
+    {sections_html or "<p style='color:var(--muted)'>Nenhuma rota encontrada.</p>"}
   </div>
 </div>
 
-<p style="color:#8b949e;font-size:0.72em;text-align:center;margin-top:8px">
-  Paçoca · <a href="https://github.com/AthirsonLamonato/Pacoca" style="color:#58a6ff">github.com/AthirsonLamonato/Pacoca</a>
+<p style="color:var(--muted);font-size:0.72em;text-align:center;margin-top:8px">
+  Paçoca · <a href="https://github.com/AthirsonLamonato/Pacoca" style="color:var(--accent-2)">github.com/AthirsonLamonato/Pacoca</a>
 </p>
 </body></html>""")
 
@@ -1108,7 +1136,7 @@ async function testIntegration(name) {{
         fallback = round(summary.get("fallback_rate", 0) * 100, 1)
         providers_html = ""
         for p, cnt in (summary.get("providers", {}) or {}).items():
-            providers_html += f'<span style="margin-right:12px"><b style="color:#58a6ff">{html_lib.escape(str(cnt))}</b> {html_lib.escape(str(p))}</span>'
+            providers_html += f'<span style="margin-right:12px"><b style="color:var(--accent-2)">{html_lib.escape(str(cnt))}</b> {html_lib.escape(str(p))}</span>'
         llm_html = ""
         for p, stats in (summary.get("llm", {}) or {}).items():
             llm_html += (
@@ -1124,45 +1152,44 @@ async function testIntegration(name) {{
             prov = html_lib.escape(str(r.get("provider","")[:10]))
             lat = r.get("latency_ms", 0)
             ok = "✓" if r.get("success") else "✗"
-            color = "#3fb950" if r.get("success") else "#f85149"
+            color = "var(--success)" if r.get("success") else "var(--danger)"
             fallb = "⚡" if r.get("fallback") else ""
             rows_html += f'<tr><td>{ts}</td><td>{route}</td><td>{prov}</td><td>{lat} ms</td><td style="color:{color}">{ok} {fallb}</td></tr>'
 
         return HTMLResponse(f"""<!DOCTYPE html>
 <html lang="pt-BR"><head><meta charset="UTF-8">
 <title>Paçoca — Métricas</title>
-<style>
-  body{{background:#0d1117;color:#c9d1d9;font-family:'Segoe UI',monospace;padding:24px;font-size:14px}}
-  h1{{color:#58a6ff;margin-bottom:16px}}
-  h2{{color:#8b949e;font-size:0.75em;text-transform:uppercase;letter-spacing:1px;margin:16px 0 8px}}
-  .stat-row{{display:flex;gap:24px;flex-wrap:wrap;margin-bottom:16px}}
-  .stat{{text-align:center}}
-  .stat-val{{font-size:1.8em;font-weight:bold;color:#58a6ff}}
-  .stat-lbl{{font-size:0.7em;color:#8b949e;text-transform:uppercase}}
-  table{{width:100%;border-collapse:collapse;margin-bottom:16px}}
-  th{{color:#8b949e;font-size:0.72em;text-transform:uppercase;padding:6px 8px;text-align:left;border-bottom:1px solid #21262d}}
-  td{{padding:6px 8px;border-bottom:1px solid #161b22;font-size:0.88em}}
-  a{{color:#58a6ff}}
-</style>
+<style>{_SHARED_CSS}</style>
 </head><body>
 <h1>⚡ Paçoca — Métricas</h1>
-<p style="color:#8b949e;margin-bottom:12px"><a href="/">Dashboard</a> · <a href="/metrics" style="color:#58a6ff">Métricas</a> · <a href="/integrations">Integrações</a> · <a href="/docs">Documentação</a></p>
-<div class="stat-row">
+<nav class="nav">
+  <a href="/">Dashboard</a>
+  <a href="/metrics" class="active">Métricas</a>
+  <a href="/integrations">Integrações</a>
+  <a href="/docs">Documentação</a>
+</nav>
+<div class="card full stat-row">
   <div class="stat"><div class="stat-val">{total}</div><div class="stat-lbl">Comandos</div></div>
   <div class="stat"><div class="stat-val">{success}%</div><div class="stat-lbl">Sucesso</div></div>
   <div class="stat"><div class="stat-val">{avg_lat} ms</div><div class="stat-lbl">Latência média</div></div>
   <div class="stat"><div class="stat-val">{fallback}%</div><div class="stat-lbl">Fallback</div></div>
 </div>
 <h2>Provedores usados</h2>
-<p>{providers_html or '<span style="color:#8b949e">Nenhum comando ainda.</span>'}</p>
+<div class="card">
+<p>{providers_html or '<span class="empty">Nenhum comando ainda.</span>'}</p>
+</div>
 <h2>Chamadas LLM por provedor</h2>
+<div class="card">
 <table><tr><th>Provedor</th><th>Chamadas</th><th>Tokens total</th><th>Latência média</th></tr>
-{llm_html or '<tr><td colspan="4" style="color:#8b949e">Nenhuma chamada LLM registrada.</td></tr>'}
+{llm_html or '<tr><td colspan="4" class="empty">Nenhuma chamada LLM registrada.</td></tr>'}
 </table>
+</div>
 <h2>Últimos 20 comandos</h2>
+<div class="card">
 <table><tr><th>Hora</th><th>Rota</th><th>Provedor</th><th>Latência</th><th>Status</th></tr>
-{rows_html or '<tr><td colspan="5" style="color:#8b949e">Nenhum comando ainda.</td></tr>'}
+{rows_html or '<tr><td colspan="5" class="empty">Nenhum comando ainda.</td></tr>'}
 </table>
+</div>
 </body></html>""")
 
     return app

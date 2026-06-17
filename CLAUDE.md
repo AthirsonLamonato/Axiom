@@ -1,4 +1,4 @@
-# AXIOM — Prompt de desenvolvimento para Claude Code
+# Paçoca — Prompt de desenvolvimento para Claude Code
 
 ## Contexto do projeto
 
@@ -10,45 +10,154 @@ Desenvolvido por: Athy (AthirsonLamonato)
 
 ---
 
+## Uso mínimo de tokens
+
+Prioridade máxima: gastar o mínimo de tokens possível sem perder qualidade.
+
+Regras:
+- Não leia o projeto inteiro sem necessidade.
+- Antes de abrir vários arquivos, use busca/listagem para localizar só os arquivos relevantes.
+- Evite respostas longas.
+- Resuma raciocínio; não explique o óbvio.
+- Não cole arquivos inteiros na resposta.
+- Mostre apenas trechos relevantes de código.
+- Faça uma tarefa por vez.
+- Antes de implementar algo grande, proponha um plano curto.
+- Evite refactors amplos se uma correção pequena resolver.
+- Não rode análises profundas sem pedido explícito.
+- Use contexto já descoberto em vez de reler tudo.
+- Ao finalizar, responda com: resumo, arquivos alterados, testes, próximos passos.
+
+### Formato padrão de resposta
+
+1. Resumo curto
+2. Arquivos tocados
+3. O que mudou
+4. Testes/validação
+5. Próximo passo sugerido
+
+### Objetivos do projeto
+
+- estabilidade
+- rapidez na entrega
+- evitar regressões
+- manter código limpo
+
+### Sempre seguir
+
+1. Entender antes de alterar
+2. Explicar plano curto
+3. Implementar em etapas pequenas
+4. Rodar testes/lint
+5. Revisar diff final
+
+### Ao investigar bugs
+
+- encontrar causa raiz
+- medir impacto
+- preferir correção mínima
+- evitar refactor sem necessidade
+
+### Política de escolha de modelo
+
+- Sonnet = padrão
+- Opus = problemas complexos
+- Haiku = tarefas simples
+
+### Durante análises, procurar (somente quando pedido explicitamente)
+
+- bugs silenciosos
+- gargalos
+- code smells
+- dívida técnica
+- melhorias de arquitetura
+- novas features úteis
+
+## Filosofia de implementação
+
+Sempre prefira:
+- solução simples > arquitetura perfeita
+- patch pequeno > refactor grande
+- código existente > abstrações novas
+
+Evite:
+- criar classes desnecessárias
+- introduzir patterns complexos sem necessidade
+- modularizar prematuramente
+
+## Budget de tokens
+
+Assuma que tokens custam dinheiro real.
+
+Antes de qualquer análise:
+1. Pergunte: preciso mesmo abrir esse arquivo?
+2. Prefira grep/search
+3. Evite scans recursivos desnecessários
+
+Nunca:
+- analisar arquivos >500 linhas sem motivo
+- reler arquivos já analisados
+- rodar análise completa do repo sem pedido
+
+## Incerteza
+
+Se não tiver certeza:
+- diga explicitamente
+- não invente comportamento de arquivos não lidos
+- peça contexto mínimo necessário
+
+## Prioridades de produto
+
+Ao sugerir features, priorize:
+
+1. automação
+2. produtividade
+3. UX rápida
+4. baixo custo operacional
+5. funcionamento offline/local-first
+
+---
+
 ## O que já existe (estrutura base implementada)
 
+Estrutura real atual (raiz do repo, sem pasta `axiom/` — o projeto chama-se **Paçoca** em todo lugar):
+
 ```
-axiom/
-├── main.py                    # entry point com argparse (--mode, --profile, --no-tts, --no-overlay)
-├── requirements.txt
-├── .gitignore
+Pacoca/
+├── main.py                    # entry point (--mode, --profile, --no-tts, --no-overlay)
+├── setup_wizard.py            # wizard de instalação (GUI tkinter, gera config.yaml/credenciais)
+├── pacoca.spec / wizard.spec  # specs PyInstaller (build.sh / build.bat)
+├── requirements*.txt          # full / minimal / voice
 │
 ├── core/
-│   ├── orchestrator.py        # roteador central por regex → despacha para módulos
-│   ├── config.py              # carregador YAML com notação de pontos (config.get("tts.enabled"))
+│   ├── orchestrator.py        # roteador central (ROUTES regex → módulo:função) + loop agentivo
+│   ├── config.py              # carregador YAML com notação de pontos
 │   ├── config.yaml            # toda a configuração do projeto
 │   ├── profiles.py            # perfis work / casual
+│   ├── providers.py           # resolução de provider de IA (ollama/groq/anthropic)
+│   ├── embeddings.py          # cache semântico / NLU camada 2
+│   ├── telemetry.py           # registro de métricas de comando
+│   ├── plugin_loader.py       # carrega plugins/ dinamicamente
 │   └── logger.py              # logging rotativo em arquivo
 │
-├── input/
-│   ├── stt.py                 # Whisper (faster-whisper) + wake word (openWakeWord)
-│   ├── hotkeys.py             # hotkeys globais via keyboard
-│   └── cli.py                 # interface de terminal interativa
+├── input/                     # stt.py, hotkeys.py, cli.py
+├── output/                    # tts.py, overlay.py, notifier.py
+├── storage/                   # db.py, file_store.py, context.py, memory.py, knowledge_base.py
+├── web/                       # app.py — dashboard web (Flask) do Paçoca
+├── plugins/                   # plugins externos (ROUTES próprias), ex: notes.py
 │
-├── modules/
-│   ├── system_control.py      # abrir/fechar apps, volume, brilho, processos
-│   ├── transcription.py       # transcrição em tempo real (thread separada)
-│   ├── summarizer.py          # Ollama (llama3/mistral) + fallback Anthropic API
-│   ├── search.py              # roteamento automático: IA local vs DuckDuckGo
-│   ├── dev_tools.py           # VS Code, Git (commit/push/pull), testes, arquivos
-│   ├── routines.py            # executa rotinas do config.yaml (work_mode, end_of_day)
-│   ├── productivity.py        # monitoramento de tempo por app via psutil
-│   ├── security.py            # confirmação de ações críticas + whitelist
-│   └── backup.py              # backup local + Google Drive API
+├── modules/                   # cada módulo expõe funções `def acao(*_) -> str`
+│   ├── system_control.py, dev_tools.py, productivity.py, routines.py
+│   ├── summarizer.py, search.py, intent.py, semantic_router.py
+│   ├── tools.py               # ToolRegistry (schemas Pydantic, risco, confirmação) p/ loop agentivo
+│   ├── whatsapp.py            # envio de mensagens via WhatsApp Web (pywhatkit) + whitelist
+│   ├── briefing.py, learner.py, habits.py, anaphora.py, trust.py
+│   ├── calendar_integration.py, spotify_ctrl.py, weather.py, finance.py
+│   ├── meeting_detector.py, transcription.py, backup.py, security.py
+│   └── reminders.py, obsidian.py, clipboard_tools.py, screen_reader.py
 │
-├── output/
-│   ├── tts.py                 # pyttsx3 (padrão) ou Coqui TTS, em thread separada
-│   ├── overlay.py             # janela flutuante PyQt6 sempre visível
-│   └── notifier.py            # notificações desktop via plyer
-│
-└── storage/
-    ├── db.py                  # SQLite: histórico de comandos, sessões, transcrições
-    └── file_store.py          # persistência de transcrições e resumos em Markdown
+├── docs/                      # comandos.md, configuracao.md, instalacao.md, troubleshooting.md, ...
+└── tests/                     # pytest — um arquivo por módulo (tests/test_*.py)
 ```
 
 ---
@@ -129,76 +238,13 @@ elif OS == "Linux":
 
 ---
 
-## O que ainda precisa ser desenvolvido (por fase)
+## Status do desenvolvimento
 
-### FASE 1 — Fazer o projeto rodar (prioridade máxima)
-
-- [ ] **Testar e corrigir o boot completo** em `python main.py --mode text`
-- [ ] **Verificar todas as importações** — garantir que nenhum import quebra no boot
-- [ ] **Integrar `storage/db.py`** no `main.py` (chamar `db.init()` no startup)
-- [ ] **Integrar `core/logger.py`** no `main.py` (chamar `setup_logging(config)` antes de tudo)
-- [ ] **Integrar `modules/productivity.py`** no startup (`productivity.start_tracking()`)
-- [ ] **Inicializar overlay** no `main.py` se `overlay.enabled = true`
-- [ ] **Escrever testes básicos** para `core/config.py`, `core/orchestrator.py` e `storage/db.py`
-  - Usar `pytest` com fixtures
-  - Cobrir: carregamento de config, roteamento de comandos, persistência no SQLite
-
-### FASE 2 — STT e voz
-
-- [ ] **Testar `input/stt.py`** com microfone real
-  - Validar captura de áudio com pyaudio
-  - Validar transcrição com faster-whisper modelo `base`
-  - Testar wake word "paçoca" com openWakeWord (modelo customizado necessário)
-- [ ] **Implementar fallback de STT**: se openWakeWord não estiver disponível (sem API key), rodar em modo "push-to-talk" com hotkey `ctrl+shift+space`
-- [ ] **Calibração automática de ruído**: usar `speech_recognition.Microphone` para ajustar threshold de silêncio automaticamente
-- [ ] **Indicador visual de escuta** no overlay: mostrar "ouvindo..." enquanto captura
-
-### FASE 3 — Overlay e UX
-
-- [ ] **Corrigir e testar `output/overlay.py`** com PyQt6
-  - A janela deve ser frameless, always-on-top e transparente
-  - Deve exibir mensagens com fade-in/fade-out
-  - Posição configurável via `config.yaml` (top-left, top-right, bottom-left, bottom-right)
-- [ ] **Adicionar estado ao overlay**: ícone/texto indicando modo atual (escutando / processando / ocioso)
-- [ ] **Histórico de comandos no overlay**: últimos 3 comandos visíveis
-- [ ] **Atalho para mostrar/ocultar overlay**: `ctrl+shift+a`
-
-### FASE 4 — Transcrição de reuniões
-
-- [ ] **Testar `modules/transcription.py`** com microfone real
-- [ ] **Implementar captura de loopback** (áudio do sistema, não só microfone):
-  - Windows: usar `pyaudiowpatch` para capturar WASAPI loopback
-  - Linux: usar PulseAudio monitor source
-- [ ] **Transcrição em tempo real com buffer**: exibir texto conforme vai sendo transcrito
-- [ ] **Identificação de falantes** (speaker diarization) com `pyannote.audio` — opcional, marcar como `[Falante 1]`, `[Falante 2]`
-- [ ] **Comando "mostra o que foi falado"**: exibir últimos 5 minutos de transcrição no overlay
-- [ ] **Auto-save a cada 5 minutos** durante transcrição ativa
-
-### FASE 5 — Dev tools avançados
-
-- [ ] **Integração VS Code via extensão**: usar `code --command` para comandos avançados
-- [ ] **Abrir arquivo específico por voz**: "axiom, abre o arquivo main.py"
-- [ ] **Navegação de arquivos por voz**: "axiom, vai para a linha 42"
-- [ ] **Git status por voz**: "axiom, o que mudou?" → retorna `git status --short`
-- [ ] **Git log resumido**: "axiom, mostra os últimos commits"
-- [ ] **Criar branch por voz**: "axiom, cria branch feature/nome"
-- [ ] **Explicação de código via IA**: selecionar trecho no VS Code e pedir explicação
-
-### FASE 6 — Rotinas e produtividade
-
-- [ ] **Editor de rotinas via CLI**: `axiom --edit-routines` abre um editor interativo
-- [ ] **Rotinas com condições**: executar ação só se condição for verdadeira (ex: "se for segunda-feira, abre o calendário")
-- [ ] **Relatório diário automático**: ao final do dia, gerar resumo de produtividade e salvar
-- [ ] **Integração com Google Calendar** (opcional): "axiom, o que tenho hoje?"
-- [ ] **Timer de foco (Pomodoro)**: "axiom, foco por 25 minutos" → notifica ao fim
-
-### FASE 7 — Refinamentos
-
-- [ ] **Adicionar testes de integração** para fluxo completo: comando → rota → módulo → resposta
-- [ ] **CI/CD com GitHub Actions**: rodar pytest automaticamente em cada push
-- [ ] **Documentação de cada módulo** com docstrings completas
-- [ ] **Script de instalação** (`setup.sh` e `setup.bat`) que instala dependências e baixa modelo Ollama
-- [ ] **Comando "axiom, ajuda"**: lista todos os comandos disponíveis dinamicamente a partir de ROUTES
+As FASES 1-7 originais (boot, STT, overlay, transcrição de reuniões, dev tools,
+rotinas/produtividade, refinamentos como testes e CI) já foram concluídas.
+O roadmap vivo do projeto (versões v0.1 a v0.6+, com o que foi entregue em cada
+uma) fica em **`README.md` → seção "Roadmap"** — atualize lá, não aqui, para
+evitar duplicação. Use `git log` e `CHANGELOG.md` para o histórico detalhado.
 
 ---
 
@@ -235,16 +281,6 @@ chore: atualiza requirements.txt
 ```
 
 ---
-
-## Prioridade de desenvolvimento
-
-1. Fazer `python main.py --mode text` rodar sem erros
-2. Todos os módulos importam sem quebrar
-3. Pelo menos um comando funcionar de ponta a ponta (ex: "abre o VS Code")
-4. Testes básicos passando
-5. STT funcionando com microfone
-6. Overlay funcionando
-7. Demais fases em ordem
 
 ---
 

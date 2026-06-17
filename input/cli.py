@@ -13,30 +13,28 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 BANNER = """
-┌─────────────────────────────────────────┐
-│  Paçoca — Modo texto                    │
-│  Digite um comando ou 'ajuda' para      │
-│  ver os exemplos disponíveis.           │
-│  'sair' para encerrar.                  │
-└─────────────────────────────────────────┘
+╭────────────────────────────────────────────╮
+│ Paçoca                                     │
+│ Assistente pessoal · modo texto            │
+├────────────────────────────────────────────┤
+│ ajuda  mostra comandos e exemplos          │
+│ sair   encerra a sessão                    │
+╰────────────────────────────────────────────╯
 """
 
 HELP_TEXT = """
-Exemplos de comandos:
+Use "ajuda" para ver a lista completa de comandos disponíveis.
+
+Atalhos úteis:
   abre o VS Code
-  fecha o Chrome
-  volume 70
-  começa a transcrever a reunião
-  resume o que foi falado
-  pesquisa como funciona decorators em Python
-  commit "feat: adiciona módulo de backup"
-  modo trabalho
-  fim do dia
+  lista processos
+  foco por 25 min
+  briefing
   relatório de produtividade
 """
 
 
-def get_command(prompt: str = "  > ") -> str:
+def get_command(prompt: str = "paçoca > ") -> str:
     """Lê um comando da entrada padrão."""
     return input(prompt).strip()
 
@@ -50,7 +48,13 @@ def print_help():
 
 
 def print_response(text: str):
-    print(f"\n  Paçoca › {text}\n")
+    print(f"\nPaçoca\n{text}\n")
+
+
+def print_status(mode: str, profile: str, overlay: bool, tts: bool):
+    overlay_label = "on" if overlay else "off"
+    tts_label = "on" if tts else "off"
+    print(f"Modo: {mode} · Perfil: {profile} · Overlay: {overlay_label} · TTS: {tts_label}\n")
 
 
 def is_exit(command: str) -> bool:

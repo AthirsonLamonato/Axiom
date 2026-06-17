@@ -7,6 +7,33 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ## [Não lançado]
 
+### Adicionado (inteligência adaptativa)
+- **Roteamento semântico que aprende** (`modules/semantic_router.py`) — nova
+  camada 2.5 entre o TF-IDF e o LLM. Toda resolução nova do LLM
+  (`run_agentic_loop`/`parse_intent_ollama`) é memorizada como `comando →
+  ferramenta` + embedding; paráfrases futuras são servidas localmente, sem
+  chamar o LLM. Inclui **guard de slot** que impede reaproveitar o argumento
+  errado (ex.: cachear "toca Coldplay" e devolver para "toca Queen"). Comandos:
+  `status do cache semântico`, `limpa o cache semântico`. Config:
+  `semantic_router.{enabled,threshold,max_entries}`.
+- **Detector de hábitos** (`modules/habits.py`) — agrupa interações por
+  assinatura e horário e sugere virar rotina quando uma ação se repete em ≥
+  `habits.min_days` dias distintos no mesmo horário. Avisa sozinho sobre hábitos
+  novos (scheduler diário, dedup por sugestão). Comando: `sugestões` /
+  `meus hábitos`. Config: `habits.{enabled,min_days,interval_hours}`.
+- **Resolução de anáfora/seguimento** (`modules/anaphora.py`) — reescreve
+  comandos que dependem do turno anterior antes de rotear: "toca de novo",
+  "fecha ele", "e amanhã?", "e em Recife?", "mais". Conservador: sem certeza,
+  mantém o comando intacto. Config: `anaphora.enabled`.
+- **Confiança aprendida em confirmações** (`modules/trust.py`) — após
+  `trust.threshold` (padrão 3) aprovações seguidas da mesma ação de risco
+  **médio**, deixa de pedir confirmação. Risco alto (WhatsApp, apagar evento)
+  sempre confirma; uma negação zera a confiança. Comandos: `nível de confiança`,
+  `reseta a confiança`. Nova tabela `confirm_trust` em `data/memory.db`. Config:
+  `trust.{enabled,threshold}`.
+- 20 testes novos (`test_semantic_router.py`, `test_habits.py`,
+  `test_anaphora.py`, `test_trust.py`); suíte total: 329 → **349 passando**.
+
 ### Corrigido (documentação)
 - README e `docs/` atualizados para refletir tudo desta sessão: CRUD
   completo de calendário (`docs/comandos.md`), janela de desktop

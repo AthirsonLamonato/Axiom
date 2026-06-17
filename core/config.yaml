@@ -49,14 +49,19 @@ tts:
   enabled: true
   engine: edge          # edge | pyttsx3 | coqui
   edge_voice: pt-BR-FranciscaNeural  # pt-BR-FranciscaNeural | pt-BR-AntonioNeural
-  rate: 175             # palavras por minuto (só pyttsx3)
+  edge_rate: "-8%"      # edge-tts: fala um pouco mais calma/natural
+  edge_pitch: "+0Hz"    # edge-tts: ajuste de tom
+  edge_volume: "+0%"    # edge-tts: volume relativo
+  edge_timeout: 15      # segundos antes de cair para fallback
+  rate: 160             # palavras por minuto (só pyttsx3)
   volume: 0.9
 
 # ── Overlay visual ────────────────────────────
 overlay:
   enabled: true
   position: top-left    # top-left | top-right | bottom-left | bottom-right
-  duration_ms: 4000     # tempo de exibição de cada mensagem
+  theme: blue            # blue | green | purple | orange — cor de destaque (botão enviar, bordas)
+  duration_ms: 4000     # não usado (histórico de chat substitui as mensagens em toast); mantido p/ compat
   opacity: 0.92
 
 # ── Segurança ─────────────────────────────────
@@ -173,3 +178,61 @@ routines:
       - action: notify
         message: "Transcrições salvas. Até amanhã!"
       - action: close_overlay
+    # Exemplo de agendamento automático (descomente para ativar):
+    # schedule:
+    #   time: "18:00"     # HH:MM, disparo automático sem comando do usuário
+    #   days: weekday     # weekday | weekend | morning | afternoon | evening | daily
+
+# ── Briefing diário proativo ───────────────────
+briefing:
+  enabled: true
+  time: "08:00"             # horário do briefing automático (HH:MM)
+
+# ── Produtividade ───────────────────────────────
+productivity:
+  break_after_min: 90        # sugere pausa após N min contínuos sem pausa (0 = desativa)
+
+# ── Detector de reunião ─────────────────────────
+meeting_detector:
+  auto_summarize: true      # gera sumário automático da reunião ao detectar o fim
+
+# ── Aprendizado proativo ────────────────────────
+learner:
+  proactive_enabled: true
+  interval_hours: 24         # gera insight de uso a cada N horas sozinho
+
+# ── WhatsApp ─────────────────────────────────────
+# ⚠ Por segurança, mensagens só são enviadas para números na whitelist
+# abaixo, mesmo após confirmação do usuário. Adicione outros números com
+# cautela — esta é a última barreira antes de um envio real.
+whatsapp:
+  enabled: true
+  allowed_numbers:
+    - "+5554991102959"       # seu número — único autorizado por padrão
+  contacts: {}                # nome -> número, ex: fulano: "+5511999999999"
+
+# ── Roteamento semântico que aprende ────────────
+# Cache que reaproveita resoluções do LLM para paráfrases futuras, sem rede
+# além de um embedding. Requer ai.embeddings_provider != none.
+semantic_router:
+  enabled: true
+  threshold: 0.90            # similaridade mínima (0–1) para reaproveitar um acerto
+  max_entries: 500           # tamanho máximo do cache (poda os menos usados)
+
+# ── Detector de hábitos → sugestão de rotinas ───
+habits:
+  enabled: true
+  min_days: 3                # ações repetidas em N dias distintos viram hábito
+  interval_hours: 24         # verifica hábitos novos a cada N horas sozinho
+
+# ── Resolução de anáfora/seguimento ─────────────
+# Entende "de novo", "fecha ele", "e amanhã?" usando o turno anterior.
+anaphora:
+  enabled: true
+
+# ── Confiança aprendida (confirmações) ──────────
+# Após N aprovações seguidas, deixa de pedir confirmação para a MESMA ação de
+# risco MÉDIO. Risco alto (WhatsApp, apagar evento) sempre confirma.
+trust:
+  enabled: true
+  threshold: 3               # aprovações consecutivas para passar a confiar

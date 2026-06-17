@@ -6,9 +6,17 @@ e melhora o sistema de roteamento ao longo do tempo.
 
 import logging
 import re
+import threading
+import time
 from collections import Counter
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
+
+_scheduler_running = False
+_scheduler_thread: "threading.Thread | None" = None
+_last_run_ts: float = 0.0
+_CHECK_INTERVAL = 300  # segundos entre verificações do agendador
 
 
 # ── Registro de interação (chamado após cada comando) ──────────────────
@@ -142,3 +150,61 @@ def correct_transcription(text: str) -> str:
     if corrected.lower() != text.lower():
         logger.info("Transcrição corrigida: '%s' → '%s'", text, corrected)
     return corrected
+
+
+# ── Aprendizado proativo (sem comando do usuário) ───────────────────────
+
+def _fire_insight() -> None:
+    report = analyze_and_optimize()
+    if not report or report.startswith("Nenhuma interação"):
+        return
+
+    try:
+        from storage.file_store import save_text
+        path = save_text(report, prefix="learning_insight", ext="md")
+        logger.info("Insight de aprendizado salvo em %s", path)
+    except Exception:
+        pass
+
+    try:
+        from output.notifier import notify
+        notify("Paçoca — Aprendizado", "Novo insight de uso disponível. Diga 'o que você aprendeu'.")
+    except Exception:
+        pass
+    try:
+        from web.app import push_event
+        push_event("info", "🧠 Novo insight de aprendizado gerado")
+    except Exception:
+        pass
+
+
+def _scheduler_loop() -> None:
+    global _last_run_ts
+    while _scheduler_running:
+        try:
+            from core.config import Config
+            config = Config()
+            if config.get("learner.proactive_enabled", True):
+                interval_s = float(config.get("learner.interval_hours", 24)) * 3600
+                if interval_s > 0 and time.monotonic() - _last_run_ts >= interval_s:
+                    _last_run_ts = time.monotonic()
+                    _fire_insight()
+        except Exception as e:
+            logger.error("Erro no agendador de aprendizado: %s", e)
+        time.sleep(_CHECK_INTERVAL)
+
+
+def start_scheduler() -> None:
+    """Inicia a verificação periódica de insights de aprendizado (idempotente)."""
+    global _scheduler_running, _scheduler_thread, _last_run_ts
+    if _scheduler_running:
+        return
+    _scheduler_running = True
+    _last_run_ts = time.monotonic()  # primeira análise só após o intervalo completo
+    _scheduler_thread = threading.Thread(target=_scheduler_loop, daemon=True)
+    _scheduler_thread.start()
+
+
+def stop_scheduler() -> None:
+    global _scheduler_running
+    _scheduler_running = False

@@ -102,6 +102,22 @@
 | `mostra o tempo de uso` | Tempo por aplicativo (psutil) |
 | `relatório de produtividade` | Resumo de produtividade |
 | `relatório diário` | Relatório do dia atual |
+| `tomei uma pausa` / `fiz uma pausa` | Reseta o aviso proativo de descanso |
+
+> 🤖 **Proativo**: passado `productivity.break_after_min` (padrão 90) minutos
+> contínuos sem pausa, o Paçoca avisa sozinho (notificação + overlay), sem
+> precisar perguntar.
+
+---
+
+## ☀️ Briefing Diário
+
+| Exemplo de comando | Ação |
+|---|---|
+| `bom dia` / `resumo do dia` / `briefing` | Gera o briefing (clima + agenda + lembretes + uso do dia anterior) |
+
+> 🤖 **Proativo**: dispara sozinho, 1x por dia, no horário de `briefing.time`
+> (padrão `08:00`), sem nenhum comando. Desative com `briefing.enabled: false`.
 
 ---
 
@@ -146,6 +162,10 @@ conseguiria.
 | `fim do dia` | Executar rotina `end_of_day` |
 | `executa rotina minha_rotina` | Executar rotina pelo nome |
 
+> 🤖 **Proativo**: qualquer rotina pode ganhar um bloco `schedule: {time: "HH:MM",
+> days: weekday|weekend|morning|afternoon|evening|daily}` no `config.yaml` —
+> uma thread de fundo dispara a rotina sozinha no horário marcado, sem comando.
+
 ---
 
 ## 👤 Perfis
@@ -181,6 +201,57 @@ conseguiria.
 | `aprende que deploy significa subir para produção` | Ensinar vocabulário personalizado |
 | `o que você aprendeu` / `relatório de aprendizado` | Resumo de aprendizados |
 
+> 🤖 **Proativo**: a cada `learner.interval_hours` (padrão 24h), gera o mesmo
+> relatório sozinho e notifica que há um novo insight, sem precisar perguntar.
+
+---
+
+## 🔁 Hábitos & Sugestões
+
+| Exemplo de comando | Ação |
+|---|---|
+| `sugestões` / `meus hábitos` / `algum padrão?` | Lista hábitos detectados e sugere virar rotina |
+
+> 🤖 **Proativo**: a cada `habits.interval_hours` (padrão 24h), procura padrões
+> recorrentes (mesma ação, no mesmo horário, em ≥ `habits.min_days` dias
+> distintos) e avisa sozinho sobre **hábitos novos** — ex.: "você costuma 'abre o
+> vscode' por volta das 09h (4 dias). Quer que eu crie uma rotina pra isso?".
+> Cada sugestão só aparece uma vez. Desative com `habits.enabled: false`.
+
+---
+
+## 💬 Seguimento & Anáfora
+
+O Paçoca entende comandos que dependem do turno anterior, sem você repetir tudo:
+
+| Você diz (após…) | Vira |
+|---|---|
+| `toca de novo` / `repete` | Reexecuta o último comando |
+| `fecha ele` (após `abre o chrome`) | `fecha o chrome` |
+| `e amanhã?` (após `agenda hoje`) | `agenda amanhã` |
+| `e em Recife?` (após perguntar o clima) | `como está o tempo em recife` |
+| `mais` (após `aumenta o volume`) | Repete o ajuste anterior |
+
+> É conservador de propósito: quando não tem certeza do referente, mantém o
+> comando original intacto — nunca muda a sua intenção. Desative com
+> `anaphora.enabled: false`.
+
+---
+
+## 📱 WhatsApp
+
+| Exemplo de comando | Ação |
+|---|---|
+| `manda mensagem para fulano dizendo oi, tudo bem?` | Envia texto literal |
+| `pede pro fulano o que ele está fazendo` | LLM compõe a mensagem a partir do pedido |
+
+> ⚠ **Dupla barreira de segurança**: 1) sempre pede confirmação explícita antes
+> de enviar qualquer mensagem; 2) só envia de fato se o número resolvido estiver
+> em `whatsapp.allowed_numbers` (whitelist — por padrão, só o número do dono do
+> projeto). Cadastre contatos por nome em `whatsapp.contacts`. Requer
+> `pip install pywhatkit` e o WhatsApp Web já logado no navegador padrão.
+> **Nenhuma mensagem é enviada sem essas duas confirmações.**
+
 ---
 
 ## 📡 Detector de Reunião
@@ -190,6 +261,11 @@ conseguiria.
 | `ativa o detector de reunião` | Monitorar silêncio e iniciar transcrição automaticamente |
 | `desativa o detector de reunião` | Parar monitoramento |
 | `status do detector` | Ver se está monitorando |
+
+> 🤖 **Proativo**: ao detectar Zoom/Teams/Meet/etc., ativa o perfil `meeting` e
+> inicia a transcrição sozinho. Ao detectar o fim da chamada, para a transcrição
+> e **gera o sumário estruturado automaticamente** (`meeting_detector.auto_summarize`),
+> sem precisar pedir "resume a reunião".
 
 ---
 
@@ -294,7 +370,22 @@ e botão de conta Google — ver [configuracao.md](configuracao.md#overlay).
 | Exemplo de comando | Ação |
 |---|---|
 | `status das integrações` / `verifica as integrações` | Ver status de Groq, Ollama, Spotify, Calendar |
+| `nível de confiança` / `o que você confia` | Ver ações que o Paçoca deixou de confirmar |
+| `reseta a confiança` / `zera a confiança` | Voltar a confirmar todas as ações |
+| `status do cache semântico` | Ver quantos comandos foram memorizados e acertos servidos sem LLM |
+| `limpa o cache semântico` | Esvaziar o cache de roteamento aprendido |
 | `limpa os dados antigos` | Remover histórico mais velho que `privacy.retention_days` |
 | `limpa o contexto` / `apaga o contexto` | Limpar histórico da sessão atual |
 | `mostra o contexto` | Ver contexto da sessão atual |
 | `ajuda` / `help` / `?` | Listar todos os comandos disponíveis |
+
+> 🧠 **Confiança aprendida**: após `trust.threshold` (padrão 3) aprovações
+> seguidas da **mesma ação de risco médio**, o Paçoca para de pedir confirmação
+> para ela. Ações de risco alto (WhatsApp, apagar evento) **sempre** confirmam, e
+> uma única negação zera a confiança. Desative com `trust.enabled: false`.
+>
+> ⚡ **Cache semântico de roteamento**: toda vez que o LLM resolve um comando
+> novo, o par frase→ferramenta é memorizado com seu embedding. Paráfrases
+> futuras são resolvidas localmente (só o custo de um embedding, sem o loop
+> agentivo), com um guard que impede reaproveitar o argumento errado. Requer
+> `ai.embeddings_provider` ativo; desative com `semantic_router.enabled: false`.

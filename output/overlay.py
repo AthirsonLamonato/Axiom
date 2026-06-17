@@ -15,6 +15,7 @@ import platform
 import threading
 import queue
 import sys
+import html
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -68,25 +69,65 @@ _orchestrator = None  # injetado via set_orchestrator() depois de criado em main
 _voice = None         # VoiceInput lazy, criado no 1º clique do microfone
 
 STATES = {
-    "idle":       ("●", "#555577"),
-    "listening":  ("◉", "#50A0FF"),
-    "processing": ("◌", "#FFAA00"),
-    "speaking":   ("◎", "#50FF90"),
+    "idle":       ("●", "#5d7a8c"),
+    "listening":  ("●", "#00e5ff"),
+    "processing": ("●", "#f0883e"),
+    "speaking":   ("●", "#3fb950"),
 }
+
+# Layout escuro "cyber" é fixo; só a cor de destaque (botão enviar, hover,
+# bordas acentuadas, texto do botão de conta) muda por tema neon. Selecionável
+# via overlay.theme no config.yaml.
+THEMES = {
+    "blue":   {"accent": "#0090a8", "accent_hover": "#00b8d4", "accent_text": "#00e5ff", "accent_glow": "#00e5ff"},
+    "green":  {"accent": "#0a8f5b", "accent_hover": "#12b377", "accent_text": "#39ffb0", "accent_glow": "#39ffb0"},
+    "purple": {"accent": "#7c2fd6", "accent_hover": "#9747ff", "accent_text": "#c87bff", "accent_glow": "#c87bff"},
+    "orange": {"accent": "#c2570a", "accent_hover": "#e06f12", "accent_text": "#ff9d3d", "accent_glow": "#ff9d3d"},
+}
+DEFAULT_THEME = "blue"
+
+UI = {
+    "bg": "#04060c",
+    "bg_2": "#0a1622",
+    "card": "rgba(13, 22, 36, 235)",
+    "card_alt": "#070d16",
+    "border": "rgba(0, 229, 255, 46)",
+    "border_focus": "rgba(0, 229, 255, 102)",
+    "text": "#d8f3ff",
+    "muted": "#5d7a8c",
+    "response": "#3df0ff",
+    "danger": "#f85149",
+}
+
+
+def _glow(widget, color: str, blur: int = 24, strength: int = 200):
+    """Aplica um brilho neon sutil (drop shadow colorido) ao redor do widget."""
+    from PyQt6.QtWidgets import QGraphicsDropShadowEffect
+    from PyQt6.QtGui import QColor
+    effect = QGraphicsDropShadowEffect()
+    effect.setBlurRadius(blur)
+    effect.setOffset(0, 0)
+    qcolor = QColor(color)
+    qcolor.setAlpha(strength)
+    effect.setColor(qcolor)
+    widget.setGraphicsEffect(effect)
+    return effect
 
 
 class PacocaOverlay:
     def __init__(self, config):
         from PyQt6.QtWidgets import (
             QApplication, QLabel, QWidget, QVBoxLayout, QHBoxLayout,
-            QLineEdit, QPushButton, QTextEdit,
+            QLineEdit, QPushButton, QTextEdit, QGraphicsOpacityEffect,
         )
-        from PyQt6.QtCore import Qt, QTimer
+        from PyQt6.QtCore import Qt, QTimer, QPropertyAnimation, QEasingCurve
         from PyQt6.QtGui import QFont
 
         self.config = config
         self.duration_ms = config.get("overlay.duration_ms", 4000)
         self._state = "idle"
+        theme_name = config.get("overlay.theme", DEFAULT_THEME)
+        self._theme = THEMES.get(theme_name, THEMES[DEFAULT_THEME])
 
         self._app = QApplication.instance() or QApplication(sys.argv)
         # Por padrão, fechar a última janela visível mata o QApplication —
@@ -96,75 +137,117 @@ class PacocaOverlay:
         self._app.setQuitOnLastWindowClosed(False)
         self._window = QWidget()
         self._window.setWindowTitle("Paçoca")
-        self._window.resize(440, 620)
-        self._window.setStyleSheet("background: #0c0c16;")
+        self._window.resize(520, 680)
+        self._window.setStyleSheet(
+            f"background: qlineargradient(x1:0, y1:0, x2:0, y2:1,"
+            f" stop:0 {UI['bg_2']}, stop:1 {UI['bg']}); color: {UI['text']};"
+        )
 
         root = QVBoxLayout(self._window)
-        root.setContentsMargins(14, 12, 14, 12)
-        root.setSpacing(8)
+        root.setContentsMargins(18, 18, 18, 18)
+        root.setSpacing(12)
 
         # Header: estado + conta Google
         header = QHBoxLayout()
+        header.setSpacing(10)
+        title_box = QVBoxLayout()
+        title_box.setSpacing(2)
+        self._title_label = QLabel("⚡ Paçoca")
+        self._title_label.setFont(QFont("Segoe UI", 16))
+        self._title_label.setStyleSheet(
+            f"color: {self._theme['accent_text']}; background: transparent; border: none; letter-spacing: 2px;"
+        )
+        self._subtitle_label = QLabel("Assistente pessoal inteligente")
+        self._subtitle_label.setFont(QFont("Segoe UI", 9))
+        self._subtitle_label.setStyleSheet(f"color: {UI['muted']}; background: transparent; border: none;")
+        title_box.addWidget(self._title_label)
+        title_box.addWidget(self._subtitle_label)
+        header.addLayout(title_box)
+        header.addStretch()
+        _glow(self._title_label, self._theme["accent_glow"], blur=28, strength=140)
+
         self._state_dot = QLabel("●")
-        self._state_dot.setFont(QFont("Segoe UI", 10))
-        self._state_dot.setStyleSheet("color: #555577; background: transparent; border: none;")
+        self._state_dot.setFont(QFont("Segoe UI", 11))
+        self._state_dot.setStyleSheet(f"color: {UI['muted']}; background: transparent; border: none;")
+        self._dot_opacity = QGraphicsOpacityEffect()
+        self._state_dot.setGraphicsEffect(self._dot_opacity)
+        self._dot_anim = QPropertyAnimation(self._dot_opacity, b"opacity")
+        self._dot_anim.setDuration(1400)
+        self._dot_anim.setKeyValueAt(0.0, 1.0)
+        self._dot_anim.setKeyValueAt(0.5, 0.35)
+        self._dot_anim.setKeyValueAt(1.0, 1.0)
+        self._dot_anim.setEasingCurve(QEasingCurve.Type.InOutSine)
+        self._dot_anim.setLoopCount(-1)
         self._state_label = QLabel("Paçoca")
-        self._state_label.setFont(QFont("Segoe UI", 10))
-        self._state_label.setStyleSheet("color: #888899; background: transparent; border: none;")
+        self._state_label.setFont(QFont("Segoe UI", 9))
+        self._state_label.setStyleSheet(f"color: {UI['muted']}; background: transparent; border: none;")
         header.addWidget(self._state_dot)
         header.addWidget(self._state_label)
-        header.addStretch()
 
         self._account_btn = QPushButton("Conectar Google")
         self._account_btn.setStyleSheet(
-            "QPushButton { background: #1a1a2e; color: #8b9bff; border: 1px solid #2a2a4e;"
-            " border-radius: 6px; padding: 4px 10px; font-size: 11px; }"
-            "QPushButton:hover { background: #22224a; }"
+            f"QPushButton {{ background: {UI['card']}; color: {self._theme['accent_text']};"
+            f" border: 1px solid {UI['border_focus']}; border-radius: 6px; padding: 7px 11px; font-size: 11px; }}"
+            f"QPushButton:hover {{ background: {UI['border']}; }}"
+            f"QPushButton:disabled {{ color: {UI['muted']}; }}"
         )
         self._account_btn.clicked.connect(self._on_account_clicked)
         header.addWidget(self._account_btn)
         root.addLayout(header)
 
+        divider = QLabel("Dashboard · Desktop · Comandos")
+        divider.setFont(QFont("Segoe UI", 9))
+        divider.setStyleSheet(
+            f"color: {UI['muted']}; background: transparent; border-bottom: 1px solid {UI['border']}; padding: 0 0 10px 0;"
+        )
+        root.addWidget(divider)
+
         # Histórico de conversa (log completo, não só as últimas mensagens)
         self._chat_log = QTextEdit()
         self._chat_log.setReadOnly(True)
-        self._chat_log.setFont(QFont("Consolas", 10))
+        self._chat_log.setFont(QFont("Segoe UI", 10))
         self._chat_log.setStyleSheet(
-            "background: #12121f; color: #d8d8e8; border: 1px solid rgba(80,160,255,0.15);"
-            " border-radius: 8px; padding: 8px;"
+            f"QTextEdit {{ background: {UI['card']}; color: {UI['text']}; border: 1px solid {UI['border']};"
+            " border-radius: 8px; padding: 10px; selection-background-color: #1f6feb; }}"
         )
         root.addWidget(self._chat_log)
 
         # Caixa de texto + botões
         input_row = QHBoxLayout()
+        input_row.setSpacing(8)
         self._input = QLineEdit()
         self._input.setPlaceholderText("Digite um comando…")
         self._input.setFont(QFont("Segoe UI", 11))
         self._input.setStyleSheet(
-            "background: #1a1a2e; color: #e0e0e0; border: 1px solid #2a2a4e;"
-            " border-radius: 6px; padding: 6px 10px;"
+            f"QLineEdit {{ background: {UI['card_alt']}; color: {UI['text']}; border: 1px solid {UI['border_focus']};"
+            " border-radius: 6px; padding: 8px 12px; }}"
+            f"QLineEdit:focus {{ border-color: {self._theme['accent_text']}; }}"
+            f"QLineEdit:disabled {{ color: {UI['muted']}; }}"
         )
         self._input.returnPressed.connect(self._on_submit_text)
         input_row.addWidget(self._input)
 
-        self._mic_btn = QPushButton("🎤")
-        self._mic_btn.setFixedWidth(40)
+        self._mic_btn = QPushButton("Mic")
+        self._mic_btn.setFixedWidth(48)
         self._mic_btn.setStyleSheet(
-            "QPushButton { background: #1a1a2e; border: 1px solid #2a2a4e; border-radius: 6px;"
-            " font-size: 14px; }"
-            "QPushButton:hover { background: #22224a; }"
+            f"QPushButton {{ background: {UI['card']}; color: {UI['text']}; border: 1px solid {UI['border_focus']};"
+            " border-radius: 6px; padding: 8px 10px; font-size: 12px; }}"
+            f"QPushButton:hover {{ background: {UI['border']}; }}"
+            f"QPushButton:disabled {{ color: {UI['muted']}; }}"
         )
         self._mic_btn.clicked.connect(self._on_mic_clicked)
         input_row.addWidget(self._mic_btn)
 
         self._send_btn = QPushButton("Enviar")
         self._send_btn.setStyleSheet(
-            "QPushButton { background: #2a4ad0; color: white; border: none; border-radius: 6px;"
-            " padding: 6px 14px; }"
-            "QPushButton:hover { background: #3a5ae0; }"
+            f"QPushButton {{ background: {self._theme['accent']}; color: white; border: none; border-radius: 6px;"
+            " padding: 8px 16px; font-size: 13px; }}"
+            f"QPushButton:hover {{ background: {self._theme['accent_hover']}; }}"
+            f"QPushButton:disabled {{ background: {UI['border']}; color: {UI['muted']}; }}"
         )
         self._send_btn.clicked.connect(self._on_submit_text)
         input_row.addWidget(self._send_btn)
+        _glow(self._send_btn, self._theme["accent_glow"], blur=16, strength=130)
 
         root.addLayout(input_row)
 
@@ -176,14 +259,31 @@ class PacocaOverlay:
         self._poll_timer.start(100)
 
         self._refresh_account_status()
-        self._center_window()
-        logger.info("Janela de desktop inicializada")
+        self._position_window()
+        self._apply_opacity()
+        logger.info("Janela de desktop inicializada (tema: %s)", theme_name)
 
-    def _center_window(self):
+    def _position_window(self):
         from PyQt6.QtWidgets import QApplication
         screen = QApplication.primaryScreen().geometry()
         w, h = self._window.width(), self._window.height()
-        self._window.move((screen.width() - w) // 2, (screen.height() - h) // 2)
+        margin = 24
+        corners = {
+            "top-left": (margin, margin),
+            "top-right": (screen.width() - w - margin, margin),
+            "bottom-left": (margin, screen.height() - h - margin),
+            "bottom-right": (screen.width() - w - margin, screen.height() - h - margin),
+        }
+        center = ((screen.width() - w) // 2, (screen.height() - h) // 2)
+        position = self.config.get("overlay.position", "top-left")
+        x, y = corners.get(position, center)
+        self._window.move(x, y)
+
+    def _apply_opacity(self):
+        if _NO_OPACITY:
+            return
+        opacity = self.config.get("overlay.opacity", 0.92)
+        self._window.setWindowOpacity(max(0.1, min(1.0, opacity)))
 
     # ── Conta Google ───────────────────────────────────────────────────
 
@@ -316,7 +416,21 @@ class PacocaOverlay:
         if not text:
             return
         self._window.show()
-        self._chat_log.append(f"<b>{who}:</b> {text}")
+        safe_who = html.escape(who)
+        safe_text = html.escape(text).replace("\n", "<br>")
+        is_user = who.startswith("Você")
+        accent = self._theme["accent_text"] if is_user else UI["response"]
+        border = self._theme["accent_text"] if is_user else UI["border_focus"]
+        bg = UI["card_alt"] if is_user else "#0a1420"
+        self._chat_log.append(
+            f"""
+            <div style="margin: 8px 0; padding: 10px 12px; background: {bg};
+                        border-left: 3px solid {border}; border-radius: 0 6px 6px 0;">
+              <div style="color: {accent}; font-size: 11px; font-weight: 600; margin-bottom: 4px;">{safe_who}</div>
+              <div style="color: {UI['text']}; font-size: 13px; line-height: 1.35;">{safe_text}</div>
+            </div>
+            """
+        )
         self._chat_log.verticalScrollBar().setValue(self._chat_log.verticalScrollBar().maximum())
 
     def _do_set_state(self, state: str):
@@ -327,7 +441,19 @@ class PacocaOverlay:
         dot, color = STATES.get(state, ("●", "#555577"))
         self._state_dot.setText(dot)
         self._state_dot.setStyleSheet(f"color: {color}; background: transparent; border: none;")
-        self._state_label.setText(detail if detail else state.capitalize())
+        from PyQt6.QtCore import QAbstractAnimation
+        if state == "idle":
+            self._dot_anim.stop()
+            self._dot_opacity.setOpacity(1.0)
+        elif self._dot_anim.state() != QAbstractAnimation.State.Running:
+            self._dot_anim.start()
+        labels = {
+            "idle": "Ocioso",
+            "listening": "Ouvindo",
+            "processing": "Processando",
+            "speaking": "Falando",
+        }
+        self._state_label.setText(detail if detail else labels.get(state, state.capitalize()))
 
     def run(self):
         self._window.show()

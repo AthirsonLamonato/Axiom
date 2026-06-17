@@ -12,8 +12,8 @@ from pathlib import Path
 
 # ── Bootstrap para execução como exe PyInstaller ──────────────────────
 if getattr(sys, "frozen", False):
-    _EXE_DIR = Path(sys.executable).parent          # dist/Axiom/
-    _MEIPASS  = Path(getattr(sys, "_MEIPASS", _EXE_DIR))  # dist/Axiom/_internal/
+    _EXE_DIR = Path(sys.executable).parent          # dist/Pacoca/
+    _MEIPASS  = Path(getattr(sys, "_MEIPASS", _EXE_DIR))  # dist/Pacoca/_internal/
 
     # 1. CWD = diretório do exe → logs/, data/ ficam acessíveis ao usuário
     os.chdir(_EXE_DIR)
@@ -282,27 +282,27 @@ def main():
     from modules import productivity
     productivity.start_tracking()
 
+    # Agendadores autônomos: rotinas com horário marcado, briefing diário,
+    # insights de aprendizado periódicos e detecção de hábitos
+    from modules import routines as _routines_mod
+    from modules import briefing as _briefing_mod
+    from modules import learner as _learner_mod
+    from modules import habits as _habits_mod
+    _routines_mod.start_scheduler()
+    _briefing_mod.start_scheduler()
+    _learner_mod.start_scheduler()
+    _habits_mod.start_scheduler()
+
     # Overlay visual (se habilitado)
     _overlay_enabled = config.get("overlay.enabled", True)
     if _overlay_enabled:
         from output import overlay
         overlay.init(config)
 
-    print("""
-██████╗  █████╗  ██████╗ ██████╗  ██████╗  █████╗
-██╔══██╗██╔══██╗██╔════╝██╔═══██╗██╔════╝ ██╔══██╗
-██████╔╝███████║██║     ██║   ██║██║      ███████║
-██╔═══╝ ██╔══██║██║     ██║   ██║██║      ██╔══██║
-██║     ██║  ██║╚██████╗╚██████╔╝╚██████╗ ██║  ██║
-╚═╝     ╚═╝  ╚═╝ ╚═════╝ ╚═════╝  ╚═════╝ ╚═╝  ╚═╝
-
-  Paçoca — Assistente pessoal inteligente v0.6.0
-  Modo: {mode} | Perfil: {profile}
-  Pressione Ctrl+C para encerrar.
-""".format(
-        mode=args.mode,
-        profile=config.get("profile.active", "work"),
-    ))
+    print(
+        "\nPaçoca v0.6.0 — Assistente pessoal inteligente\n"
+        f"Modo: {args.mode} | Perfil: {config.get('profile.active', 'work')} | Ctrl+C encerra\n"
+    )
 
     # Avisa quando dados serão enviados para serviços externos
     _check_external_data_consent(config)

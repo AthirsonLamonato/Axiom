@@ -72,6 +72,15 @@ def init():
                 created_at  TEXT    NOT NULL
             );
 
+            -- Confiança aprendida para confirmações (reduz fadiga de confirmação)
+            CREATE TABLE IF NOT EXISTS confirm_trust (
+                tool        TEXT    PRIMARY KEY,  -- nome da ferramenta
+                approvals   INTEGER DEFAULT 0,    -- total de aprovações
+                denials     INTEGER DEFAULT 0,    -- total de negações
+                streak      INTEGER DEFAULT 0,    -- aprovações consecutivas (zera ao negar)
+                updated_at  TEXT    NOT NULL
+            );
+
             CREATE INDEX IF NOT EXISTS idx_interactions_ts ON interactions(ts);
             CREATE INDEX IF NOT EXISTS idx_usage_count ON usage_stats(count DESC);
         """)
@@ -223,6 +232,75 @@ def get_learned_patterns() -> list[dict]:
             "SELECT pattern, action, param FROM learned_patterns WHERE hits >= 2 ORDER BY hits DESC"
         ).fetchall()
     return [dict(r) for r in rows]
+
+
+# ── Confiança aprendida (confirmações) ─────────────────────────────────
+
+def record_confirmation(tool: str, approved: bool):
+    """Registra o resultado de uma confirmação para uma ferramenta.
+
+    Aprovar incrementa a sequência consecutiva (streak); negar a zera. Isso
+    permite que o sistema deixe de perguntar por ações de risco médio que o
+    usuário sempre aprova, sem nunca afrouxar ações de risco alto.
+    """
+    tool = (tool or "").strip()
+    if not tool:
+        return
+    try:
+        with _connect() as conn:
+            if approved:
+                conn.execute(
+                    "INSERT INTO confirm_trust (tool, approvals, denials, streak, updated_at) "
+                    "VALUES (?,1,0,1,?) "
+                    "ON CONFLICT(tool) DO UPDATE SET "
+                    "  approvals=approvals+1, streak=streak+1, updated_at=excluded.updated_at",
+                    (tool, datetime.now().isoformat()),
+                )
+            else:
+                conn.execute(
+                    "INSERT INTO confirm_trust (tool, approvals, denials, streak, updated_at) "
+                    "VALUES (?,0,1,0,?) "
+                    "ON CONFLICT(tool) DO UPDATE SET "
+                    "  denials=denials+1, streak=0, updated_at=excluded.updated_at",
+                    (tool, datetime.now().isoformat()),
+                )
+    except Exception as e:
+        logger.error("Erro ao registrar confiança de confirmação: %s", e)
+
+
+def get_trust(tool: str) -> dict:
+    """Retorna {approvals, denials, streak} para a ferramenta (zeros se inédita)."""
+    try:
+        with _connect() as conn:
+            row = conn.execute(
+                "SELECT approvals, denials, streak FROM confirm_trust WHERE tool=?", (tool,)
+            ).fetchone()
+        return dict(row) if row else {"approvals": 0, "denials": 0, "streak": 0}
+    except Exception:
+        return {"approvals": 0, "denials": 0, "streak": 0}
+
+
+def get_all_trust() -> list[dict]:
+    try:
+        with _connect() as conn:
+            rows = conn.execute(
+                "SELECT tool, approvals, denials, streak FROM confirm_trust ORDER BY streak DESC"
+            ).fetchall()
+        return [dict(r) for r in rows]
+    except Exception:
+        return []
+
+
+def reset_trust(tool: str = "") -> None:
+    """Zera a confiança de uma ferramenta, ou de todas se `tool` vazio."""
+    try:
+        with _connect() as conn:
+            if tool:
+                conn.execute("DELETE FROM confirm_trust WHERE tool=?", (tool,))
+            else:
+                conn.execute("DELETE FROM confirm_trust")
+    except Exception as e:
+        logger.error("Erro ao resetar confiança: %s", e)
 
 
 # ── Resumo para contexto ───────────────────────────────────────────────

@@ -5,12 +5,37 @@ Dois modos:
   - Push-to-talk via ctrl+shift+space (fallback automático)
 """
 
+import contextlib
 import logging
+import os
 import threading
 from typing import Optional
 import numpy as np
 
 logger = logging.getLogger(__name__)
+
+
+@contextlib.contextmanager
+def _suppress_native_audio_logs():
+    """
+    Silencia o log que libs nativas (ALSA/JACK no Linux) escrevem direto no
+    file descriptor de stderr ao inicializar o PyAudio — não é um warning do
+    Python, então `logging`/`warnings` não alcança. Comum em WSL/containers
+    sem placa de som real; inofensivo, só ruído.
+    """
+    try:
+        devnull_fd = os.open(os.devnull, os.O_WRONLY)
+        saved_stderr_fd = os.dup(2)
+        os.dup2(devnull_fd, 2)
+    except Exception:
+        yield
+        return
+    try:
+        yield
+    finally:
+        os.dup2(saved_stderr_fd, 2)
+        os.close(devnull_fd)
+        os.close(saved_stderr_fd)
 
 SAMPLE_RATE = 16000
 CHUNK = 1024
@@ -122,7 +147,8 @@ class VoiceInput:
 
     def _load_pyaudio(self):
         import pyaudio
-        pa = pyaudio.PyAudio()
+        with _suppress_native_audio_logs():
+            pa = pyaudio.PyAudio()
         logger.info("PyAudio inicializado")
         return pa
 
@@ -134,14 +160,24 @@ class VoiceInput:
         Para treinar um modelo "Paçoca": github.com/dscripka/openWakeWord#training
         """
         try:
+            import warnings
             from openwakeword.model import Model
             model_path = self.config.get("wake_word.model_path", "")
-            if model_path:
-                oww = Model(wakeword_models=[model_path], inference_framework="onnx")
-                logger.info(f"openWakeWord carregado: modelo customizado '{model_path}'")
-            else:
-                oww = Model(wakeword_models=["hey_jarvis"], inference_framework="onnx")
-                logger.info("openWakeWord carregado: modelo padrão 'hey_jarvis'")
+            # onnxruntime sempre tenta CUDAExecutionProvider antes do fallback
+            # para CPU e avisa via warnings.warn — irrelevante neste projeto,
+            # que roda em CPU por design (ver CLAUDE.md).
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", UserWarning)
+                if model_path:
+                    oww = Model(wakeword_model_paths=[model_path])
+                    logger.info(f"openWakeWord carregado: modelo customizado '{model_path}'")
+                else:
+                    from openwakeword import get_pretrained_model_paths
+                    default_path = next(
+                        (p for p in get_pretrained_model_paths() if "hey_jarvis" in p), None
+                    )
+                    oww = Model(wakeword_model_paths=[default_path] if default_path else [])
+                    logger.info("openWakeWord carregado: modelo padrão 'hey_jarvis'")
             return oww
         except Exception as e:
             logger.warning(f"openWakeWord falhou ({e}) — usando push-to-talk")

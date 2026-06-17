@@ -41,6 +41,9 @@ google-api-python-client>=2.80
 # python-multipart>=0.0.6  # exigido pelo FastAPI para ler Form() (login, rotinas)
 # httpx2                    # exigido por starlette.testclient para rodar tests/test_web_endpoints.py
 
+# WhatsApp (envia mensagens via WhatsApp Web; requer navegador logado e GUI)
+# pywhatkit>=5.4
+
 # Clipboard (copiar/colar texto por voz)
 # pyperclip>=1.8
 

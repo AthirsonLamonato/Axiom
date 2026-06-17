@@ -133,7 +133,9 @@ class TranscriptionSession:
     def _open_mic(self):
         try:
             import pyaudio
-            pa = pyaudio.PyAudio()
+            from input.stt import _suppress_native_audio_logs
+            with _suppress_native_audio_logs():
+                pa = pyaudio.PyAudio()
             stream = pa.open(
                 rate=16000, channels=1,
                 format=pyaudio.paInt16,
@@ -158,7 +160,9 @@ class TranscriptionSession:
     def _open_loopback_windows(self):
         try:
             import pyaudiowpatch as pyaudio
-            pa = pyaudio.PyAudio()
+            from input.stt import _suppress_native_audio_logs
+            with _suppress_native_audio_logs():
+                pa = pyaudio.PyAudio()
             # Busca dispositivo WASAPI loopback do speaker padrão
             wasapi_info = pa.get_host_api_info_by_type(pyaudio.paWASAPI)
             default_speakers = pa.get_device_info_by_index(wasapi_info["defaultOutputDevice"])
@@ -188,7 +192,9 @@ class TranscriptionSession:
     def _open_loopback_linux(self):
         try:
             import pyaudio
-            pa = pyaudio.PyAudio()
+            from input.stt import _suppress_native_audio_logs
+            with _suppress_native_audio_logs():
+                pa = pyaudio.PyAudio()
             # Monitor source do PulseAudio — nome contém ".monitor"
             monitor_index = None
             for i in range(pa.get_device_count()):

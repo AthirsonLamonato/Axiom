@@ -10,6 +10,7 @@ import subprocess
 import tempfile
 import os
 import platform
+import shutil
 from typing import Generator
 
 logger = logging.getLogger(__name__)
@@ -47,6 +48,10 @@ class TTS:
         try:
             import edge_tts  # noqa: F401
             self.voice = self.config.get("tts.edge_voice", "pt-BR-FranciscaNeural")
+            self.edge_rate = self.config.get("tts.edge_rate", "-8%")
+            self.edge_pitch = self.config.get("tts.edge_pitch", "+0Hz")
+            self.edge_volume = self.config.get("tts.edge_volume", "+0%")
+            self.edge_timeout = float(self.config.get("tts.edge_timeout", 15))
             logger.info(f"TTS edge-tts inicializado (voz: {self.voice})")
         except ImportError:
             logger.warning("edge-tts não instalado. Usando pyttsx3. Instale com: pip install edge-tts")
@@ -56,7 +61,7 @@ class TTS:
     def _init_pyttsx3(self):
         try:
             import pyttsx3
-            rate = self.config.get("tts.rate", 175)
+            rate = self.config.get("tts.rate", 160)
             volume = self.config.get("tts.volume", 0.9)
             self._engine = pyttsx3.init()
             self._engine.setProperty("rate", rate)
@@ -106,11 +111,15 @@ class TTS:
                 logger.error(f"Erro TTS: {e}")
 
     def _speak_edge(self, text: str):
-        if IS_WSL or platform.system() == "Windows":
-            # Usa Windows SAPI diretamente — sem arquivos, sem dependências
-            self._speak_windows_sapi(text)
-        else:
+        try:
             self._speak_edge_file(text)
+        except Exception as e:
+            logger.warning("edge-tts falhou; tentando fallback SAPI/pyttsx3: %s", e)
+            if IS_WSL or platform.system() == "Windows":
+                self._speak_windows_sapi(text)
+            elif self._engine:
+                self._engine.say(text)
+                self._engine.runAndWait()
 
     def _speak_windows_sapi(self, text: str):
         """Fala usando o TTS nativo do Windows via PowerShell SAPI."""
@@ -137,22 +146,82 @@ class TTS:
             logger.error(f"Erro Windows SAPI: {e}")
 
     def _speak_edge_file(self, text: str):
-        """Fala usando edge-tts (Linux nativo, requer mpg123)."""
+        """Fala usando vozes neurais do edge-tts e player local disponível."""
         import asyncio
         import edge_tts
 
         async def _run():
             with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
                 path = f.name
-            communicate = edge_tts.Communicate(text, self.voice)
+            communicate = edge_tts.Communicate(
+                text,
+                self.voice,
+                rate=self.edge_rate,
+                pitch=self.edge_pitch,
+                volume=self.edge_volume,
+            )
             await communicate.save(path)
             return path
 
-        path = asyncio.run(_run())
+        path = asyncio.run(asyncio.wait_for(_run(), timeout=self.edge_timeout))
         try:
-            subprocess.run(["mpg123", "-q", path], capture_output=True)
+            self._play_audio_file(path)
         finally:
             os.unlink(path)
+
+    def _play_audio_file(self, path: str):
+        """Reproduz MP3 com o player disponível, sem depender só de mpg123."""
+        if platform.system() == "Windows" or IS_WSL:
+            self._play_audio_windows(path)
+            return
+
+        players = [
+            ["mpg123", "-q", path],
+            ["ffplay", "-nodisp", "-autoexit", "-loglevel", "quiet", path],
+            ["cvlc", "--play-and-exit", "--quiet", path],
+        ]
+        for cmd in players:
+            if shutil.which(cmd[0]):
+                subprocess.run(cmd, capture_output=True, timeout=30)
+                return
+        raise RuntimeError("Nenhum player de MP3 encontrado (instale mpg123 ou ffmpeg).")
+
+    def _play_audio_windows(self, path: str):
+        ps = shutil.which("powershell.exe") or shutil.which("powershell")
+        if not ps:
+            raise RuntimeError("PowerShell não encontrado para tocar áudio.")
+
+        audio_path = path
+        if IS_WSL:
+            try:
+                result = subprocess.run(
+                    ["wslpath", "-w", path],
+                    capture_output=True,
+                    text=True,
+                    timeout=3,
+                )
+                if result.returncode == 0 and result.stdout.strip():
+                    audio_path = result.stdout.strip()
+            except Exception:
+                pass
+
+        safe_path = audio_path.replace("'", "''")
+        ps_script = (
+            "Add-Type -AssemblyName PresentationCore; "
+            "$p = New-Object System.Windows.Media.MediaPlayer; "
+            f"$p.Open([Uri]'{safe_path}'); "
+            "$p.Play(); "
+            "while (-not $p.NaturalDuration.HasTimeSpan) { Start-Sleep -Milliseconds 50 }; "
+            "$ms = [Math]::Ceiling($p.NaturalDuration.TimeSpan.TotalMilliseconds) + 250; "
+            "Start-Sleep -Milliseconds $ms; "
+            "$p.Close();"
+        )
+        subprocess.run(
+            [ps, "-NoProfile", "-NonInteractive", "-Command", ps_script],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=30,
+        )
 
     def speak_stream(self, generator: Generator[str, None, None]):
         """

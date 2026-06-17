@@ -268,6 +268,28 @@ TOOLS = [
     {
         "type": "function",
         "function": {
+            "name": "send_whatsapp_message",
+            "description": (
+                "Envia uma mensagem de WhatsApp para um contato. Use quando o usuário "
+                "pedir para mandar mensagem, perguntar algo para alguém ou avisar alguém "
+                "via WhatsApp. Componha o texto da mensagem de forma natural a partir do "
+                "pedido (ex: 'pede pro fulano o que ele está fazendo' → mensagem tipo "
+                "'Oi! O que você está fazendo?'). Por segurança, o envio só é concluído "
+                "se o número resolvido estiver na whitelist do usuário."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "contact": {"type": "string", "description": "Nome do contato (cadastrado em whatsapp.contacts) ou número"},
+                    "message": {"type": "string", "description": "Texto da mensagem, composto de forma natural"},
+                },
+                "required": ["contact", "message"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "update_calendar_event",
             "description": "Remarca (data/hora) ou renomeia um evento existente do Google Calendar, encontrado por título. Use quando o usuário pedir para mudar, remarcar, adiar ou renomear uma reunião/evento. Informe ao menos um de new_day/new_time/new_title.",
             "parameters": {
@@ -455,6 +477,11 @@ _FEW_SHOT: list[tuple[str, str]] = [
      '[{"name":"answer_question","arguments":{"question":"o que é machine learning"}}]'),
     ('me explica como funciona o docker',
      '[{"name":"answer_question","arguments":{"question":"como funciona o docker"}}]'),
+    # WhatsApp
+    ('pede pro fulano o que ele está fazendo no whatsapp',
+     '[{"name":"send_whatsapp_message","arguments":{"contact":"fulano","message":"Oi! O que você está fazendo?"}}]'),
+    ('manda mensagem pro joão perguntando se ele já almoçou',
+     '[{"name":"send_whatsapp_message","arguments":{"contact":"joão","message":"Oi! Você já almoçou?"}}]'),
 ]
 
 _NLU_SYSTEM = (
@@ -506,25 +533,45 @@ def _confirm_action(name: str, args: dict) -> bool:
     except Exception:
         pass
 
+    # Confiança aprendida: ações de risco MÉDIO já aprovadas N vezes seguidas
+    # passam direto. Risco alto nunca é elegível (ver modules/trust.py).
+    try:
+        from modules import trust
+        if trust.auto_approve(name):
+            logger.info("Confirmação auto-aprovada por confiança aprendida: %s", name)
+            return True
+    except Exception:
+        pass
+
     op     = args.get('operation') or args.get('action') or ''
     target = args.get('name') or args.get('message') or args.get('branch_name') or ''
     detail = f"{op} {target}".strip()
 
+    decision: Optional[bool] = None
+
     # Canal 1: callback registrado (voz, dashboard, overlay)
     if _confirmation_callback is not None:
         try:
-            return bool(_confirmation_callback(name, detail))
+            decision = bool(_confirmation_callback(name, detail))
         except Exception as e:
             logger.warning("Callback de confirmação falhou: %s", e)
             return False
-
     # Canal 2: terminal interativo
-    if sys.stdin.isatty():
+    elif sys.stdin.isatty():
         try:
             resp = input(f"\n  [!] Confirmar: {name}({detail})? (s/N): ").strip().lower()
-            return resp == "s"
+            decision = (resp == "s")
         except (EOFError, KeyboardInterrupt):
             return False
+
+    if decision is not None:
+        # Aprende com a decisão real do usuário (só ações elegíveis são contadas)
+        try:
+            from modules import trust
+            trust.record(name, decision)
+        except Exception:
+            pass
+        return decision
 
     # Canal 3: nenhum canal disponível → bloqueia por segurança
     logger.warning(
@@ -977,6 +1024,7 @@ def run_agentic_loop(command: str) -> str:
     api_key, model, messages = _groq_messages_base(command, config)
     from core.providers import _is_tool_use_failed
     any_tool_executed = False
+    executed_calls: list[dict] = []  # p/ o cache semântico aprender (frase → ferramenta)
 
     for turn in range(_MAX_AGENTIC_TURNS):
         data = None
@@ -1007,6 +1055,7 @@ def run_agentic_loop(command: str) -> str:
         if finish != "tool_calls" or not msg.get("tool_calls"):
             final = (msg.get("content") or "").strip()
             logger.debug("run_agentic_loop: resposta final após %d turn(s)", turn + 1)
+            _remember_semantic(command, executed_calls)
             return final
 
         # Adiciona a mensagem do assistente (com as tool_calls) ao histórico
@@ -1041,6 +1090,8 @@ def run_agentic_loop(command: str) -> str:
 
             tool_result = _execute_tool(name, args)
             any_tool_executed = True
+            if not tool_result.startswith("Erro") and "não executada" not in tool_result:
+                executed_calls.append({"name": name, "arguments": args})
             logger.debug("run_agentic_loop: %s(%s) → %r", name, args, tool_result[:80])
 
             messages.append({
@@ -1062,11 +1113,23 @@ def run_agentic_loop(command: str) -> str:
                 "explique que não foi possível completar a ação agora."
             ),
         })
+    _remember_semantic(command, executed_calls)
     try:
         data = _groq_call(api_key, model, messages, tool_choice="none")
         return (data["choices"][0]["message"].get("content") or "").strip()
     except Exception:
         return ""
+
+
+def _remember_semantic(command: str, calls: list[dict]) -> None:
+    """Alimenta o cache semântico com o que o LLM acabou de resolver."""
+    if not calls:
+        return
+    try:
+        from modules import semantic_router
+        semantic_router.remember(command, calls)
+    except Exception:
+        pass
 
 
 # ── Ollama: NLU few-shot via /api/chat ────────────────────────────────

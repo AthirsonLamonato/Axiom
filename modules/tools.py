@@ -135,6 +135,16 @@ class ListMemoriesArgs(BaseModel):
     filter: str = Field("", description="Filtro opcional: preferences | habits | projects | facts")
 
 
+class SendWhatsappMessageArgs(BaseModel):
+    contact: str = Field(..., min_length=1, description="Nome cadastrado em whatsapp.contacts ou número")
+    message: str = Field(..., min_length=1, description="Texto da mensagem a enviar")
+
+    @field_validator("contact", "message", mode="before")
+    @classmethod
+    def strip_fields(cls, v: object) -> object:
+        return v.strip() if isinstance(v, str) else v
+
+
 class GetCalendarEventsArgs(BaseModel):
     day: Literal["hoje", "amanhã"] = "hoje"
 
@@ -298,6 +308,11 @@ def _exec_update_calendar_event(a: UpdateCalendarEventArgs) -> str:
     return calendar_integration.update_event(a.title, a.new_day, a.new_time, a.new_title, a.day)
 
 
+def _exec_send_whatsapp_message(a: SendWhatsappMessageArgs) -> str:
+    from modules import whatsapp
+    return whatsapp.send(a.contact, a.message)
+
+
 # ── Definição de ferramenta ───────────────────────────────────────────
 
 @dataclass
@@ -400,6 +415,12 @@ REGISTRY: dict[str, ToolDef] = {
         executor=_exec_update_calendar_event,
         risk="medium",
         requires_confirmation=False,  # reversível (pode remarcar de volta)
+    ),
+    "send_whatsapp_message": ToolDef(
+        schema_model=SendWhatsappMessageArgs,
+        executor=_exec_send_whatsapp_message,
+        risk="high",
+        requires_confirmation=True,  # envia algo para fora — sempre confirma, e a whitelist em whatsapp.allowed_numbers é a barreira final
     ),
 }
 

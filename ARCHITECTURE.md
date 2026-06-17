@@ -9,6 +9,11 @@ O processamento de linguagem natural usa três camadas em ordem crescente de cus
 Usuário (voz/texto)
        ↓
 ┌─────────────────────────────────────────────────────────────────────┐
+│ Pré-processo — Anáfora/seguimento (modules/anaphora.py)             │
+│  "de novo", "fecha ele", "e amanhã?" → reescreve com o turno anterior│
+└────────────────────┬────────────────────────────────────────────────┘
+                     ↓
+┌─────────────────────────────────────────────────────────────────────┐
 │ Camada 1 — Regex (<1ms, 0 rede)                                     │
 │  orchestrator.py → ROUTES[] — padrões diretos sem IA                │
 └────────────────────┬────────────────────────────────────────────────┘
@@ -18,13 +23,21 @@ Usuário (voz/texto)
 │ Camada 2 — TF-IDF local (<5ms, 0 rede)                              │
 │  modules/intent.py → classify_local() → execute_actions()           │
 └────────────────────┬────────────────────────────────────────────────┘
-                     │ incerteza alta
+                     │ sem match
+                     ↓
+┌─────────────────────────────────────────────────────────────────────┐
+│ Camada 2.5 — Cache semântico (1 embedding, 0 LLM)                   │
+│  modules/semantic_router.py → recall() — paráfrases de comandos que  │
+│  o LLM já resolveu antes, com guard anti-erro de slot                │
+└────────────────────┬────────────────────────────────────────────────┘
+                     │ sem acerto
                      ↓
 ┌─────────────────────────────────────────────────────────────────────┐
 │ Camada 3 — LLM (centenas de ms, opcional)                           │
 │  Online:  Groq API → run_agentic_loop() (tool-calling)              │
 │  Local:   Ollama  → parse_intent_ollama() (few-shot)                │
 │  Fallback: summarizer.ask_ai() (resposta em linguagem natural)      │
+│  ↑ toda resolução nova realimenta a Camada 2.5 (remember())         │
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -92,6 +105,32 @@ opcionais e validação condicional: `create_calendar_event`/
 `update_calendar_event` (`day`/`time`/`attendees` opcionais, mas
 `update_calendar_event` exige ao menos um campo de mudança via
 `@model_validator`).
+
+### Inteligência adaptativa (aprende com o uso)
+
+Quatro módulos deixam o roteamento e a interação mais espertos ao longo do
+tempo, todos reaproveitando infra existente e desativáveis por config:
+
+- **`modules/semantic_router.py`** — Camada 2.5. Cada resolução nova do LLM
+  (`run_agentic_loop` no Groq, `parse_intent_ollama` no Ollama) é memorizada como
+  `comando → tool calls` + embedding (`core/embeddings.py`) numa tabela
+  `data/semantic_cache.db`. Em `recall()`, paráfrases acima de
+  `semantic_router.threshold` reaproveitam a resolução sem chamar o LLM. **Guard
+  de slot**: todo valor de argumento em texto precisa reaparecer no novo comando,
+  evitando devolver o argumento errado. Sem backend de embeddings, vira no-op.
+- **`modules/habits.py`** — Detecta hábitos a partir das interações
+  (`storage/memory.py`): agrupa por assinatura (verbo+alvo normalizado) e horário;
+  ≥ `habits.min_days` dias distintos no mesmo horário (±1h) viram sugestão de
+  rotina. Scheduler diário avisa só sobre hábitos novos (dedup em
+  `preferences.habits_shown`).
+- **`modules/anaphora.py`** — Pré-processa o comando no `Orchestrator.dispatch`
+  usando o histórico de diálogo (`storage/context.py`) para resolver seguimento
+  ("de novo", "fecha ele", "e amanhã?"). Conservador: sem certeza, devolve o
+  comando intacto.
+- **`modules/trust.py`** — Confiança aprendida em confirmações. Após
+  `trust.threshold` aprovações seguidas da mesma ação de risco **médio**,
+  `intent._confirm_action` deixa de perguntar (estado em `confirm_trust`,
+  `data/memory.db`). Risco **alto** nunca é elegível; uma negação zera a confiança.
 
 ### `output/overlay.py`
 Janela de desktop do Paçoca (PyQt6) — quando `overlay.enabled: true`, é a

@@ -156,6 +156,27 @@ ROUTES: list[tuple[str, str, bool]] = [
     (r"foco\s+por\s+(\d+)\s*h",           "modules.productivity:focus_start_hours", False),
     (r"(cancela|para)\s+o\s+timer",       "modules.productivity:focus_stop",    False),
     (r"(quanto\s+tempo|status)\s+(do\s+)?timer", "modules.productivity:focus_status", False),
+    (r"(tomei|fiz)\s+uma\s+pausa",        "modules.productivity:take_break",    False),
+
+    # Briefing diário proativo
+    (r"(bom\s+dia|resumo\s+do\s+dia|briefing)", "modules.briefing:generate",    False),
+
+    # Hábitos e sugestões de automação
+    (r"(sugest[õo]es|o\s+que\s+voc[êe]\s+sugere|algum\s+padr[ãa]o|detecta\s+h[áa]bitos|meus\s+h[áa]bitos)",
+                                                          "modules.habits:suggest",  False),
+
+    # Confiança aprendida para confirmações
+    (r"(n[íi]vel\s+de\s+confian[çc]a|o\s+que\s+voc[êe]\s+confia|confian[çc]a\s+aprendida)",
+                                                          "modules.trust:status",    False),
+    (r"(reseta|zera|limpa)\s+(a\s+)?confian[çc]a",        "modules.trust:reset",     False),
+
+    # Cache semântico de roteamento
+    (r"(status|estat[íi]sticas?)\s+do\s+cache\s+sem[âa]ntico", "modules.semantic_router:stats", False),
+    (r"limpa\s+(o\s+)?cache\s+sem[âa]ntico",              "modules.semantic_router:clear", False),
+
+    # WhatsApp (sintaxe explícita; pedidos em linguagem livre caem no loop agentivo)
+    (r"(?:manda|envia)\s+(?:uma\s+)?mensagem\s+(?:no\s+whatsapp\s+)?(?:para|pra)\s+(.+?)\s+dizendo\s+(.+)",
+                                                          "modules.whatsapp:send",  True),
 
     # Detector de reunião automático
     (r"(ativa|inicia|liga)\s+(o\s+)?detector\s+de\s+reuni[aã]o",
@@ -247,13 +268,179 @@ ROUTES: list[tuple[str, str, bool]] = [
     (r"limpa\s+(os\s+)?dados\s+antigos",               "core.orchestrator:cleanup_old_data",   False),
 
     # Meta
-    (r"^(ajuda|help|\?)$",                 "core.orchestrator:list_commands",    False),
+    (r"^(?:ajuda|help|\?)(?:\s+(.+))?$",   "core.orchestrator:list_commands",    False),
 ]
 
 _CHAIN_SEP = re.compile(
     r'\s+(?:e depois|depois disso|em seguida|então|entao)\s+', re.IGNORECASE
 )
 _CHAIN_AND = re.compile(r'\s+e\s+', re.IGNORECASE)
+
+
+COMMAND_HELP: list[tuple[str, list[str]]] = [
+    ("Sistema e apps", [
+        "abre o VS Code",
+        "abre a pasta projetos",
+        "abre https://example.com",
+        "fecha o Chrome",
+        "volume 70",
+        "lista processos",
+    ]),
+    ("Produtividade", [
+        "modo trabalho",
+        "modo foco",
+        "fim do dia",
+        "foco por 25 min",
+        "relatório de produtividade",
+        "briefing",
+        "sugestões",
+    ]),
+    ("Reuniões e notas", [
+        "começa transcrição",
+        "para transcrição",
+        "mostra o que foi falado",
+        "resume a reunião",
+        "exporta transcrição para obsidian",
+        "salva screenshot",
+    ]),
+    ("Dev e git", [
+        "abre o arquivo main.py",
+        "vai para linha 42",
+        "o que mudou",
+        'commit "fix: corrige inicialização"',
+        "git log",
+        "roda os testes",
+    ]),
+    ("Agenda, lembretes e mensagens", [
+        "agenda hoje",
+        "próximo evento",
+        "adiciona evento dentista amanhã às 10h30",
+        "me lembra em 30 minutos de fazer backup",
+        "lista lembretes",
+        "manda mensagem para Maria dizendo chego em 10 minutos",
+    ]),
+    ("Conhecimento e IA", [
+        "pesquisa decorators em Python",
+        "busca por ia melhores práticas de pytest",
+        "explica closures",
+        "lembra que prefiro respostas curtas",
+        "mostra memórias",
+        "relatório de aprendizado",
+    ]),
+    ("Integrações e manutenção", [
+        "status das integrações",
+        "lista plugins",
+        "recarrega plugins",
+        "faz backup",
+        "limpa dados antigos",
+        "status do cache semântico",
+    ]),
+]
+
+COMMAND_HELP_ALIASES: dict[str, str] = {
+    "app": "Sistema e apps",
+    "apps": "Sistema e apps",
+    "sistema": "Sistema e apps",
+    "processos": "Sistema e apps",
+    "produtividade": "Produtividade",
+    "foco": "Produtividade",
+    "pomodoro": "Produtividade",
+    "reuniao": "Reuniões e notas",
+    "reunião": "Reuniões e notas",
+    "reunioes": "Reuniões e notas",
+    "reuniões": "Reuniões e notas",
+    "notas": "Reuniões e notas",
+    "transcricao": "Reuniões e notas",
+    "transcrição": "Reuniões e notas",
+    "dev": "Dev e git",
+    "git": "Dev e git",
+    "codigo": "Dev e git",
+    "código": "Dev e git",
+    "agenda": "Agenda, lembretes e mensagens",
+    "calendario": "Agenda, lembretes e mensagens",
+    "calendário": "Agenda, lembretes e mensagens",
+    "lembretes": "Agenda, lembretes e mensagens",
+    "whatsapp": "Agenda, lembretes e mensagens",
+    "mensagens": "Agenda, lembretes e mensagens",
+    "ia": "Conhecimento e IA",
+    "pesquisa": "Conhecimento e IA",
+    "memoria": "Conhecimento e IA",
+    "memória": "Conhecimento e IA",
+    "conhecimento": "Conhecimento e IA",
+    "integracoes": "Integrações e manutenção",
+    "integrações": "Integrações e manutenção",
+    "plugins": "Integrações e manutenção",
+    "backup": "Integrações e manutenção",
+    "manutencao": "Integrações e manutenção",
+    "manutenção": "Integrações e manutenção",
+}
+
+COMMAND_DETAIL_HELP: dict[str, dict[str, object]] = {
+    "commit": {
+        "title": "commit",
+        "description": "Cria um commit Git com a mensagem informada. Pode pedir confirmação.",
+        "examples": [
+            'commit "fix: corrige inicialização"',
+            'commit "feat: adiciona lembretes"',
+        ],
+        "aliases": ["git commit"],
+    },
+    "lembrete": {
+        "title": "lembretes",
+        "description": "Cria, lista ou cancela lembretes locais.",
+        "examples": [
+            "me lembra em 30 minutos de fazer backup",
+            "lista lembretes",
+            "cancela lembrete 2",
+        ],
+        "aliases": ["lembretes", "reminder", "reminders"],
+    },
+    "volume": {
+        "title": "volume",
+        "description": "Ajusta o volume do sistema para um valor de 0 a 100.",
+        "examples": ["volume 30", "volume 70"],
+        "aliases": ["som", "audio", "áudio"],
+    },
+    "transcricao": {
+        "title": "transcrição",
+        "description": "Controla captura, visualização e resumo de transcrições.",
+        "examples": [
+            "começa transcrição",
+            "mostra o que foi falado",
+            "resume a reunião",
+            "para transcrição",
+        ],
+        "aliases": ["transcrição", "reuniao", "reunião"],
+    },
+    "evento": {
+        "title": "agenda",
+        "description": "Consulta e gerencia eventos do calendário.",
+        "examples": [
+            "agenda hoje",
+            "próximo evento",
+            "adiciona evento dentista amanhã às 10h30",
+        ],
+        "aliases": ["agenda", "calendario", "calendário"],
+    },
+    "whatsapp": {
+        "title": "whatsapp",
+        "description": "Envia mensagem para contato configurado ou número informado. Pede confirmação.",
+        "examples": ["manda mensagem para Maria dizendo chego em 10 minutos"],
+        "aliases": ["mensagem", "mensagens"],
+    },
+    "backup": {
+        "title": "backup",
+        "description": "Executa backup local ou integração configurada.",
+        "examples": ["faz backup", "backup agora"],
+        "aliases": ["backups"],
+    },
+    "teste": {
+        "title": "testes",
+        "description": "Executa a suíte de testes configurada para o projeto.",
+        "examples": ["roda os testes", "executa os testes"],
+        "aliases": ["testes", "pytest"],
+    },
+}
 
 
 def kb_remember(statement: str) -> str:
@@ -333,46 +520,94 @@ def integration_status(*_) -> str:
         return f"Erro ao verificar integrações: {e}"
 
 
-def list_commands(*_) -> str:
-    """Lista todos os comandos disponíveis (built-in + plugins)."""
+def _help_topic_label(topic: str) -> str:
+    normalized = topic.lower().strip()
+    normalized = re.sub(r"\s+", " ", normalized)
+    if normalized in COMMAND_HELP_ALIASES:
+        return COMMAND_HELP_ALIASES[normalized]
+    for title, _examples in COMMAND_HELP:
+        if normalized == title.lower() or normalized in title.lower():
+            return title
+    return ""
+
+
+def _help_detail(topic: str) -> dict[str, object] | None:
+    normalized = topic.lower().strip()
+    normalized = re.sub(r"\s+", " ", normalized)
+    for key, info in COMMAND_DETAIL_HELP.items():
+        aliases = [key, *info.get("aliases", [])]
+        if normalized in aliases:
+            return info
+    for key, info in COMMAND_DETAIL_HELP.items():
+        aliases = [key, *info.get("aliases", [])]
+        if any(alias in normalized for alias in aliases):
+            return info
+    return None
+
+
+def _format_command_detail(info: dict[str, object]) -> str:
+    examples = info.get("examples", [])
+    lines = [
+        f"Ajuda: {info.get('title', 'comando')}",
+        str(info.get("description", "")),
+        "",
+        "Exemplos:",
+    ]
+    lines.extend(f"  - {example}" for example in examples)
+    lines.append("\nUse 'ajuda' para ver todos os tópicos.")
+    return "\n".join(lines)
+
+
+def _format_help_section(title: str, examples: list[str]) -> list[str]:
+    return [f"\n[{title}]", *(f"  - {example}" for example in examples)]
+
+
+def list_commands(topic: str = "") -> str:
+    """Lista comandos disponíveis em formato amigável."""
     try:
         import importlib
         from core.plugin_loader import _registry
-        plugin_routes = []
+        plugin_count = 0
         for info in _registry.values():
             mod = importlib.import_module(info["module"])
-            plugin_routes.extend(getattr(mod, "ROUTES", []))
+            plugin_count += len(getattr(mod, "ROUTES", []))
     except Exception:
-        plugin_routes = []
+        plugin_count = 0
 
-    all_routes = list(ROUTES) + plugin_routes
-    seen_handlers = {}
-    for pattern, handler, _ in all_routes:
-        if handler not in seen_handlers:
-            seen_handlers[handler] = pattern
+    route_count = len(ROUTES) + plugin_count
 
-    lines = ["Comandos disponíveis:\n"]
-    current_group = ""
-    for handler, pattern in seen_handlers.items():
-        group = handler.split(".")[0] if "." in handler else handler
-        if group != current_group:
-            current_group = group
-            group_label = {
-                "modules": handler.split(":")[0].replace("modules.", ""),
-                "output": "overlay",
-                "core": "sistema",
-            }.get(handler.split(".")[0], group)
-            lines.append(f"\n  [{group_label.upper()}]")
-        # Simplifica o padrão para leitura humana
-        readable = (
-            pattern.replace(r"\s+", " ")
-                   .replace(r"\s*", "")
-                   .replace("?", "")
-                   .replace("(", "").replace(")", "")
-                   .replace("|", "/")
-                   .strip()
-        )
-        lines.append(f"    {readable}")
+    if topic:
+        detail = _help_detail(topic)
+        if detail:
+            return _format_command_detail(detail)
+        label = _help_topic_label(topic)
+        if not label:
+            available = ", ".join(title for title, _examples in COMMAND_HELP)
+            return (
+                f"Não encontrei ajuda para '{topic}'.\n"
+                f"Tópicos disponíveis: {available}."
+            )
+        for title, examples in COMMAND_HELP:
+            if title == label:
+                lines = [f"Ajuda: {title}"]
+                lines.extend(_format_help_section(title, examples))
+                lines.append("\nUse 'ajuda' para ver todos os tópicos.")
+                return "\n".join(lines)
+
+    lines = [
+        "Comandos disponíveis",
+        f"{route_count} rotas carregadas. Exemplos por categoria:",
+    ]
+
+    for title, examples in COMMAND_HELP:
+        lines.extend(_format_help_section(title, examples))
+
+    lines.extend([
+        "\nDicas:",
+        "  - Você pode encadear ações com 'e depois'.",
+        "  - Use linguagem natural quando não lembrar o comando exato.",
+        "  - Comandos de risco, como fechar apps ou enviar mensagens, podem pedir confirmação.",
+    ])
 
     return "\n".join(lines)
 
@@ -445,17 +680,26 @@ class Orchestrator:
     def run_text_loop(self):
         """Loop interativo via terminal."""
         overlay = _import_module("output.overlay")
-        print("[Paçoca] Modo texto ativo. Digite seu comando (ou 'sair' para encerrar).")
-        print("         Dica: 'ajuda' lista todos os comandos disponíveis.\n")
+        cli = _import_module("input.cli")
+        if cli:
+            cli.print_banner()
+            cli.print_status(
+                mode="text",
+                profile=self.config.get("profile.active", "work"),
+                overlay=bool(self.config.get("overlay.enabled", True)),
+                tts=bool(self.config.get("tts.enabled", True)),
+            )
+        else:
+            print("[Paçoca] Modo texto ativo. Digite seu comando (ou 'sair' para encerrar).")
         while True:
             try:
                 if overlay:
                     overlay.set_state("listening")
-                command = input("  > ").strip()
+                command = cli.get_command() if cli else input("  > ").strip()
                 if not command:
                     continue
-                if command.lower() in ("sair", "exit", "quit"):
-                    print("[Paçoca] Encerrando.")
+                if (cli and cli.is_exit(command)) or (not cli and command.lower() in ("sair", "exit", "quit")):
+                    print("Paçoca encerrada.")
                     break
                 if overlay:
                     overlay.set_state("processing")
@@ -466,7 +710,10 @@ class Orchestrator:
                 self._tts_done = False
                 response = self.dispatch_chain(corrected)
                 if response:
-                    print(f"\n  Paçoca: {response}\n")
+                    if cli:
+                        cli.print_response(response)
+                    else:
+                        print(f"\n  Paçoca: {response}\n")
                     if overlay:
                         overlay.show_message(response)
                         overlay.set_state("speaking")
@@ -554,6 +801,18 @@ class Orchestrator:
 
     def dispatch(self, command: str) -> Optional[str]:
         import time as _time
+
+        # Resolve seguimento/anáfora usando o turno anterior ("de novo",
+        # "fecha ele", "e amanhã?") antes de rotear.
+        try:
+            from modules import anaphora
+            resolved_cmd = anaphora.resolve(command)
+            if resolved_cmd and resolved_cmd != command:
+                logger.info("Anáfora resolvida: %r → %r", command, resolved_cmd)
+                command = resolved_cmd
+        except Exception:
+            pass
+
         command_lower = command.lower().strip()
         logger.debug("Despachando: %s", command_lower)
 
@@ -695,6 +954,20 @@ class Orchestrator:
                 " | ".join(responses) if responses else None, "local", tool, False
             )
 
+        # 1.5 Cache semântico — paráfrases de comandos já resolvidos pelo LLM
+        # são servidas localmente (custa só um embedding, não o loop agentivo).
+        try:
+            from modules import semantic_router
+            sem_calls = semantic_router.recall(command)
+            if sem_calls:
+                responses = intent.execute_actions(sem_calls)
+                tool = sem_calls[0].get("name", "") if sem_calls else ""
+                return IntentResult(
+                    " | ".join(responses) if responses else None, "semantic", tool, False
+                )
+        except Exception as e:
+            logger.debug("semantic_router.recall falhou: %s", e)
+
         # 2. Loop agentivo Groq — executa e produz resposta natural
         provider = self.config.get("ai.provider", "ollama")
         try:
@@ -722,6 +995,12 @@ class Orchestrator:
         actions = parse_fn(command)
         if not actions:
             return _EMPTY_INTENT_RESULT
+        # Memoriza para o cache semântico aprender com resoluções do Ollama
+        try:
+            from modules import semantic_router
+            semantic_router.remember(command, actions)
+        except Exception:
+            pass
         responses = intent.execute_actions(actions)
         first_action = actions[0] if actions else {}
         tool = first_action.get("name") or first_action.get("intent", "")

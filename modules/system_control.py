@@ -465,11 +465,41 @@ def _adjust_brightness(delta: int) -> str:
 # ── Processos ─────────────────────────────────────────────────────────
 
 def list_processes(*_) -> str:
-    import psutil
-    procs = sorted(
-        psutil.process_iter(["name", "cpu_percent"]),
-        key=lambda p: p.info["cpu_percent"] or 0,
-        reverse=True,
-    )[:10]
-    lines = [f"{p.info['name']} ({p.info['cpu_percent']:.1f}%)" for p in procs]
-    return "Top processos:\n" + "\n".join(lines)
+    try:
+        import psutil
+        procs = sorted(
+            psutil.process_iter(["name", "cpu_percent"]),
+            key=lambda p: p.info["cpu_percent"] or 0,
+            reverse=True,
+        )[:10]
+        lines = [f"{p.info['name']} ({p.info['cpu_percent']:.1f}%)" for p in procs]
+        return "Top processos:\n" + "\n".join(lines)
+    except ImportError:
+        logger.info("psutil não instalado; usando listagem nativa de processos.")
+
+    try:
+        if OS == "Windows":
+            result = subprocess.run(
+                ["tasklist"],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=5,
+            )
+        else:
+            result = subprocess.run(
+                ["ps", "-eo", "comm,%cpu", "--sort=-%cpu"],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=5,
+            )
+        if result.returncode != 0:
+            return "Não consegui listar processos."
+        lines = [line for line in result.stdout.splitlines()[:11] if line.strip()]
+        return "Top processos:\n" + "\n".join(lines)
+    except Exception as e:
+        logger.error("Erro ao listar processos: %s", e, exc_info=True)
+        return f"Erro ao listar processos: {e}"

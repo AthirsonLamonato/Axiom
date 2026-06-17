@@ -9,7 +9,7 @@ import yaml
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from core.config import Config
-from core.orchestrator import Orchestrator, ROUTES
+from core.orchestrator import Orchestrator, ROUTES, list_commands
 
 
 @pytest.fixture
@@ -44,6 +44,53 @@ def test_routes_is_list_of_tuples():
         assert isinstance(pattern, str)
         assert ":" in handler
         assert isinstance(confirm, bool)
+
+
+def test_list_commands_is_human_readable():
+    text = list_commands()
+
+    assert "Comandos disponíveis" in text
+    assert "[Sistema e apps]" in text
+    assert "abre o VS Code" in text
+    assert r"\s+" not in text
+    assert "modules." not in text
+
+
+def test_list_commands_filters_by_topic():
+    text = list_commands("git")
+
+    assert text.startswith("Ajuda: Dev e git")
+    assert "git log" in text
+    assert "[Sistema e apps]" not in text
+
+
+def test_help_route_accepts_topic(orchestrator):
+    result = orchestrator.dispatch("ajuda agenda")
+
+    assert "Ajuda: agenda" in result
+    assert "próximo evento" in result
+
+
+def test_list_commands_accepts_specific_command():
+    text = list_commands("commit")
+
+    assert text.startswith("Ajuda: commit")
+    assert "Cria um commit Git" in text
+    assert 'commit "fix: corrige inicialização"' in text
+
+
+def test_help_route_accepts_specific_command(orchestrator):
+    result = orchestrator.dispatch("ajuda lembrete")
+
+    assert "Ajuda: lembretes" in result
+    assert "cancela lembrete 2" in result
+
+
+def test_list_commands_unknown_topic():
+    text = list_commands("banana")
+
+    assert "Não encontrei ajuda" in text
+    assert "Tópicos disponíveis" in text
 
 
 def test_dispatch_lista_processos(orchestrator):

@@ -100,13 +100,17 @@ tts:
   enabled: true
   engine: edge              # edge | pyttsx3 | coqui
   edge_voice: pt-BR-FranciscaNeural
-  rate: 175                   # só pyttsx3
+  edge_rate: "-8%"            # edge-tts: mais lento/mais natural
+  edge_pitch: "+0Hz"          # edge-tts: tom
+  edge_volume: "+0%"          # edge-tts: volume relativo
+  edge_timeout: 15            # segundos antes de cair para fallback
+  rate: 160                   # só pyttsx3
   volume: 0.9
 ```
 
 `edge` (Microsoft Edge TTS) é o motor padrão — vozes naturais, requer internet e
 `pip install edge-tts` (não está em requirements.txt por padrão, ver [instalacao.md](instalacao.md)).
-`pyttsx3` funciona 100% offline.
+`pyttsx3` funciona 100% offline, mas costuma soar mais robótico.
 
 ---
 
@@ -115,18 +119,21 @@ tts:
 ```yaml
 overlay:
   enabled: true
-  position: top-left        # não usado mais — ver nota abaixo
-  duration_ms: 4000           # não usado mais — ver nota abaixo
-  opacity: 0.92                # não usado mais — ver nota abaixo
+  position: top-left   # top-left | top-right | bottom-left | bottom-right — canto onde a janela abre
+  theme: blue            # blue | green | purple | orange — cor de destaque (botão enviar, bordas)
+  duration_ms: 4000     # não usado (histórico de chat substitui as mensagens em toast); mantido p/ compat
+  opacity: 0.92          # 0.1–1.0 — opacidade da janela (ignorado no WSL/X11, que não suporta)
 ```
 
-`overlay.enabled` agora controla a **janela de desktop completa** do Paçoca
-(`output/overlay.py`), não mais um pequeno aviso flutuante:
+`overlay.enabled` controla a **janela de desktop completa** do Paçoca
+(`output/overlay.py`):
 - Histórico de conversa completo (não só as últimas mensagens)
 - Caixa de texto para digitar comandos
 - Botão de microfone — captura um único comando de voz (`input.stt.listen_once()`)
 - Botão de conta Google — dispara o mesmo OAuth de `autoriza calendário`
   (Calendar + Drive) e mostra se está conectado
+- `position` e `opacity` são aplicados na abertura da janela; `theme` troca a
+  cor de destaque (layout escuro é fixo, só a cor de realce muda)
 
 Quando `enabled: false` (ou `--no-overlay`), nada disso existe — o Paçoca
 roda só por texto/voz no terminal, exatamente como sem essa funcionalidade.
@@ -287,6 +294,190 @@ routines:
 Ações disponíveis: `open_app`, `notify`, `set_volume`, `focus`, `daily_report`,
 `save_transcriptions`, `close_overlay`. Editável pelo dashboard (`/`) ou
 `python main.py --edit-routines`.
+
+### Agendamento automático (`schedule`)
+
+Qualquer rotina pode declarar um bloco `schedule` para disparar **sozinha**,
+sem comando do usuário — uma thread de fundo (`modules.routines.start_scheduler`,
+iniciada automaticamente no boot) verifica a cada 60s:
+
+```yaml
+routines:
+  end_of_day:
+    name: "Fim do dia"
+    steps:
+      - action: save_transcriptions
+    schedule:
+      time: "18:00"     # HH:MM
+      days: weekday      # weekday | weekend | morning | afternoon | evening | daily
+```
+
+Cada rotina agendada dispara no máximo 1x por dia.
+
+---
+
+## `briefing`
+
+```yaml
+briefing:
+  enabled: true
+  time: "08:00"
+```
+
+Gera e notifica, sozinho, 1x por dia no horário configurado: clima + agenda do
+Google Calendar de hoje + lembretes pendentes + uso de apps. Também pode ser
+pedido sob demanda: `bom dia` / `resumo do dia` / `briefing`.
+
+---
+
+## `productivity`
+
+```yaml
+productivity:
+  break_after_min: 90   # 0 desativa
+```
+
+Após `break_after_min` minutos contínuos sem pausa, notifica proativamente
+sugerindo descanso. O comando `tomei uma pausa` (ou `fiz uma pausa`) reseta o
+contador.
+
+---
+
+## `meeting_detector`
+
+```yaml
+meeting_detector:
+  auto_summarize: true
+```
+
+Quando `true`, ao detectar o fim de uma reunião (Zoom/Teams/Meet/etc.), gera e
+salva o sumário estruturado da transcrição automaticamente, sem precisar do
+comando `resume a reunião`.
+
+---
+
+## `learner`
+
+```yaml
+learner:
+  proactive_enabled: true
+  interval_hours: 24
+```
+
+Gera o relatório de `analyze_and_optimize()` periodicamente e notifica sozinho
+quando há um novo insight, sem precisar do comando "o que você aprendeu".
+
+---
+
+## `whatsapp`
+
+```yaml
+whatsapp:
+  enabled: true
+  allowed_numbers:
+    - "+5554991102959"
+  contacts:
+    fulano: "+5511999999999"
+```
+
+- `allowed_numbers`: **whitelist obrigatória**. Mesmo após confirmação do
+  usuário, `modules/whatsapp.py` recusa enviar para qualquer número fora desta
+  lista — é a última barreira antes de um envio real.
+- `contacts`: mapeia nomes usados por voz/texto (ex: "fulano") para o número
+  de WhatsApp. Comandos com número já incluído na frase não precisam de entrada
+  aqui.
+- `enabled: false` desativa o envio completamente (mas a ferramenta continua
+  registrada, só retorna aviso de que está desabilitada).
+
+Requer `pip install pywhatkit` (não instalado por padrão — veja `requirements.txt`)
+e o WhatsApp Web já autenticado no navegador padrão do sistema.
+
+---
+
+## `semantic_router`
+
+```yaml
+semantic_router:
+  enabled: true
+  threshold: 0.90      # similaridade mínima (0–1) para reaproveitar um acerto
+  max_entries: 500      # tamanho máximo do cache (poda os menos usados)
+```
+
+Cache semântico de roteamento (`modules/semantic_router.py`) — uma **camada 2.5**
+entre o classificador TF-IDF e o LLM. Sempre que o loop agentivo (Groq) ou o
+Ollama resolvem um comando em chamada(s) de ferramenta, o par `comando →
+ferramenta` é salvo com o embedding do comando. Numa próxima vez, uma paráfrase
+parecida é resolvida **localmente** (custo de um embedding, sem o loop
+agentivo) — fica mais rápido e barato quanto mais o sistema é usado.
+
+- **Guard de slot**: ao recuperar um acerto, todo valor de argumento em texto da
+  chamada cacheada precisa ainda aparecer no novo comando. Isso impede devolver
+  o argumento errado (ex.: cachear "toca Coldplay" e reaproveitar para "toca
+  Queen"). Comandos sem argumento livre acertam sempre; os parametrizados só
+  quando é seguro.
+- Reaproveita a infra de `core/embeddings.py` (mesmo provedor, cache e circuit
+  breaker). Se `ai.embeddings_provider: none` ou indisponível, vira no-op — o
+  comando segue normalmente para o LLM.
+- `status do cache semântico` mostra quantos comandos foram memorizados e
+  quantos acertos já foram servidos sem o LLM; `limpa o cache semântico` esvazia.
+
+---
+
+## `habits`
+
+```yaml
+habits:
+  enabled: true
+  min_days: 3          # ações repetidas em N dias distintos viram hábito
+  interval_hours: 24    # verifica hábitos novos a cada N horas sozinho
+```
+
+Detector de hábitos (`modules/habits.py`) — fecha o ciclo do learner: observa
+interações bem-sucedidas, agrupa por assinatura (verbo + alvo, sem artigos nem
+valores variáveis) e horário, e quando a mesma ação aparece em ≥ `min_days`
+dias distintos por volta do mesmo horário (±1h), sugere virar rotina.
+
+Roda também sozinho (scheduler), avisando só sobre **hábitos novos** — cada
+sugestão aparece uma vez (registrada em `preferences.habits_shown`). Sob
+demanda: `sugestões` / `meus hábitos`.
+
+---
+
+## `anaphora`
+
+```yaml
+anaphora:
+  enabled: true
+```
+
+Resolução de seguimento/anáfora (`modules/anaphora.py`) — reescreve comandos
+que dependem do turno anterior antes de rotear, usando o histórico de diálogo
+(`storage/context.py`): `toca de novo`, `fecha ele`, `e amanhã?`, `e em
+Recife?`, `mais` (herda volume/brilho). É conservador: sem certeza do
+referente, devolve o comando original intacto.
+
+---
+
+## `trust`
+
+```yaml
+trust:
+  enabled: true
+  threshold: 3         # aprovações consecutivas para passar a confiar
+```
+
+Confiança aprendida em confirmações (`modules/trust.py`) — reduz a fadiga de
+confirmação. Após `threshold` aprovações seguidas da **mesma ação de risco
+médio**, o Paçoca deixa de pedir confirmação para ela.
+
+- Só ações de risco **médio** (`modules/tools.py`, campo `risk`) são elegíveis.
+  Risco **alto** (enviar WhatsApp, apagar evento) **sempre** confirma, não
+  importa o histórico.
+- Uma única negação zera a sequência e volta a perguntar.
+- Aplica-se às confirmações do loop agentivo (`intent._confirm_action`); o
+  estado fica em `confirm_trust` no `data/memory.db`.
+- `nível de confiança` mostra o que já é confiável e o progresso das demais;
+  `reseta a confiança` zera tudo.
 
 ---
 

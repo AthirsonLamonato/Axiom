@@ -5,7 +5,7 @@
 ![Version](https://img.shields.io/badge/version-v0.6.0-blue)
 ![Python](https://img.shields.io/badge/python-3.10+-green)
 ![License](https://img.shields.io/badge/license-MIT-orange)
-![Tests](https://img.shields.io/badge/tests-296%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/tests-329%20passing-brightgreen)
 ![CI](https://github.com/AthirsonLamonato/Pacoca/actions/workflows/tests.yml/badge.svg)
 
 Paçoca é um assistente de desktop estilo Jarvis — modular, expansível e capaz de rodar completamente offline em hardware modesto (4 GB RAM, CPU sem GPU).
@@ -70,9 +70,10 @@ python main.py --edit-routines
 | **Resumo / IA** | Resumo e explicações via Ollama (local) com fallback para Groq API (gratuito) |
 | **Pesquisa** | Roteamento automático: perguntas factuais/atuais → DuckDuckGo + IA; demais → LLM local |
 | **Dev tools** | VS Code, abrir arquivo por nome, ir para linha, criar arquivo, git status/log/commit/push/pull/branch, rodar testes, explicar código via IA |
-| **Rotinas** | Sequências configuráveis em YAML com condições (`weekday`, `weekend`, `morning`, `afternoon`, `evening`) |
+| **Rotinas** | Sequências configuráveis em YAML com condições (`weekday`, `weekend`, `morning`, `afternoon`, `evening`). Suportam `schedule: {time, days}` para disparo **automático**, sem precisar de comando |
+| **Briefing diário proativo** | Todo dia, no horário configurado (`briefing.time`), gera sozinho um resumo com clima + agenda + lembretes pendentes + uso do dia anterior — também disponível sob demanda ("bom dia") |
 | **Pomodoro** | Timer de foco com notificação e overlay ao término |
-| **Produtividade** | Monitoramento de apps via psutil, relatório diário em Markdown |
+| **Produtividade** | Monitoramento de apps via psutil, relatório diário em Markdown. Sugere pausa **proativamente** após uso contínuo sem descanso (`productivity.break_after_min`) |
 | **Sistema** | Abrir/fechar apps, volume, brilho, listar processos (Windows + Linux) |
 | **Segurança** | Confirmação antes de ações críticas, lista configurável |
 | **Backup** | Local automático + Google Drive (opcional, OAuth via wizard) |
@@ -82,6 +83,10 @@ python main.py --edit-routines
 | **Plugin system** | Carregamento dinâmico em `plugins/`. Plugin de anotações incluso. Hot-reload por voz |
 | **Memória contextual** | Histórico da sessão injetado no prompt do LLM para respostas coerentes |
 | **Memória semântica** | Lembra fatos/preferências e busca por *significado* (não só palavra-chave) via embeddings — Gemini (grátis) ou Ollama local |
+| **Roteamento que aprende** | Cache semântico (camada 2.5): memoriza o que o LLM resolve e serve paráfrases futuras localmente, sem nova chamada ao LLM — com guard que impede reaproveitar o argumento errado (`semantic_router.*`) |
+| **Detector de hábitos** | Observa padrões recorrentes (mesma ação, mesmo horário, vários dias) e sugere virar rotina — sozinho ou sob demanda ("sugestões") |
+| **Anáfora / seguimento** | Entende comandos que dependem do turno anterior: "toca de novo", "fecha ele", "e amanhã?", "e em Recife?" |
+| **Confiança aprendida** | Após N aprovações seguidas, para de confirmar ações de risco médio; risco alto sempre confirma (`trust.*`) |
 | **Lembretes** | Notificações por voz — horário absoluto ("às 15h") ou relativo ("em 30 min") |
 | **Clipboard** | Copiar texto/último resultado, ler e limpar área de transferência por voz |
 | **OCR de tela** | Lê texto visível via pytesseract. Salva screenshots |
@@ -91,10 +96,11 @@ python main.py --edit-routines
 | **Editor de rotinas** | CRUD visual de rotinas no dashboard, persistido no `config.yaml` |
 | **Obsidian** | Exporta transcrições, sumários e nota diária para qualquer vault Markdown |
 | **Comandos encadeados** | "abre o VS Code e depois foco por 25 min" — múltiplos comandos em sequência |
-| **Modo reunião auto** | Detecta Zoom/Teams/Slack via psutil; ativa perfil meeting e transcrição automaticamente |
+| **Modo reunião auto** | Detecta Zoom/Teams/Slack via psutil; ativa perfil meeting e transcrição automaticamente. Ao fim da reunião, gera e salva o **sumário sozinho** (`meeting_detector.auto_summarize`), sem precisar pedir |
 | **TTS profile-aware** | Rate e volume do TTS sincronizados ao trocar perfil |
 | **Banco de dados** | SQLite — histórico de comandos, sessões e transcrições |
 | **TTS** | edge-tts (Microsoft Neural, padrão, requer internet) com fallback automático para pyttsx3 (100% offline) |
+| **WhatsApp** | Envia mensagens via WhatsApp Web (`pywhatkit`, opcional). Composição natural pelo LLM ("pede pro fulano o que ele está fazendo"). **Dupla barreira de segurança**: sempre pede confirmação explícita + só envia para números em `whatsapp.allowed_numbers` (whitelist) |
 
 ---
 
@@ -158,7 +164,17 @@ status do timer
 mostra o tempo de uso
 relatório de produtividade
 relatório diário
+tomei uma pausa                       ← reseta o aviso proativo de descanso
 ```
+
+### Briefing diário
+```
+bom dia
+resumo do dia
+briefing
+```
+> Também dispara sozinho, sem comando, todo dia no horário de `briefing.time`
+> (config.yaml). Veja [Autonomia](#autonomia--funcionalidades-proativas).
 
 ### Perfis dinâmicos
 ```
@@ -243,6 +259,63 @@ lista plugins
 recarrega plugins
 ajuda
 ```
+
+### WhatsApp
+```
+manda mensagem para fulano dizendo oi, tudo bem?
+pede pro fulano o que ele está fazendo            ← LLM compõe a mensagem
+```
+> ⚠ **Sempre pede confirmação antes de enviar**, e só envia de fato para
+> números cadastrados em `whatsapp.allowed_numbers` (whitelist — por padrão,
+> só o seu próprio número). Cadastre contatos em `whatsapp.contacts` no
+> `config.yaml`. Requer `pip install pywhatkit` e o WhatsApp Web já logado
+> no navegador padrão.
+
+### Inteligência adaptativa
+```
+toca de novo                          ← repete o último comando (anáfora)
+fecha ele                             ← fecha o último app aberto
+e amanhã?                             ← reaproveita a intenção anterior
+sugestões                             ← hábitos detectados → vira rotina
+nível de confiança                    ← ações que deixei de confirmar
+reseta a confiança
+status do cache semântico
+```
+> O cache semântico aprende sozinho: paráfrases de comandos já resolvidos pelo
+> LLM passam a ser atendidas localmente. Veja [docs/configuracao.md](docs/configuracao.md)
+> (`semantic_router`, `habits`, `anaphora`, `trust`).
+
+---
+
+## Autonomia — funcionalidades proativas
+
+Além de responder a comandos, o Paçoca age sozinho em segundo plano, sem precisar
+que você pergunte:
+
+| Funcionalidade | Como age | Config |
+|---|---|---|
+| **Rotinas agendadas** | Qualquer rotina pode declarar `schedule: {time: "HH:MM", days: weekday\|weekend\|morning\|afternoon\|evening\|daily}` em `routines:` — uma thread verifica a cada 60s e dispara sozinha, sem comando | exemplo comentado em `core/config.yaml` |
+| **Briefing diário** | Gera e notifica, 1x por dia, no horário configurado: clima + agenda do Google Calendar + lembretes pendentes + uso de apps | `briefing.enabled`, `briefing.time` |
+| **Sugestão de pausa** | Monitora tempo contínuo sem pausa e notifica proativamente quando excede o limiar; "tomei uma pausa" zera o contador | `productivity.break_after_min` (0 desativa) |
+| **Sumário pós-reunião** | Ao detectar o fim de uma chamada (Zoom/Teams/Meet/etc.), para a transcrição e gera o sumário estruturado sozinho, sem precisar pedir "resume a reunião" | `meeting_detector.auto_summarize` |
+| **Insight de aprendizado** | Analisa o histórico de uso periodicamente e notifica sozinho quando há um novo insight (apps mais usados, taxa de sucesso, vocabulário aprendido) | `learner.proactive_enabled`, `learner.interval_hours` |
+| **Sugestão de hábito** | Detecta padrões recorrentes (mesma ação, mesmo horário, vários dias) e sugere sozinho virar rotina — cada sugestão só uma vez | `habits.enabled`, `habits.min_days`, `habits.interval_hours` |
+| **Detector de reunião** | Já existente: ativa perfil `meeting` e inicia transcrição automaticamente ao detectar a chamada | `"ativa detector de reunião"` |
+| **Lembretes** | Já existente: thread de fundo dispara notificação no horário marcado | — |
+| **Backup diário** | Já existente: agenda backup local/Drive no horário configurado | `backup.*` |
+
+Todos os agendadores (`modules/routines.py:start_scheduler`, `modules/briefing.py:start_scheduler`,
+`modules/learner.py:start_scheduler`, `modules/habits.py:start_scheduler`) são iniciados
+automaticamente no boot do `main.py`, junto do rastreamento de produtividade — não exigem
+nenhum flag adicional.
+
+### Ações que saem do PC (ex: WhatsApp) são tratadas diferente
+
+Proatividade é só para ações *internas e reversíveis* (notificar, gerar texto, trocar
+perfil). Qualquer ação que afete algo fora do seu controle direto — como enviar uma
+mensagem para outra pessoa — **nunca** é proativa: passa sempre por confirmação
+explícita e, no caso do WhatsApp, por uma whitelist de números (`whatsapp.allowed_numbers`).
+Veja a seção [WhatsApp](#whatsapp) nos comandos.
 
 ---
 
@@ -382,6 +455,13 @@ Pacoca/
 │   ├── screen_reader.py       # OCR de tela via pytesseract
 │   ├── meeting_detector.py    # detecta videochamadas via psutil
 │   ├── obsidian.py            # exporta notas/transcrições para vault Markdown
+│   ├── intent.py             # NLU 3 camadas (TF-IDF, Groq agentivo, Ollama few-shot)
+│   ├── tools.py              # registro central de ferramentas do loop agentivo
+│   ├── learner.py            # vocabulário, estatísticas e insight proativo
+│   ├── semantic_router.py    # camada 2.5 — cache semântico que aprende com o LLM
+│   ├── habits.py             # detecta hábitos e sugere rotinas
+│   ├── anaphora.py           # resolve seguimento ("de novo", "fecha ele", "e amanhã?")
+│   ├── trust.py              # confiança aprendida para reduzir confirmações
 │   └── web_server.py          # inicia o servidor do dashboard
 │
 ├── output/
@@ -446,10 +526,14 @@ Pacoca/
 python -m pytest tests/ -v
 ```
 
-304 testes (8 skipped — exigem rede/credenciais reais) cobrindo: config, orchestrator
+349 testes (8 skipped — exigem rede/credenciais reais) cobrindo: config, orchestrator
 (roteamento), banco de dados, STT, dev tools, dispatch_chain, lembretes, memória
-contextual, providers (circuit breaker, cache, retry), telemetria e endpoints do
-dashboard web (autenticação, CSRF, rate limit, sessão).
+contextual, providers (circuit breaker, cache, retry), telemetria, endpoints do
+dashboard web (autenticação, CSRF, rate limit, sessão), os agendadores autônomos
+(rotinas agendadas, briefing diário, pausa proativa, sumário pós-reunião, insight
+de aprendizado), o envio de WhatsApp (whitelist, confirmação, ToolRegistry) e a
+camada de inteligência adaptativa (cache semântico + guard de slot, detecção de
+hábitos, anáfora/seguimento, confiança aprendida em confirmações).
 
 CI automático via GitHub Actions em cada push para `main`/`dev`, em matriz
 Windows + Linux.
@@ -522,11 +606,37 @@ Windows + Linux.
       eventos, incluindo convidados por e-mail
 - [x] **Janela de desktop** (texto, microfone, conta Google) — `overlay.enabled: true`
 
+### v0.7 — Concluído (proatividade / autonomia)
+- [x] **Rotinas com agendamento automático** — `schedule: {time, days}` em
+      `routines:` dispara a rotina sozinha, sem comando do usuário
+- [x] **Briefing diário proativo** (`modules/briefing.py`) — clima + agenda +
+      lembretes + uso do dia anterior, gerado e notificado sozinho no horário
+      configurado (`briefing.time`)
+- [x] **Sugestão proativa de pausa** — avisa quando passa muito tempo sem
+      descanso (`productivity.break_after_min`); "tomei uma pausa" reseta
+- [x] **Sumário automático pós-reunião** — ao detectar o fim da chamada, gera
+      e salva o sumário estruturado sozinho (`meeting_detector.auto_summarize`)
+- [x] **Insight de aprendizado periódico** (`modules/learner.py`) — analisa o
+      histórico e notifica sozinho, sem precisar do comando "o que você aprendeu"
+- [x] **Mensagens WhatsApp** (`modules/whatsapp.py`, via `pywhatkit`) — composição
+      natural pelo LLM, sempre com confirmação explícita + whitelist de números
+      (`whatsapp.allowed_numbers`) como segunda barreira de segurança
+- [x] 29 novos testes cobrindo os itens acima (329 no total)
+
+### v0.8 — Concluído (inteligência adaptativa)
+- [x] **Roteamento semântico que aprende** (`modules/semantic_router.py`) — camada
+      2.5: memoriza resoluções do LLM e serve paráfrases futuras localmente, com
+      guard anti-erro de slot
+- [x] **Detector de hábitos** (`modules/habits.py`) — observa padrões recorrentes
+      e sugere virar rotina, sozinho ou sob demanda ("sugestões")
+- [x] **Resolução de anáfora/seguimento** (`modules/anaphora.py`) — "de novo",
+      "fecha ele", "e amanhã?", "e em Recife?"
+- [x] **Confiança aprendida em confirmações** (`modules/trust.py`) — deixa de
+      confirmar ações de risco médio aprovadas N vezes; risco alto sempre confirma
+- [x] 20 novos testes cobrindo os itens acima (349 no total)
+
 ### Próximo
 - [ ] Streaming de resposta do LLM — tokens em tempo real no dashboard/janela de desktop
-- [ ] Proatividade — hoje o assistente só age quando alguém pede algo (exceto o
-      detector de reunião automático); agir com base em padrões sem comando
-      explícito ainda não existe
 - [ ] Treinar modelo de wake word "Paçoca" customizado (hoje usa `hey_jarvis`)
 - [ ] Validar `pacoca.spec`/`wizard.spec` gerando um executável funcional e
       publicar a primeira release no GitHub (`pacoca.spec`/`wizard.spec` existem

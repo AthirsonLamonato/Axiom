@@ -168,6 +168,36 @@ def _on_meeting_end() -> None:
 
     print("\n[Paçoca] Reunião encerrada. Transcrição salva. Perfil restaurado.")
 
+    try:
+        from core.config import Config
+        if Config().get("meeting_detector.auto_summarize", True):
+            threading.Thread(target=_auto_summarize, daemon=True).start()
+    except Exception:
+        pass
+
+
+def _auto_summarize() -> None:
+    """Gera e salva o sumário da reunião sem bloquear o detector. Executa em thread própria."""
+    try:
+        from modules.summarizer import summarize_meeting
+        summary = summarize_meeting()
+        if not summary or "Nenhuma transcrição" in summary:
+            return
+
+        from storage.file_store import save_text
+        path = save_text(summary, prefix="meeting_summary", ext="md")
+        logger.info("Sumário automático da reunião salvo em %s", path)
+
+        from output.notifier import notify
+        notify("Paçoca", f"Sumário da reunião pronto e salvo em {path}.")
+        try:
+            from web.app import push_event
+            push_event("meeting", f"📝 Sumário da reunião salvo em {path}")
+        except Exception:
+            pass
+    except Exception as e:
+        logger.error("Erro ao gerar sumário automático da reunião: %s", e)
+
 
 def _monitor_loop() -> None:
     global _in_meeting

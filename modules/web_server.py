@@ -1,5 +1,5 @@
 """
-modules/web_server.py — Gerencia o servidor web do dashboard Axiom
+modules/web_server.py — Gerencia o servidor web do dashboard Paçoca
 Comandos: 'abre o dashboard', 'inicia a interface web', 'para o servidor web'
 """
 

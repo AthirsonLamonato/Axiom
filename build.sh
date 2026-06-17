@@ -2,7 +2,7 @@
 set -e
 
 echo ""
-echo "[Axiom] Compilando executável para Linux..."
+echo "[Paçoca] Compilando executável para Linux..."
 echo ""
 
 # Instalar PyInstaller se necessário
@@ -19,18 +19,18 @@ mkdir -p hooks
 # Compilar
 echo ""
 echo "[2/3] Compilando (pode levar alguns minutos)..."
-pyinstaller axiom.spec --clean --noconfirm
+pyinstaller pacoca.spec --clean --noconfirm
 
 # Copiar dados em runtime
 echo ""
 echo "[3/3] Copiando arquivos de dados..."
-mkdir -p dist/axiom/data dist/axiom/logs
+mkdir -p dist/Pacoca/data dist/Pacoca/logs
 
 echo ""
 echo "════════════════════════════════════════════"
 echo " Build concluído!"
-echo " Executável: dist/axiom/axiom"
+echo " Executável: dist/Pacoca/Pacoca"
 echo ""
-echo " Para distribuir: compacte a pasta dist/axiom/"
+echo " Para distribuir: compacte a pasta dist/Pacoca/"
 echo " O binário sozinho não funciona sem as libs ao lado."
 echo "════════════════════════════════════════════"

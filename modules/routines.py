@@ -3,10 +3,17 @@ modules/routines.py — Automação de rotinas configuráveis com suporte a cond
 """
 
 import logging
+import threading
 import time
-from datetime import datetime
+from datetime import datetime, date, timedelta
 
 logger = logging.getLogger(__name__)
+
+_scheduler_running = False
+_scheduler_thread: "threading.Thread | None" = None
+_last_run_date: dict = {}   # nome da rotina -> date() do último disparo automático
+_SCHEDULER_INTERVAL = 60    # segundos entre verificações
+_FIRE_WINDOW = timedelta(minutes=2)  # tolerância p/ não perder o minuto-alvo por drift do loop
 
 
 def _get_config():
@@ -66,7 +73,7 @@ def run(routine_name: str, *_) -> str:
     return f"Rotina '{label}' executada."
 
 
-def _evaluate_condition(condition: str) -> bool:
+def _evaluate_condition(condition: str, now: "datetime | None" = None) -> bool:
     """
     Avalia condições simples:
       weekday       → seg–sex
@@ -75,7 +82,7 @@ def _evaluate_condition(condition: str) -> bool:
       afternoon     → 12h–18h
       evening       → 18h–24h
     """
-    now = datetime.now()
+    now = now or datetime.now()
     cond = condition.strip().lower()
 
     if cond == "weekday":
@@ -127,3 +134,61 @@ def _execute_step(action: str, target: str = "", message: str = "") -> "str | No
     except Exception as e:
         logger.error(f"Erro na etapa '{action}': {e}")
         return f"Erro em '{action}': {e}"
+
+
+# ── Agendamento automático ─────────────────────────────────────────────
+# Rotinas podem declarar um bloco `schedule: {time: "HH:MM", days: <condição>}`
+# no config.yaml para serem disparadas sozinhas, sem comando do usuário.
+
+def _matches_schedule(schedule: dict, now: datetime) -> bool:
+    sched_time = str(schedule.get("time", "")).strip()
+    if not sched_time:
+        return False
+    try:
+        hh, mm = (int(p) for p in sched_time.split(":"))
+    except ValueError:
+        return False
+    target = now.replace(hour=hh, minute=mm, second=0, microsecond=0)
+    if not (target <= now < target + _FIRE_WINDOW):
+        return False
+    days = schedule.get("days", "daily")
+    if days == "daily":
+        return True
+    return _evaluate_condition(str(days), now)
+
+
+def _scheduler_loop() -> None:
+    global _scheduler_running
+    while _scheduler_running:
+        try:
+            now = datetime.now()
+            config = _get_config()
+            routines = config.get("routines", {}) or {}
+            for name, routine in routines.items():
+                schedule = routine.get("schedule") if isinstance(routine, dict) else None
+                if not schedule:
+                    continue
+                if _last_run_date.get(name) == date.today():
+                    continue
+                if _matches_schedule(schedule, now):
+                    logger.info("Rotina '%s' disparada automaticamente pelo agendador.", name)
+                    _last_run_date[name] = date.today()
+                    run(name)
+        except Exception as e:
+            logger.error("Erro no agendador de rotinas: %s", e)
+        time.sleep(_SCHEDULER_INTERVAL)
+
+
+def start_scheduler() -> None:
+    """Inicia a thread de verificação de rotinas agendadas (idempotente)."""
+    global _scheduler_running, _scheduler_thread
+    if _scheduler_running:
+        return
+    _scheduler_running = True
+    _scheduler_thread = threading.Thread(target=_scheduler_loop, daemon=True)
+    _scheduler_thread.start()
+
+
+def stop_scheduler() -> None:
+    global _scheduler_running
+    _scheduler_running = False

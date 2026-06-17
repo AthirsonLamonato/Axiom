@@ -23,6 +23,8 @@ class UsageTracker:
         self._running = False
         self._thread: "threading.Thread | None" = None
         self._date = date.today()
+        self._last_break = time.monotonic()
+        self._break_notified = False
 
     def start(self):
         self._running = True
@@ -32,6 +34,40 @@ class UsageTracker:
 
     def stop(self):
         self._running = False
+
+    def take_break(self) -> None:
+        self._last_break = time.monotonic()
+        self._break_notified = False
+
+    def _check_break_suggestion(self):
+        try:
+            from core.config import Config
+            threshold_min = float(Config().get("productivity.break_after_min", 90))
+        except Exception:
+            threshold_min = 90
+        if threshold_min <= 0 or self._break_notified:
+            return
+        elapsed_min = (time.monotonic() - self._last_break) / 60
+        if elapsed_min < threshold_min:
+            return
+        self._break_notified = True
+        message = f"Você está sem pausa há {int(elapsed_min)} minutos. Que tal descansar um pouco?"
+        try:
+            from output.notifier import notify
+            notify("Paçoca", message)
+        except Exception:
+            pass
+        try:
+            from output import overlay
+            overlay.show_message(message, duration_ms=8000)
+        except Exception:
+            pass
+        try:
+            from web.app import push_event
+            push_event("info", f"🧘 {message}")
+        except Exception:
+            pass
+        logger.info("Sugestão de pausa disparada (%.0f min sem pausa).", elapsed_min)
 
     def _loop(self):
         import psutil
@@ -45,6 +81,7 @@ class UsageTracker:
                         self._usage[proc.info["name"]] += self.interval
             except Exception:
                 pass
+            self._check_break_suggestion()
             time.sleep(self.interval)
 
     def top_apps(self, n: int = 8) -> list:
@@ -129,6 +166,13 @@ def show_usage(*_) -> str:
     if _tracker is None:
         return "Monitoramento não iniciado."
     return _tracker.summary()
+
+
+def take_break(*_) -> str:
+    if _tracker is None:
+        return "Monitoramento não iniciado."
+    _tracker.take_break()
+    return "Pausa registrada. Aviso o próximo lembrete de descanso."
 
 
 def report(*_) -> str:
