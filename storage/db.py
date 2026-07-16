@@ -86,7 +86,6 @@ def cleanup_old_data(days: int = 30) -> str:
     if days <= 0:
         return "Limpeza ignorada: privacy.retention_days=0 (desabilitado)."
 
-    import os
     from pathlib import Path
     from datetime import timedelta
 

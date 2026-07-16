@@ -15,7 +15,7 @@ import secrets
 import threading
 import time
 from datetime import datetime
-from typing import Optional
+from pathlib import Path
 from urllib.parse import quote, urlsplit
 
 logger = logging.getLogger(__name__)
@@ -25,7 +25,7 @@ _web_password: str = ""
 DEFAULT_PORT = 7755
 
 # Token sincronizador de CSRF — gerado uma vez por processo, injetado nas páginas
-# autenticadas via hx-headers (htmx) e validado nas rotas POST que alteram estado.
+# autenticadas via data attribute e validado nas rotas POST que alteram estado.
 _CSRF_TOKEN = secrets.token_urlsafe(32)
 
 # ── Sessão: cookie assinado (HMAC) com timestamp de emissão embutido ──
@@ -175,11 +175,14 @@ def _make_app():
             FastAPI, Form, Request, WebSocket, WebSocketDisconnect,
         )
         from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+        from fastapi.staticfiles import StaticFiles
         from starlette.middleware.base import BaseHTTPMiddleware
     except ImportError:
         return None
 
     app = FastAPI(title="Paçoca Dashboard", docs_url=None, redoc_url=None)
+    static_dir = Path(__file__).resolve().parent / "static"
+    app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
     # ── Middleware de autenticação ─────────────────────────────────────
     class AuthMiddleware(BaseHTTPMiddleware):
@@ -187,7 +190,11 @@ def _make_app():
             if not _web_password:
                 return await call_next(request)
             skip = {"/login", "/favicon.ico"}
-            if request.url.path in skip or request.url.path.startswith("/ws"):
+            if (
+                request.url.path in skip
+                or request.url.path.startswith("/ws")
+                or request.url.path.startswith("/static/")
+            ):
                 return await call_next(request)
             token = request.cookies.get("pacoca_token", "")
             if not _valid_session_cookie(token):
@@ -206,150 +213,17 @@ def _make_app():
 
     app.add_middleware(AuthMiddleware)
 
-    # ── CSS compartilhado (tema Cyber Blue/Cyan) ─────────────────────────
-    # Única fonte de estilo para as 5 páginas (login, dashboard, integrações,
-    # docs, métricas) — evita duplicar as mesmas regras em cada template.
-    _SHARED_CSS = """
-:root{
-  --bg-0:#04060c; --bg-1:#060912; --bg-2:#0a1622;
-  --card-bg:rgba(13,22,36,0.72); --card-border:rgba(0,229,255,0.16); --card-border-hover:rgba(0,229,255,0.4);
-  --accent:#00e5ff; --accent-2:#3df0ff; --accent-glow:rgba(0,229,255,0.45);
-  --text:#d8f3ff; --muted:#7a93ab; --success:#3fb950; --danger:#f85149; --warn:#f0883e;
-  --radius:10px;
-}
-*{box-sizing:border-box;margin:0;padding:0}
-body{
-  background:radial-gradient(circle at 15% -10%, #0d2233 0%, var(--bg-1) 45%, var(--bg-0) 100%);
-  color:var(--text); font-family:'Inter','Segoe UI',system-ui,-apple-system,sans-serif;
-  font-size:14px; min-height:100vh; padding:24px;
-}
-h1{
-  font-size:1.5em; letter-spacing:3px; margin-bottom:16px; font-weight:700;
-  background:linear-gradient(90deg,var(--accent) 0%,var(--accent-2) 60%,#9df9ff 100%);
-  -webkit-background-clip:text; background-clip:text; color:transparent;
-  filter:drop-shadow(0 0 14px var(--accent-glow));
-  display:inline-flex; align-items:center; gap:8px;
-}
-h2{color:var(--muted); font-size:0.75em; text-transform:uppercase; letter-spacing:1.5px; margin-bottom:10px; font-weight:600}
-a{color:var(--accent-2); text-decoration:none; transition:color .15s}
-a:hover{color:var(--accent); text-decoration:underline}
-
-.grid{display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:16px}
-.card{
-  background:var(--card-bg); border:1px solid var(--card-border); border-radius:var(--radius);
-  padding:16px; backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px);
-  box-shadow:0 4px 24px rgba(0,0,0,0.35); transition:border-color .2s, box-shadow .2s;
-}
-.card:hover{border-color:var(--card-border-hover); box-shadow:0 0 24px -4px var(--accent-glow), 0 4px 24px rgba(0,0,0,0.35)}
-.card.full{grid-column:1 / -1}
-
-.login-body{display:flex; align-items:center; justify-content:center; height:100vh}
-.login-card{width:340px}
-
-.badge{display:inline-block; padding:2px 10px; border-radius:12px; font-size:0.78em; font-weight:bold; margin:2px}
-.badge-work{background:rgba(0,229,255,0.12); color:var(--accent-2)}
-.badge-casual{background:rgba(192,132,252,0.12); color:#c084fc}
-.badge-focus{background:rgba(248,81,73,0.12); color:var(--danger)}
-.badge-meeting{background:rgba(63,185,80,0.12); color:var(--success)}
-.badge-night{background:rgba(122,147,171,0.12); color:var(--muted)}
-.badge-default{background:rgba(216,243,255,0.06); color:var(--text)}
-
-.stat-row{display:flex; gap:24px; flex-wrap:wrap}
-.stat{text-align:center}
-.stat-val{font-size:1.9em; font-weight:bold; color:var(--accent-2); text-shadow:0 0 16px var(--accent-glow)}
-.stat-lbl{font-size:0.7em; color:var(--muted); text-transform:uppercase; letter-spacing:0.5px}
-
-.cmd-row{display:flex; gap:8px}
-input[type=text], input[type=password]{
-  background:rgba(4,8,14,0.6); border:1px solid rgba(0,229,255,0.18); color:var(--text);
-  padding:9px 12px; border-radius:8px; flex:1; font-size:14px; outline:none;
-  transition:border-color .15s, box-shadow .15s; width:100%;
-}
-input[type=text]:focus, input[type=password]:focus{border-color:var(--accent); box-shadow:0 0 0 3px rgba(0,229,255,0.12)}
-
-button{
-  background:linear-gradient(135deg,#0090a8,#00b8d4); color:#04141a; border:none; border-radius:8px;
-  padding:9px 18px; cursor:pointer; font-size:14px; font-weight:600; letter-spacing:.3px;
-  transition:transform .12s, box-shadow .12s, filter .12s;
-}
-button:hover{filter:brightness(1.1); box-shadow:0 0 18px -2px var(--accent-glow); transform:translateY(-1px)}
-button:active{transform:translateY(0)}
-button.danger{background:linear-gradient(135deg,#6e1a1a,#a8302f); color:#fff}
-button.danger:hover{box-shadow:0 0 18px -2px rgba(248,81,73,0.5)}
-
-.response-box{
-  background:rgba(4,8,14,0.6); border-left:3px solid var(--accent); padding:10px 14px;
-  border-radius:0 8px 8px 0; margin-top:12px; white-space:pre-wrap; color:var(--accent-2); font-size:0.9em;
-}
-.connecting{border-left-color:var(--muted); color:var(--muted)}
-
-table{width:100%; border-collapse:collapse}
-th{color:var(--muted); font-size:0.72em; text-transform:uppercase; letter-spacing:.5px; padding:6px 8px; text-align:left; border-bottom:1px solid var(--card-border)}
-td{padding:6px 8px; border-bottom:1px solid rgba(255,255,255,0.04); font-size:0.88em}
-tr:hover td{background:rgba(0,229,255,0.04)}
-td.ts{color:var(--muted); white-space:nowrap; width:80px}
-td.cmd{color:var(--text); max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
-td.resp{color:var(--muted); font-size:0.85em; max-width:260px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
-
-.reminder-row{padding:6px 0; border-bottom:1px solid var(--card-border)}
-.reminder-row:last-child{border-bottom:none}
-.reminder-time{color:var(--accent-2); font-weight:bold; margin-right:8px}
-
-.event-row{padding:5px 0; border-bottom:1px solid var(--card-border); font-size:0.88em}
-.event-row:last-child{border-bottom:none}
-.event-ts{color:var(--muted); margin-right:6px; font-size:0.8em}
-.event-type-reminder{color:var(--warn)}
-.event-type-meeting{color:var(--success)}
-.event-type-info{color:var(--accent-2)}
-
-.routine-row{display:flex; align-items:center; justify-content:space-between; padding:6px 0; border-bottom:1px solid var(--card-border)}
-.routine-row:last-child{border-bottom:none}
-.routine-name{color:var(--accent-2); font-weight:bold; margin-right:8px}
-.routine-steps{color:var(--muted); font-size:0.82em}
-
-.add-form{margin-top:12px; display:flex; gap:8px; flex-wrap:wrap}
-.add-form input{min-width:120px; flex:1}
-.empty{color:var(--muted); font-style:italic}
-
-#ws-status{font-size:0.72em; color:var(--muted); margin-left:8px}
-#ws-status.ok{color:var(--success)}
-#ws-status.ok::before{content:'';display:inline-block;width:6px;height:6px;border-radius:50%;
-  background:var(--success); margin-right:4px; box-shadow:0 0 6px var(--success); animation:pacoca-pulse 1.6s ease-in-out infinite}
-@keyframes pacoca-pulse{0%,100%{opacity:1}50%{opacity:.35}}
-
-.nav{margin:10px 0 20px; display:flex; gap:16px; font-size:0.85em; border-bottom:1px solid var(--card-border); padding-bottom:12px}
-.nav a{color:var(--muted)}
-.nav a:hover, .nav a.active{color:var(--accent-2)}
-
-.section{background:var(--card-bg); border:1px solid var(--card-border); border-radius:var(--radius);
-  padding:14px 16px; margin-bottom:14px; backdrop-filter:blur(10px)}
-.section h2{color:#ffd479; font-size:0.8em; text-transform:uppercase; letter-spacing:1px; margin:0 0 8px;
-  padding:6px 10px; background:rgba(240,180,80,0.08); border-left:3px solid var(--warn); border-radius:0 4px 4px 0}
-
-td.pat{width:55%; font-size:0.82em}
-td.fn{font-size:0.82em; color:var(--accent-2)}
-code{background:rgba(4,8,14,0.6); padding:1px 5px; border-radius:4px; font-family:monospace; color:var(--text); font-size:0.95em}
-.two-col{display:grid; grid-template-columns:1fr 1fr; gap:14px}
-.command-list{display:flex; flex-direction:column; gap:14px}
-.kbd{background:rgba(216,243,255,0.06); color:var(--text); border:1px solid rgba(0,229,255,0.2); border-radius:4px;
-  padding:2px 8px; font-family:monospace; font-size:0.85em}
-.info-table td{padding:6px 10px; color:var(--muted)}
-.info-table td:first-child{color:var(--text); width:160px}
-.info-table tr:hover td{background:rgba(0,229,255,0.05)}
-.subtitle{color:var(--muted); font-size:0.82em; margin-bottom:16px}
-
-.err{color:var(--danger); font-size:0.85em; margin-top:10px}
-
-@media(max-width:700px){.two-col{grid-template-columns:1fr} .grid{grid-template-columns:1fr}}
-"""
-
+    # CSS e JavaScript ficam em web/static para manter o backend legivel e
+    # preservar o dashboard offline, sem dependencias de CDN.
     # ── HTML ──────────────────────────────────────────────────────────
 
     _LOGIN_HTML = ("""<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-<meta charset="UTF-8"><title>Paçoca — Login</title>
-<style>""" + _SHARED_CSS + """</style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Paçoca — Login</title>
+<link rel="stylesheet" href="/static/dashboard.css">
 </head>
 <body class="login-body">
 <div class="card login-card">
@@ -368,8 +242,8 @@ code{background:rgba(4,8,14,0.6); padding:1px 5px; border-radius:4px; font-famil
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Paçoca Dashboard</title>
-<script src="https://unpkg.com/htmx.org@1.9.10"></script>
-<style>""" + _SHARED_CSS + """</style>
+<link rel="stylesheet" href="/static/dashboard.css">
+<script src="/static/dashboard.js" defer></script>
 </head>
 <body>
 <h1>⚡ Paçoca <span id="ws-status">● conectando...</span></h1>
@@ -384,19 +258,13 @@ code{background:rgba(4,8,14,0.6); padding:1px 5px; border-radius:4px; font-famil
   <!-- Status -->
   <div class="card">
     <h2>Status</h2>
-    <div id="status-block"
-         hx-get="/api/status-html"
-         hx-trigger="load, every 10s"
-         hx-swap="innerHTML">Carregando...</div>
+    <div id="status-block" aria-live="polite">Carregando...</div>
   </div>
 
   <!-- Stats -->
   <div class="card">
     <h2>Sessão</h2>
-    <div id="stats-block"
-         hx-get="/api/stats-html"
-         hx-trigger="load, every 15s"
-         hx-swap="innerHTML">Carregando...</div>
+    <div id="stats-block" aria-live="polite">Carregando...</div>
   </div>
 
   <!-- Comando (WebSocket) -->
@@ -404,7 +272,7 @@ code{background:rgba(4,8,14,0.6); padding:1px 5px; border-radius:4px; font-famil
     <h2>Enviar Comando</h2>
     <div class="cmd-row">
       <input type="text" id="cmd-input" placeholder="Digite um comando... (suporta 'e depois', 'em seguida')" autofocus>
-      <button onclick="sendCommand()">Enviar</button>
+      <button id="send-command" type="button">Enviar</button>
     </div>
     <div id="cmd-response"></div>
   </div>
@@ -412,10 +280,7 @@ code{background:rgba(4,8,14,0.6); padding:1px 5px; border-radius:4px; font-famil
   <!-- Lembretes -->
   <div class="card">
     <h2>Lembretes</h2>
-    <div id="reminders-block"
-         hx-get="/api/reminders-html"
-         hx-trigger="load, every 15s"
-         hx-swap="innerHTML">Carregando...</div>
+    <div id="reminders-block" aria-live="polite">Carregando...</div>
   </div>
 
   <!-- Eventos ao vivo -->
@@ -427,28 +292,19 @@ code{background:rgba(4,8,14,0.6); padding:1px 5px; border-radius:4px; font-famil
   <!-- Contexto -->
   <div class="card">
     <h2>Contexto da Sessão</h2>
-    <div id="context-block"
-         hx-get="/api/context-html"
-         hx-trigger="load, every 20s"
-         hx-swap="innerHTML">Carregando...</div>
+    <div id="context-block" aria-live="polite">Carregando...</div>
   </div>
 
   <!-- Rotinas -->
   <div class="card">
     <h2>Rotinas</h2>
-    <div id="routines-block"
-         hx-get="/api/routines-html"
-         hx-trigger="load"
-         hx-swap="innerHTML">Carregando...</div>
+    <div id="routines-block" aria-live="polite">Carregando...</div>
   </div>
 
   <!-- Histórico -->
   <div class="card full">
     <h2>Histórico de Comandos</h2>
-    <div id="history-block"
-         hx-get="/api/history-html"
-         hx-trigger="load, every 8s"
-         hx-swap="innerHTML">Carregando...</div>
+    <div id="history-block" aria-live="polite">Carregando...</div>
   </div>
 </div>
 
@@ -456,83 +312,6 @@ code{background:rgba(4,8,14,0.6); padding:1px 5px; border-radius:4px; font-famil
   Paçoca Dashboard — <a href="/api/status">JSON</a>
 </p>
 
-<script>
-// ── WebSocket: comando ────────────────────────────────────────────────
-let cmdWs;
-function connectCmdWs() {
-  const wsScheme = location.protocol === 'https:' ? 'wss://' : 'ws://';
-  cmdWs = new WebSocket(wsScheme + location.host + '/ws/command');
-  cmdWs.onopen = () => {
-    document.getElementById('ws-status').textContent = '● online';
-    document.getElementById('ws-status').className = 'ok';
-  };
-  cmdWs.onmessage = (e) => {
-    if (e.data.startsWith('{')) {
-      try {
-        const msg = JSON.parse(e.data);
-        if (msg.type === 'ping') { cmdWs.send(JSON.stringify({type: 'pong'})); return; }
-      } catch {}
-    }
-    document.getElementById('cmd-response').innerHTML = e.data;
-  };
-  cmdWs.onclose = () => {
-    document.getElementById('ws-status').textContent = '● reconectando...';
-    document.getElementById('ws-status').className = '';
-    setTimeout(connectCmdWs, 2000);
-  };
-}
-connectCmdWs();
-
-function sendCommand() {
-  const input = document.getElementById('cmd-input');
-  const cmd = input.value.trim();
-  if (!cmd) return;
-  if (!cmdWs || cmdWs.readyState !== WebSocket.OPEN) {
-    document.getElementById('cmd-response').innerHTML =
-      '<div class="response-box connecting">Reconectando ao servidor...</div>';
-    return;
-  }
-  document.getElementById('cmd-response').innerHTML =
-    '<div class="response-box connecting">Processando...</div>';
-  cmdWs.send(JSON.stringify({command: cmd}));
-  input.value = '';
-}
-
-document.addEventListener('DOMContentLoaded', () => {
-  document.getElementById('cmd-input').addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') sendCommand();
-  });
-});
-
-// ── WebSocket: eventos ao vivo ────────────────────────────────────────
-let evtWs;
-function connectEvtWs() {
-  const wsScheme = location.protocol === 'https:' ? 'wss://' : 'ws://';
-  evtWs = new WebSocket(wsScheme + location.host + '/ws/events');
-  evtWs.onmessage = (e) => {
-    let evt;
-    try { evt = JSON.parse(e.data); } catch { return; }
-    if (evt.type === 'ping') { evtWs.send(JSON.stringify({type: 'pong'})); return; }
-    const list = document.getElementById('events-list');
-    const empty = list.querySelector('.empty');
-    if (empty) empty.remove();
-    const div = document.createElement('div');
-    div.className = 'event-row';
-    const eventType = ['reminder', 'meeting', 'info'].includes(evt.type) ? evt.type : 'info';
-    const ts = document.createElement('span');
-    ts.className = 'event-ts';
-    ts.textContent = evt.ts || '';
-    const type = document.createElement('span');
-    type.className = 'event-type-' + eventType;
-    type.textContent = '[' + eventType + ']';
-    div.append(ts, type, document.createTextNode(' ' + (evt.message || '')));
-    list.prepend(div);
-    while (list.children.length > 6) list.removeChild(list.lastChild);
-  };
-  evtWs.onclose = () => setTimeout(connectEvtWs, 3000);
-}
-connectEvtWs();
-</script>
 </body>
 </html>""")
 
@@ -575,11 +354,7 @@ connectEvtWs();
 
     @app.get("/", response_class=HTMLResponse)
     async def dashboard():
-        page = _HTML.replace(
-            "<body>",
-            f'<body hx-headers=\'{{"X-CSRF-Token": "{_CSRF_TOKEN}"}}\'>',
-            1,
-        )
+        page = _HTML.replace("<body>", f'<body data-csrf="{_CSRF_TOKEN}">', 1)
         return HTMLResponse(content=page)
 
     # ── WebSocket: execução de comandos ───────────────────────────────
@@ -684,7 +459,7 @@ connectEvtWs();
                 if q in _event_queues:
                     _event_queues.remove(q)
 
-    # ── Fragmentos HTML (htmx polling) ───────────────────────────────
+    # ── Fragmentos HTML atualizados pelo JavaScript local ────────────
 
     @app.get("/api/status-html", response_class=HTMLResponse)
     async def status_html():
@@ -810,18 +585,15 @@ connectEvtWs();
                 f'<div><span class="routine-name">{safe_name}</span> '
                 f'<span class="routine-steps">{safe_label} ({safe_steps})</span></div>'
                 f'<button class="danger" '
-                f'hx-post="/api/routines/delete/{encoded_name}" '
-                f'hx-target="#routines-block" hx-swap="innerHTML" '
-                f'hx-confirm="Excluir esta rotina?">Excluir</button>'
+                f'data-post="/api/routines/delete/{encoded_name}" '
+                f'data-confirm="Excluir esta rotina?">Excluir</button>'
                 f'</div>'
             )
         if not html:
             html = '<div class="empty">Nenhuma rotina configurada.</div>'
         html += """
         <form class="add-form"
-              hx-post="/api/routines/add"
-              hx-target="#routines-block"
-              hx-swap="innerHTML">
+              data-post="/api/routines/add">
           <input type="text" name="name" placeholder="nome_rotina" required style="max-width:130px">
           <input type="text" name="label" placeholder="Descrição" required>
           <input type="text" name="action" placeholder="ação (ex: notify)" required style="max-width:120px">
@@ -947,8 +719,9 @@ connectEvtWs();
             )
         return HTMLResponse(f"""<!DOCTYPE html>
 <html lang="pt-BR"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Paçoca — Integrações</title>
-<style>{_SHARED_CSS}</style>
+<link rel="stylesheet" href="/static/dashboard.css">
 </head><body>
 <h1>⚡ Paçoca — Integrações</h1>
 <nav class="nav">
@@ -1036,8 +809,9 @@ async function testIntegration(name) {{
 
         return HTMLResponse(f"""<!DOCTYPE html>
 <html lang="pt-BR"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Paçoca — Documentação</title>
-<style>{_SHARED_CSS}</style>
+<link rel="stylesheet" href="/static/dashboard.css">
 </head><body>
 <h1>⚡ Paçoca — Documentação</h1>
 <p class="subtitle">Referência completa de comandos, atalhos, configuração e arquitetura.</p>
@@ -1158,8 +932,9 @@ async function testIntegration(name) {{
 
         return HTMLResponse(f"""<!DOCTYPE html>
 <html lang="pt-BR"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Paçoca — Métricas</title>
-<style>{_SHARED_CSS}</style>
+<link rel="stylesheet" href="/static/dashboard.css">
 </head><body>
 <h1>⚡ Paçoca — Métricas</h1>
 <nav class="nav">
@@ -1263,14 +1038,15 @@ def _check_integrations() -> dict:
     Cada entrada inclui os campos 'ok' (bool) e 'detail' (str) para uso em
     respostas por voz, além de campos detalhados para o dashboard.
     """
-    import os, time as _t
+    import os
+    import time as _t
     from pathlib import Path
     results: dict[str, dict] = {}
 
     # Groq
     groq_key = os.environ.get("GROQ_API_KEY", "")
     try:
-        from core.providers import _groq_failures, _groq_open_until, _circuit_is_open
+        from core.providers import _groq_failures, _groq_open_until
         cb_open = _t.monotonic() < _groq_open_until
         cb_failures = _groq_failures
     except Exception:
@@ -1328,7 +1104,7 @@ def _test_integration(name: str) -> dict:
     try:
         if name == "groq":
             # Testa Groq diretamente, sem fallback para Ollama
-            from core.providers import get_client, _record_groq_failure
+            from core.providers import get_client
             from core.config import Config
             client = get_client(Config())
             if not client._get_groq_key():

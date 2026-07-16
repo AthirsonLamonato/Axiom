@@ -2,7 +2,7 @@
 core/providers.py — Cliente HTTP centralizado para todos os provedores de IA
 
 Funcionalidades:
-  - Interface única: LLMClient.chat() → Groq (online) ou Ollama (local)
+  - Interface única: LLMClient.chat() → Ollama local ou Groq opcional
   - Retry com backoff exponencial para 429, 502, 503, timeouts
   - Circuit breaker: após N falhas Groq consecutivas, usa Ollama temporariamente
   - Logs sanitizados: API keys nunca aparecem em log
@@ -168,7 +168,7 @@ def _resolve_key(config_key: str, env_var: str, config) -> str:
 
 class LLMClient:
     """
-    Cliente de LLM online-first: Groq como principal, Ollama como fallback.
+    Cliente de LLM local-first por configuração, com Groq opcional.
 
     Uso:
         client = LLMClient(config)
@@ -222,7 +222,7 @@ class LLMClient:
         # Trunca contexto muito longo antes de enviar
         messages = _truncate_messages(messages, max_chars=24_000)
 
-        provider = self.config.get("ai.provider", "groq")
+        provider = self.config.get("ai.provider", "ollama")
         groq_key = self._get_groq_key()
 
         # Tenta Groq se configurado E circuit breaker fechado

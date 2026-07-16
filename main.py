@@ -56,10 +56,10 @@ def _load_dotenv():
 
 _load_dotenv()
 
-from core.orchestrator import Orchestrator
-from core.config import Config
-from core.logger import setup_logging
-from output.notifier import notify
+from core.orchestrator import Orchestrator  # noqa: E402
+from core.config import Config  # noqa: E402
+from core.logger import setup_logging  # noqa: E402
+from output.notifier import notify  # noqa: E402
 
 
 def parse_args():
@@ -95,6 +95,11 @@ def parse_args():
         "--web",
         action="store_true",
         help="Inicia o dashboard web em http://127.0.0.1:7755",
+    )
+    parser.add_argument(
+        "--doctor",
+        action="store_true",
+        help="Verifica IA, voz, áudio, interface e dependências antes de iniciar",
     )
     return parser.parse_args()
 
@@ -249,6 +254,12 @@ def main():
     # Logging deve ser o primeiro subsistema a iniciar
     setup_logging(config)
 
+    if args.doctor:
+        from core.readiness import doctor
+        ready, report = doctor(config, mode=args.mode, web=args.web)
+        print(report)
+        return 0 if ready else 1
+
     if args.edit_routines:
         _edit_routines(config)
         return
@@ -351,6 +362,8 @@ def main():
     else:
         _run_orchestrator()
 
+    return 0
+
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

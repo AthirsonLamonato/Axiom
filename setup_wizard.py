@@ -124,7 +124,8 @@ class Wizard(tk.Tk):
 
         self._bar = ttk.Progressbar(self, length=520, mode="determinate",
                                      maximum=len(self.PAGES) - 1)
-        s = ttk.Style(); s.theme_use("clam")
+        s = ttk.Style()
+        s.theme_use("clam")
         s.configure("TProgressbar", troughcolor=BG3, background=ACCENT, thickness=4)
         self._bar.pack(fill="x")
 
@@ -330,9 +331,10 @@ class Wizard(tk.Tk):
                     self._google_dot.config(fg=GREEN)
                     self._google_status.config(text="✓ Conta Google conectada.", fg=GREEN)
                 self.after(0, _on_ok)
-            except Exception as e:
+            except Exception as exc:
+                message = f"Erro: {exc}"
                 self.after(0, lambda: self._google_status.config(
-                    text=f"Erro: {e}", fg=RED))
+                    text=message, fg=RED))
         threading.Thread(target=run, daemon=True).start()
 
     # ── Página 3 — Pronto ─────────────────────────────────────────────

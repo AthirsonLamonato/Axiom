@@ -8,8 +8,6 @@ import logging
 import re
 import threading
 import time
-from collections import Counter
-from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +22,7 @@ _CHECK_INTERVAL = 300  # segundos entre verificações do agendador
 def record(raw_input: str, response: str, action: str = "",
            resolved: str = "", success: bool = True, source: str = "voice"):
     """Registra a interação e aciona aprendizado incremental."""
-    from storage.memory import log_interaction, record_usage
+    from storage.memory import log_interaction
     log_interaction(raw_input, response, action, resolved, success, source)
 
     # Extrai recursos usados para estatísticas

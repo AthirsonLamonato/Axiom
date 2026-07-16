@@ -40,7 +40,6 @@ def start(*_) -> str:
     # Injeta referência ao orchestrator se disponível
     try:
         from core.orchestrator import Orchestrator  # noqa: F401
-        from web.app import set_orchestrator
         # O orchestrator chama web_server.set_orc(self) após iniciar
     except Exception:
         pass

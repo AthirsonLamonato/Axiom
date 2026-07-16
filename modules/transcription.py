@@ -225,7 +225,7 @@ class TranscriptionSession:
                 path = self._save(label="autosave")
                 logger.info(f"Auto-save: {path}")
                 from output.notifier import notify
-                notify("Paçoca", f"Transcrição salva automaticamente.")
+                notify("Paçoca", "Transcrição salva automaticamente.")
 
     def _save(self, label: str = "") -> str:
         from storage.file_store import save_transcription

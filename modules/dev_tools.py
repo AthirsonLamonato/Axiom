@@ -42,7 +42,7 @@ def goto_line(line: str, *_) -> str:
         return "Número de linha inválido."
     # Pega o arquivo mais recentemente modificado como alvo (heurística)
     try:
-        result = subprocess.run(
+        subprocess.run(
             ["code", "--goto", f":{line}"], shell=True, capture_output=True
         )
         return f"Navegando para linha {line}."

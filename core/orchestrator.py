@@ -5,6 +5,7 @@ Recebe texto (voz ou CLI), identifica a intenção e despacha ao módulo correto
 
 import re
 import logging
+import threading
 from typing import NamedTuple, Optional, Callable
 
 from core.config import Config
@@ -26,6 +27,18 @@ class IntentResult(NamedTuple):
 
 _EMPTY_INTENT_RESULT = IntentResult(None, "", "", False)
 
+_VOICE_EXIT_COMMANDS = {
+    "sair",
+    "encerrar",
+    "desligar",
+    "desligar paçoca",
+    "paçoca desligar",
+}
+
+
+def _is_voice_exit(command: str) -> bool:
+    return command.lower().strip() in _VOICE_EXIT_COMMANDS
+
 
 # ── Importações lazy (evita falha se dependência ausente) ──────────────
 def _import_module(name: str):
@@ -40,6 +53,11 @@ def _import_module(name: str):
 # ── Tabela de rotas ────────────────────────────────────────────────────
 # (padrão regex, handler, requer_confirmação)
 ROUTES: list[tuple[str, str, bool]] = [
+    # Informacoes locais basicas: nunca delegar ao LLM, que nao conhece o relogio.
+    (r"^(?:que\s+horas(?:\s+s[ãa]o)?|qual\s+[ée]\s+a\s+hora|me\s+diga\s+as\s+horas|horas)$",
+                                                "modules.local_info:current_time", False),
+    (r"^(?:que\s+dia\s+[ée]\s+hoje|qual\s+[ée]\s+a\s+data(?:\s+de\s+hoje)?|data\s+de\s+hoje)$",
+                                                "modules.local_info:current_date", False),
     # Spotify — rotas diretas (não passam pelo LLM)
     (r"autoriza\w*.*spotify",                             "modules.spotify_ctrl:authorize",      False),
     (r"toca?\s+(?:a\s+)?playlist\s+(.+)",                 "modules.spotify_ctrl:play_playlist",  False),
@@ -622,6 +640,7 @@ class Orchestrator:
         self._all_routes: list = list(ROUTES)
         self._last_profile: str = ""
         self._tts_done = False  # True quando _fallback_ai fez TTS via streaming
+        self._dispatch_lock = threading.RLock()
         self._load_plugins()
         try:
             from modules import web_server
@@ -750,6 +769,16 @@ class Orchestrator:
             self.run_text_loop()
             return
 
+        # Atalhos globais: PTT e controle de transcrição.
+        hotkeys = None
+        try:
+            from input.hotkeys import HotkeyManager
+            hotkeys = HotkeyManager(self.config, self.process_external_command)
+            voice.enable_push_to_talk_hotkey(hotkeys.start())
+        except Exception as e:
+            logger.warning("Hotkeys não inicializadas: %s", e)
+            voice.enable_push_to_talk_hotkey(False)
+
         # Registra confirmação por voz para ações críticas
         try:
             stt_module.register_voice_confirmation_callback(voice, self.tts.speak)
@@ -758,44 +787,70 @@ class Orchestrator:
 
         mode = voice._mode
         if mode == "push_to_talk":
-            print("[Paçoca] Modo push-to-talk ativo. Pressione Enter para falar.\n")
+            trigger = "Ctrl+Shift+Space" if hotkeys and hotkeys._active else "Enter"
+            print(f"[Paçoca] Modo push-to-talk ativo. Pressione {trigger} para falar.\n")
         else:
             keyword = self.config.get("wake_word.keyword", "paçoca")
             print(f"[Paçoca] Aguardando wake word '{keyword}'...\n")
         self.tts.speak("Paçoca online.")
 
-        while True:
-            if overlay:
-                overlay.set_state("listening")
-            command = voice.listen_for_command()
-            if command:
-                logger.info(f"Comando recebido: {command}")
+        try:
+            while True:
                 if overlay:
-                    overlay.set_state("processing")
-
-                # Aplica vocabulário aprendido antes de despachar
-                learner = _import_module("modules.learner")
-                corrected = learner.correct_transcription(command) if learner else command
-
-                self._tts_done = False
-                response = self.dispatch_chain(corrected)
-                if response:
-                    print(f"\n  Paçoca: {response}\n")
+                    overlay.set_state("listening")
+                command = voice.listen_for_command()
+                if command and _is_voice_exit(command):
+                    self.tts.speak("Até logo.")
+                    print("[Paçoca] Encerrando modo voz.")
+                    break
+                if command:
+                    logger.info(f"Comando recebido: {command}")
                     if overlay:
-                        overlay.show_message(response)
-                        overlay.set_state("speaking")
-                    if not self._tts_done:
-                        self.tts.speak(response)
+                        overlay.set_state("processing")
 
-                # Registra interação para aprendizado
-                if learner:
-                    success = bool(response and "não entendi" not in response.lower()
-                                   and "não consegui" not in response.lower())
-                    learner.record(command, response or "", resolved=corrected, source="voice",
-                                   success=success)
+                    learner = _import_module("modules.learner")
+                    corrected = learner.correct_transcription(command) if learner else command
 
-                if overlay:
-                    overlay.set_state("idle")
+                    self._tts_done = False
+                    response = self.dispatch_chain(corrected)
+                    if response:
+                        print(f"\n  Paçoca: {response}\n")
+                        if overlay:
+                            overlay.show_message(response)
+                            overlay.set_state("speaking")
+                        if not self._tts_done:
+                            self.tts.speak(response)
+
+                    if learner:
+                        success = bool(response and "não entendi" not in response.lower()
+                                       and "não consegui" not in response.lower())
+                        learner.record(command, response or "", resolved=corrected, source="voice",
+                                       success=success)
+
+                    if overlay:
+                        overlay.set_state("idle")
+        finally:
+            if hotkeys:
+                hotkeys.stop()
+            voice.close()
+
+    def process_external_command(self, command: str) -> Optional[str]:
+        """Executa um comando vindo de hotkey e entrega a resposta ao usuário."""
+        overlay = _import_module("output.overlay")
+        if overlay:
+            overlay.set_state_detail("processing", "Executando atalho")
+        self._tts_done = False
+        response = self.dispatch_chain(command)
+        if response:
+            print(f"\n  Paçoca: {response}\n")
+            if overlay:
+                overlay.show_message(response)
+                overlay.set_state("speaking")
+            if not self._tts_done:
+                self.tts.speak(response)
+        if overlay:
+            overlay.set_state("idle")
+        return response
 
     # ── Despachante central ────────────────────────────────────────────
 
@@ -1053,6 +1108,11 @@ class Orchestrator:
         return full.strip()
 
     def dispatch_chain(self, command: str) -> Optional[str]:
+        """Serializa comandos vindos de voz, overlay, web e hotkeys."""
+        with self._dispatch_lock:
+            return self._dispatch_chain_unlocked(command)
+
+    def _dispatch_chain_unlocked(self, command: str) -> Optional[str]:
         """Executa múltiplos comandos encadeados separados por conectores naturais."""
         parts = _CHAIN_SEP.split(command)
         if len(parts) == 1:

@@ -3,12 +3,8 @@
 #
 # ATENÇÃO — leia antes de instalar:
 #
-# 1. pyaudio no Windows exige PortAudio. Instale com pipwin:
-#      pip install pipwin
-#      pipwin install pyaudio
-#    Ou baixe a wheel pré-compilada em:
-#      https://www.lfd.uci.edu/~gohlke/pythonlibs/#pyaudio
-#    (escolha a versão compatível com seu Python)
+# 1. PyAudio 0.2.14 publica wheels oficiais para Windows (Python 3.10-3.13).
+#    Em Linux ainda é necessário instalar PortAudio pelo gerenciador do sistema.
 #
 # 2. faster-whisper baixa modelos Whisper (~150 MB para "base") na primeira execução.
 #    Configure o tamanho do modelo em core/config.yaml: stt.model
@@ -17,7 +13,7 @@
 #
 # Instale na ordem correta:
 #   pip install -r requirements.txt        (dependências base primeiro)
-#   pipwin install pyaudio                 (Windows — veja nota acima)
+#   pip install -r requirements-voice.txt  (inclui PyAudio no Windows)
 #   pip install -r requirements-voice.txt  (ML/voz)
 
 # ── STT ───────────────────────────────────────────────────────────────
@@ -29,7 +25,7 @@ openwakeword>=0.6
 # ── Áudio ─────────────────────────────────────────────────────────────
 # pyaudio: instale separadamente conforme a nota acima (Windows)
 # Linux: sudo apt install portaudio19-dev && pip install pyaudio
-pyaudio>=0.2.13
+pyaudio>=0.2.14
 
 # ── Loopback de áudio do sistema (Windows — captura áudio do speaker) ─
 # pyaudiowpatch>=0.2

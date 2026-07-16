@@ -11,7 +11,6 @@ logger = logging.getLogger(__name__)
 
 def get_weather(location: str = "") -> str:
     """Retorna previsão do tempo para a cidade informada (cache 10 min)."""
-    import requests
     from core.providers import _weather_cache, cached_get
 
     location = re.sub(r'\s*\b(?:hoje|amanhã|amanha|agora|essa?\s+semana|nessa?\s+semana)\b.*$', '', location, flags=re.IGNORECASE)

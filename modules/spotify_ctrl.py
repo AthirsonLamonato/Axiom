@@ -513,7 +513,6 @@ def _api_play_search(query: str) -> str:
 
 
 def _play_first_track(resp, fallback_query: str) -> str | None:
-    import urllib.parse
     if not resp or not resp.ok:
         return None
     items = resp.json().get("tracks", {}).get("items", [])

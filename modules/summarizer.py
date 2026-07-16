@@ -1,6 +1,6 @@
 """
 modules/summarizer.py — Integração com IA via cliente central (core/providers.py)
-Online-first: Groq com fallback automático para Ollama.
+Local-first por padrão: Ollama, com Groq opcional e fallback automático.
 """
 
 import logging
@@ -26,7 +26,7 @@ def _client():
 def ask_ai(prompt: str, system: str = None, use_context: bool = True) -> str:
     """
     Envia um prompt ao LLM e retorna a resposta.
-    Online-first: Groq → Ollama (via core/providers.py).
+    Usa o provedor configurado em core/providers.py.
     """
     config = _get_config()
 
@@ -46,7 +46,10 @@ def ask_ai(prompt: str, system: str = None, use_context: bool = True) -> str:
 
     messages = [{"role": "user", "content": prompt}]
     result = _client().chat(messages, system=system, max_tokens=config.get("ai.max_tokens", 1024))
-    return result or "Não consegui processar isso. Tente novamente."
+    return result or (
+        "Não consegui acessar o modelo de IA. Execute 'python main.py --doctor' "
+        "para verificar Ollama, modelo local e dependências."
+    )
 
 
 def ask_ai_stream(prompt: str, system: str = None):

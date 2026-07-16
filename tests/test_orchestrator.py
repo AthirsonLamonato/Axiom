@@ -9,7 +9,13 @@ import yaml
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from core.config import Config
-from core.orchestrator import Orchestrator, ROUTES, list_commands
+from core.orchestrator import Orchestrator, ROUTES, _is_voice_exit, list_commands
+
+
+def test_voice_exit_commands_are_explicit():
+    assert _is_voice_exit(" Sair ") is True
+    assert _is_voice_exit("Paçoca desligar") is True
+    assert _is_voice_exit("desligar o monitor") is False
 
 
 @pytest.fixture
@@ -105,6 +111,19 @@ def test_dispatch_volume(orchestrator):
     assert isinstance(result, str)
 
 
+def test_time_question_uses_local_clock(orchestrator):
+    result = orchestrator.dispatch("que horas são")
+
+    assert re.fullmatch(r"Agora são \d{2}:\d{2}\.", result)
+
+
+def test_date_question_uses_local_calendar(orchestrator):
+    result = orchestrator.dispatch("qual é a data de hoje")
+
+    assert result.startswith("Hoje é ")
+    assert re.search(r" de \d{4}\.$", result)
+
+
 def test_dispatch_open_vscode_uses_dev_route(orchestrator):
     """Garante que 'abre o vscode' usa dev_tools e não system_control."""
     result = orchestrator.dispatch("abre o vscode")
@@ -190,6 +209,11 @@ def _matched_route(command):
             "começa transcrição do sistema",
             "modules.transcription:start",
             ("do sistema",),
+        ),
+        (
+            "que horas são",
+            "modules.local_info:current_time",
+            (),
         ),
     ],
 )

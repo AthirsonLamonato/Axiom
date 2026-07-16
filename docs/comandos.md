@@ -51,6 +51,8 @@
 
 | Exemplo de comando | Ação |
 |---|---|
+| `que horas são` / `qual é a hora` | Informar a hora local sem consultar a IA |
+| `que dia é hoje` / `qual é a data de hoje` | Informar a data local sem consultar a IA |
 | `abre o chrome` / `abre o spotify` | Abrir aplicativo |
 | `fecha o chrome` | Fechar aplicativo ⚠ |
 | `abre a pasta Downloads` | Abrir pasta no gerenciador de arquivos |

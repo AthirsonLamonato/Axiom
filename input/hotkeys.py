@@ -25,41 +25,48 @@ class HotkeyManager:
         self._thread = None
         self._active = False
 
-    def start(self):
-        """Inicia o listener de hotkeys em thread separada."""
+    def start(self) -> bool:
+        """Registra os atalhos e inicia o listener. Retorna se ficou ativo."""
         try:
             import keyboard
         except ImportError:
             logger.warning("Biblioteca 'keyboard' não instalada. Hotkeys desabilitadas.")
-            return
+            return False
 
-        self._active = True
-        self._thread = threading.Thread(target=self._listen, daemon=True)
-        self._thread.start()
-        logger.info("HotkeyManager iniciado")
-
-    def _listen(self):
-        import keyboard
-
-        for hotkey, action in DEFAULT_HOTKEYS.items():
-            keyboard.add_hotkey(
-                hotkey,
-                lambda a=action: self._handle(a),
-                suppress=False,
+        try:
+            for hotkey, action in DEFAULT_HOTKEYS.items():
+                keyboard.add_hotkey(
+                    hotkey,
+                    lambda a=action: self._handle(a),
+                    suppress=False,
+                )
+            self._active = True
+            self._thread = threading.Thread(
+                target=keyboard.wait,
+                daemon=True,
+                name="pacoca-hotkeys",
             )
-        logger.debug("Hotkeys registradas: %s", list(DEFAULT_HOTKEYS.keys()))
-        keyboard.wait()
+            self._thread.start()
+            logger.info("Hotkeys registradas: %s", list(DEFAULT_HOTKEYS.keys()))
+            return True
+        except Exception as exc:
+            logger.warning("Não foi possível registrar hotkeys: %s", exc)
+            self._active = False
+            return False
 
     def _handle(self, action: str):
         logger.debug("Hotkey acionada: %s", action)
 
         if action == "push_to_talk":
-            threading.Thread(target=self._push_to_talk, daemon=True).start()
+            self._push_to_talk()
             return
 
         if action in ("start_transcription", "stop_transcription"):
             threading.Thread(
-                target=self._call_transcription, args=(action,), daemon=True
+                target=self._call_transcription,
+                args=(action,),
+                daemon=True,
+                name=f"pacoca-{action}",
             ).start()
             return
 
@@ -74,32 +81,17 @@ class HotkeyManager:
             logger.warning("push_to_talk: STT não inicializado (modo texto ativo?)")
             return
 
-        try:
-            from output import overlay
-            overlay.set_state_detail("listening", "Ouvindo (push-to-talk)…")
-        except Exception:
-            pass
-
-        try:
-            # _capture_and_transcribe usa o limiar de energia calibrado
-            text = vi._capture_and_transcribe()
-            if text.strip():
-                self.dispatcher(text)
-        except Exception as e:
-            logger.error("push_to_talk falhou: %s", e, exc_info=True)
-        finally:
-            try:
-                from output import overlay
-                overlay.set_state("idle")
-            except Exception:
-                pass
+        vi.request_push_to_talk()
 
     def _call_transcription(self, action: str):
         """Chama start/stop da transcrição pelo módulo correto."""
         try:
-            from modules import transcription
-            fn = transcription.start if action == "start_transcription" else transcription.stop
-            result = fn()
+            command = (
+                "começa a transcrever"
+                if action == "start_transcription"
+                else "para a transcrição"
+            )
+            result = self.dispatcher(command)
             logger.info("Transcrição hotkey: %s → %s", action, result)
         except Exception as e:
             logger.error("Transcrição hotkey %s falhou: %s", action, e, exc_info=True)

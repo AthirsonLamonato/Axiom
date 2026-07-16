@@ -1,7 +1,7 @@
 # Performance e Latência
 
-> Guia para diagnosticar lentidão e tunar o Paçoca em hardware modesto (CLAUDE.md
-> exige que o projeto rode em 4GB RAM, CPU sem GPU).
+> Guia para diagnosticar lentidão e ajustar o Paçoca em hardware modesto, inclusive
+> CPU sem GPU. A memória necessária depende principalmente dos modelos escolhidos.
 
 ---
 
@@ -58,8 +58,8 @@ Toda chamada HTTP a Groq/Ollama/clima/finanças/busca reutiliza um único
 em comandos sucessivos.
 
 **Ollama (offline, CPU)**: depende inteiramente do hardware. Em CPU sem GPU,
-modelos de 7-8B levam vários segundos por resposta. Para hardware modesto (4GB RAM):
-- Use `phi3` ou `llama3:8b-instruct-q4_0` (quantizado) em vez de modelos maiores.
+modelos de 7-8B levam vários segundos por resposta. Para hardware com pouca memória:
+- Use um modelo local menor/quantizado em vez de modelos de 7-8B.
 - `ollama run <modelo> --verbose` mostra tokens/s — útil para comparar modelos.
 - Evite rodar Ollama e o overlay/STT (Whisper) ao mesmo tempo em CPUs de 4 núcleos
   ou menos; eles competem por CPU.
@@ -116,16 +116,16 @@ longo, confirme que essa chamada está mesmo saindo em background — veja
 
 ## Dashboard web
 
-- As páginas usam polling htmx (8-20s) em vez de WebSocket para os fragmentos de
-  status/histórico — suficiente para um dashboard local, evita reimplementar
-  invalidação de cache no servidor.
+- As páginas usam polling por JavaScript local (8-20s) para os fragmentos de
+  status/histórico; comandos e eventos continuam em WebSocket. Nenhum recurso
+  visual depende de CDN.
 - O heartbeat de WebSocket (`/ws/command`, `/ws/events`) usa ping a cada 30s e
   fecha a conexão após 90s sem resposta, para não acumular sockets mortos quando o
   laptop hiberna ou a aba fica em background por muito tempo.
 
 ---
 
-## Checklist rápido para hardware de 4GB RAM / sem GPU
+## Checklist rápido para hardware com pouca memória / sem GPU
 
 - [ ] `ai.provider: ollama` com modelo quantizado (`q4_0` ou menor)
 - [ ] `stt.model: base` (não `medium`/`large`) em `faster-whisper`

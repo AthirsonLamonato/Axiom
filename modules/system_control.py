@@ -151,7 +151,7 @@ def _resolve_with_ai(name: str) -> str:
 def _run_win(cmd: str) -> bool:
     """Executa um comando Windows via PowerShell. Retorna True se não deu erro."""
     try:
-        r = subprocess.Popen(
+        subprocess.Popen(
             ["powershell.exe", "-NoProfile", "-Command", f'Start-Process "{cmd}"'],
             start_new_session=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
         )
@@ -271,7 +271,6 @@ def open_folder(path_or_name: str) -> str:
         return f"Abrindo pasta {path_or_name.title()}."
 
     # Caminho absoluto Linux → converte para Windows (WSL)
-    p = Path(path_or_name)
     if IS_WSL and path_or_name.startswith("/"):
         win_path = subprocess.run(
             ["wslpath", "-w", path_or_name], capture_output=True, text=True
@@ -450,7 +449,7 @@ def _adjust_brightness(delta: int) -> str:
             methods = c.WmiMonitorBrightnessMethods()[0]
             current = c.WmiMonitorBrightness()[0].CurrentBrightness
             methods.WmiSetBrightness(max(0, min(100, current + delta)), 0)
-            return f"Brilho ajustado."
+            return "Brilho ajustado."
         except Exception as e:
             return f"Erro ao ajustar brilho: {e}"
     try:

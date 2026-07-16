@@ -2,13 +2,13 @@
 
 > Assistente pessoal inteligente de desktop — controle por voz ou texto, 100% open-source e gratuito.
 
-![Version](https://img.shields.io/badge/version-v0.6.0-blue)
+![Version](https://img.shields.io/badge/version-v0.8--dev-blue)
 ![Python](https://img.shields.io/badge/python-3.10+-green)
 ![License](https://img.shields.io/badge/license-MIT-orange)
-![Tests](https://img.shields.io/badge/tests-329%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/tests-376%20passing-brightgreen)
 ![CI](https://github.com/AthirsonLamonato/Pacoca/actions/workflows/tests.yml/badge.svg)
 
-Paçoca é um assistente de desktop estilo Jarvis — modular, expansível e capaz de rodar completamente offline em hardware modesto (4 GB RAM, CPU sem GPU).
+Paçoca é um assistente de desktop estilo Jarvis: escuta a frase **“Hey Jarvis”**, entende comandos em português, responde por voz e usa IA local pelo Ollama. As funções centrais podem operar offline depois que os modelos forem baixados; recursos como voz neural Edge, pesquisa web e integrações de nuvem precisam de internet.
 
 ---
 
@@ -28,15 +28,22 @@ cd Pacoca
 setup.bat
 ```
 
+Escolha **3 — voice** para a experiência completa. O script cria uma `.venv`
+isolada, instala Whisper/PyAudio/openWakeWord, baixa o modelo oficial
+`hey_jarvis` e executa o diagnóstico. Instale antes o
+[Ollama para Windows](https://ollama.com/download/windows); o setup baixa/verifica
+o modelo `llama3` quando o comando `ollama` está disponível.
+
 **Linux / Mac:**
 ```bash
 bash setup.sh
 ```
 
-Ou manualmente:
+Ou manualmente no Windows:
 ```bash
-pip install -r requirements.txt
-pip install fastapi "uvicorn[standard]"
+.venv\Scripts\python -m pip install -r requirements.txt
+.venv\Scripts\python -m pip install -r requirements-voice.txt
+.venv\Scripts\python -c "from openwakeword.utils import download_models; download_models(['hey_jarvis'])"
 ollama pull llama3
 ```
 
@@ -45,10 +52,13 @@ ollama pull llama3
 ## Executar
 
 ```bash
+# Windows: menu recomendado
+run.bat
+
 # Modo texto — ideal para testar sem microfone
 python main.py --mode text --no-tts --no-overlay
 
-# Modo voz (push-to-talk por padrão)
+# Modo voz: “Hey Jarvis” + Ctrl+Shift+Space como alternativa
 python main.py
 
 # Dashboard web (abre o browser em localhost:7755)
@@ -56,6 +66,9 @@ python main.py --web
 
 # Editor de rotinas CLI
 python main.py --edit-routines
+
+# Diagnóstico completo da experiência Jarvis
+python main.py --doctor --mode voice --web
 ```
 
 ---
@@ -64,7 +77,7 @@ python main.py --edit-routines
 
 | Módulo | O que faz |
 |---|---|
-| **STT** | Transcrição via Whisper (`faster-whisper`). Calibração automática de ruído; VAD por energia RMS. Push-to-talk `ctrl+shift+space` por padrão; wake word via openWakeWord (sem API key, modelo customizável) |
+| **STT** | Transcrição via Whisper (`faster-whisper`). Calibração automática de ruído; VAD por energia RMS. Wake word **“Hey Jarvis”** via openWakeWord e push-to-talk `ctrl+shift+space` como alternativa |
 | **Janela de desktop** | Interface PyQt6 (`overlay.enabled: true`): histórico de conversa, caixa de texto, botão de microfone (comando de voz único) e botão de conta Google (Calendar/Drive). Toggle: `ctrl+shift+a`. Desabilitada, roda só por texto/voz no terminal |
 | **Transcrição** | Captura microfone ou loopback do sistema (Windows: WASAPI · Linux: PulseAudio). Auto-save a cada 5 min |
 | **Resumo / IA** | Resumo e explicações via Ollama (local) com fallback para Groq API (gratuito) |
@@ -92,7 +105,7 @@ python main.py --edit-routines
 | **OCR de tela** | Lê texto visível via pytesseract. Salva screenshots |
 | **Multi-idioma STT** | Troca o idioma de reconhecimento por voz (PT, EN, ES, FR, DE…) |
 | **Sumário de reunião** | Sumário estruturado: resumo executivo, decisões, action items e pendências |
-| **Dashboard web** | Interface local (FastAPI + htmx + WebSocket) em `localhost:7755` — histórico, lembretes, envio de comandos em tempo real |
+| **Dashboard web** | Interface local e responsiva (FastAPI + JavaScript local + WebSocket) em `localhost:7755` — histórico, lembretes, rotinas e comandos em tempo real, sem CDN |
 | **Editor de rotinas** | CRUD visual de rotinas no dashboard, persistido no `config.yaml` |
 | **Obsidian** | Exporta transcrições, sumários e nota diária para qualquer vault Markdown |
 | **Comandos encadeados** | "abre o VS Code e depois foco por 25 min" — múltiplos comandos em sequência |
@@ -111,6 +124,7 @@ python main.py --edit-routines
 
 ### Sistema
 ```
+que horas são / qual é a data de hoje
 abre o VS Code
 abre o Chrome
 fecha o Spotify
@@ -476,7 +490,7 @@ Pacoca/
 │
 ├── web/
 │   ├── __init__.py
-│   └── app.py                 # FastAPI + htmx + WebSocket — dashboard local
+│   └── app.py                 # FastAPI + JavaScript local + WebSocket — dashboard
 │
 ├── plugins/
 │   ├── notes.py               # anotações rápidas (plugin incluso)
@@ -502,8 +516,8 @@ Pacoca/
 
 | Funcionalidade | Ferramenta | Tipo |
 |---|---|---|
-| Speech-to-Text | faster-whisper (Whisper base) | Local / offline |
-| Wake word | openWakeWord (sem API key) | Local / offline |
+| Speech-to-Text | faster-whisper (Whisper small por padrão) | Local / offline |
+| Wake word | openWakeWord (`hey_jarvis`, sem API key) | Local / offline |
 | LLM | Ollama (llama3 / mistral / phi3) | Local / offline |
 | LLM cloud | Groq API (llama3, free tier) | Opcional / gratuito |
 | Embeddings (memória semântica) | Gemini API (free tier) ou Ollama local (`nomic-embed-text`) | Opcional / gratuito |
@@ -514,7 +528,7 @@ Pacoca/
 | Banco de dados | SQLite | Open-source |
 | Backup nuvem | Google Drive API | Gratuito |
 | Google Calendar | Google Calendar API (OAuth 2.0) | Gratuito |
-| Dashboard web | FastAPI + htmx + uvicorn + WebSocket | Open-source |
+| Dashboard web | FastAPI + JavaScript local + uvicorn + WebSocket | Open-source |
 | Config | PyYAML | Open-source |
 | Empacotamento | PyInstaller | Open-source |
 
@@ -526,7 +540,11 @@ Pacoca/
 python -m pytest tests/ -v
 ```
 
-349 testes (8 skipped — exigem rede/credenciais reais) cobrindo: config, orchestrator
+Execute também `python main.py --doctor --mode voice --web` para verificar o
+ambiente real (Ollama/modelo, TTS, PyQt, Whisper, microfone, modelo Hey Jarvis e
+dashboard). Na validação local atual são **371 testes padrão + 5 integrações
+reais aprovadas**; 1 teste da Groq é ignorado quando `GROQ_API_KEY` não está
+configurada. A suíte cobre config, orchestrator
 (roteamento), banco de dados, STT, dev tools, dispatch_chain, lembretes, memória
 contextual, providers (circuit breaker, cache, retry), telemetria, endpoints do
 dashboard web (autenticação, CSRF, rate limit, sessão), os agendadores autônomos
@@ -567,27 +585,27 @@ Windows + Linux.
 - [x] Sumário de reunião estruturado + sumário de sessão
 
 ### v0.4 — Concluído
-- [x] Dashboard web local (FastAPI + htmx) em localhost:7755
+- [x] Dashboard web local (FastAPI + JavaScript local) em localhost:7755
 - [x] Exportação para Obsidian
 - [x] Comandos encadeados naturais
 - [x] Modo reunião automático (detecta Zoom/Teams/Slack via psutil)
 - [x] TTS profile-aware
 - [x] Flag `--web`
 
-### v0.5 — Concluído
+### v0.5 — Funcionalidades incorporadas
 - [x] 73 testes — dispatch_chain, reminders e context
 - [x] Dashboard WebSocket — resposta instantânea + push de eventos em tempo real
-- [x] Editor visual de rotinas no dashboard (htmx CRUD)
+- [x] Editor visual de rotinas no dashboard (CRUD sem dependência de CDN)
 - [x] Autenticação no dashboard — cookie + login (`web.password`)
-- [x] **Pacoca.exe standalone** — todas as deps Python bundled via PyInstaller; zero pip install para o usuário final
-- [x] **Setup wizard GUI** (`Pacoca-Setup.exe`) — instala Ollama, faz login Google, cria atalho; roda em qualquer PC Windows sem Python instalado
+- [ ] **Pacoca.exe standalone** — especificação PyInstaller existe, mas o executável ainda precisa ser validado e publicado
+- [ ] **Setup wizard GUI** (`Pacoca-Setup.exe`) — código-fonte existe, mas não há binário publicado; use `setup.bat`
 - [x] Token Google unificado (`google_token.json`) — cobre Calendar + Drive em um único OAuth
 
 ### v0.6 — Concluído
 - [x] Substituição do Anthropic por **Groq** como fallback cloud (free tier, llama3)
-- [x] `credentials.json` OAuth embutido diretamente no `Pacoca-Setup.exe` via PyInstaller
-- [x] OAuth Google simplificado no wizard — fluxo unificado sem etapas manuais
-- [x] Wizard baixa `Pacoca.exe` automaticamente se não encontrado na pasta
+- [x] OAuth Google unificado no código-fonte; o usuário fornece seu próprio `credentials.json`
+- [ ] Distribuição do OAuth pelo wizard — depende da validação/publicação do instalador
+- [ ] Download automático de `Pacoca.exe` — depende da primeira release publicada
 - [x] openWakeWord substituindo pvporcupine (sem API key, totalmente open-source)
 
 ### Não lançado (atual)
@@ -621,7 +639,7 @@ Windows + Linux.
 - [x] **Mensagens WhatsApp** (`modules/whatsapp.py`, via `pywhatkit`) — composição
       natural pelo LLM, sempre com confirmação explícita + whitelist de números
       (`whatsapp.allowed_numbers`) como segunda barreira de segurança
-- [x] 29 novos testes cobrindo os itens acima (329 no total)
+- [x] 29 novos testes cobrindo os itens acima (contagem histórica daquele marco)
 
 ### v0.8 — Concluído (inteligência adaptativa)
 - [x] **Roteamento semântico que aprende** (`modules/semantic_router.py`) — camada
@@ -633,7 +651,7 @@ Windows + Linux.
       "fecha ele", "e amanhã?", "e em Recife?"
 - [x] **Confiança aprendida em confirmações** (`modules/trust.py`) — deixa de
       confirmar ações de risco médio aprovadas N vezes; risco alto sempre confirma
-- [x] 20 novos testes cobrindo os itens acima (349 no total)
+- [x] 20 novos testes cobrindo os itens acima (contagem histórica daquele marco)
 
 ### Próximo
 - [ ] Streaming de resposta do LLM — tokens em tempo real no dashboard/janela de desktop

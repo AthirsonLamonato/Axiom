@@ -10,7 +10,6 @@ import threading
 import time
 from collections import deque
 from dataclasses import dataclass, field
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -109,13 +108,13 @@ def get_summary(last_n: int = 100) -> dict:
             fallbacks += 1
 
     llm_by_provider: dict[str, dict] = {}
-    for l in llms:
-        p = l.provider
+    for llm_metric in llms:
+        p = llm_metric.provider
         if p not in llm_by_provider:
             llm_by_provider[p] = {"calls": 0, "total_tokens": 0, "total_latency_ms": 0.0}
         llm_by_provider[p]["calls"] += 1
-        llm_by_provider[p]["total_tokens"] += l.prompt_tokens + l.completion_tokens
-        llm_by_provider[p]["total_latency_ms"] += l.latency_s * 1000
+        llm_by_provider[p]["total_tokens"] += llm_metric.prompt_tokens + llm_metric.completion_tokens
+        llm_by_provider[p]["total_latency_ms"] += llm_metric.latency_s * 1000
 
     # Compute avg from accumulated totals
     for p_stats in llm_by_provider.values():

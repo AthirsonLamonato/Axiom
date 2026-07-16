@@ -33,7 +33,7 @@ def show_notes(*_) -> str:
     if not os.path.exists(NOTES_FILE):
         return "Nenhuma anotação encontrada."
     with open(NOTES_FILE, encoding="utf-8") as f:
-        lines = [l for l in f.readlines() if l.strip()]
+        lines = [line for line in f.readlines() if line.strip()]
     if not lines:
         return "Nenhuma anotação encontrada."
     recent = lines[-10:]
@@ -46,7 +46,7 @@ def search_notes(query: str, *_) -> str:
         return "Nenhuma anotação encontrada."
     with open(NOTES_FILE, encoding="utf-8") as f:
         lines = f.readlines()
-    matches = [l.strip() for l in lines if query.lower() in l.lower()]
+    matches = [line.strip() for line in lines if query.lower() in line.lower()]
     if not matches:
         return f"Nenhuma anotação contém '{query}'."
     return f"Anotações com '{query}':\n" + "\n".join(matches)

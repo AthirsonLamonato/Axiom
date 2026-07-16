@@ -6,7 +6,7 @@ Usado em modo --mode text ou como fallback do modo voz.
 import logging
 
 try:
-    import readline  # habilita histórico e navegação no Linux/Mac (não disponível no Windows)
+    import readline  # noqa: F401 — ativa histórico no import (Linux/macOS)
 except ImportError:
     pass
 

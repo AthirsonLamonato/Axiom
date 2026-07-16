@@ -12,7 +12,7 @@ em vez de cadeias if/elif espalhadas pelo intent.py.
 """
 
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Callable, Literal, Optional, Type
 
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -259,12 +259,18 @@ def _exec_control_media(a: ControlMediaArgs) -> str:
 
 def _exec_git_operation(a: GitOperationArgs) -> str:
     from modules import dev_tools
-    if a.operation == "status":  return dev_tools.git_status()
-    if a.operation == "log":     return dev_tools.git_log()
-    if a.operation == "push":    return dev_tools.git_push()
-    if a.operation == "pull":    return dev_tools.git_pull()
-    if a.operation == "commit":  return dev_tools.git_commit(a.message or "update")
-    if a.operation == "branch":  return dev_tools.git_create_branch(a.branch_name or "")
+    if a.operation == "status":
+        return dev_tools.git_status()
+    if a.operation == "log":
+        return dev_tools.git_log()
+    if a.operation == "push":
+        return dev_tools.git_push()
+    if a.operation == "pull":
+        return dev_tools.git_pull()
+    if a.operation == "commit":
+        return dev_tools.git_commit(a.message or "update")
+    if a.operation == "branch":
+        return dev_tools.git_create_branch(a.branch_name or "")
     return "Operação git desconhecida."
 
 

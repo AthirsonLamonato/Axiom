@@ -72,11 +72,20 @@ def test_session_expires_after_timeout(client, monkeypatch):
     assert resp.headers["location"].startswith("/login")
 
 
-def test_dashboard_injects_csrf_header(client):
+def test_dashboard_injects_csrf_token_without_external_runtime(client):
     resp = client.get("/")
     assert resp.status_code == 200
     assert web_app._CSRF_TOKEN in resp.text
-    assert "hx-headers" in resp.text
+    assert "data-csrf" in resp.text
+    assert "/static/dashboard.js" in resp.text
+    assert "unpkg.com" not in resp.text
+
+
+def test_login_styles_remain_available_when_auth_is_enabled(client):
+    web_app.set_password("segredo")
+    resp = client.get("/static/dashboard.css")
+    assert resp.status_code == 200
+    assert "--accent" in resp.text
 
 
 class _FakeWebSocket:

@@ -11,7 +11,7 @@ profile:
 wake_word:
   enabled: true
   sensitivity: 0.5      # 0.0 (menos sensível) → 1.0 (mais sensível)
-  keyword: "paçoca"     # nome exibido no terminal (cosmético)
+  keyword: "hey jarvis" # frase real do modelo padrão quando model_path está vazio
   model_path: ""        # Caminho para modelo .onnx customizado (ex: pacoca.onnx)
                         # Deixe vazio para usar hey_jarvis como modelo de detecção
                         # Para treinar o modelo "Paçoca": github.com/dscripka/openWakeWord#training
@@ -26,7 +26,7 @@ stt:
 
 # ── IA local (Ollama) ─────────────────────────
 ai:
-  provider: groq        # ollama | groq
+  provider: ollama      # ollama (local, padrão) | groq (requer chave)
   model: llama3         # llama3 | mistral | phi3 (modelos Ollama)
   ollama_url: http://localhost:11434
   groq_model: llama-3.1-8b-instant  # sobrescrito por GROQ_MODEL no .env

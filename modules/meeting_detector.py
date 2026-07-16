@@ -119,7 +119,6 @@ def _on_meeting_start(app_name: str) -> None:
 
     try:
         from modules import transcription
-        from core.config import Config
         transcription.start("sistema")   # loopback
     except Exception:
         pass

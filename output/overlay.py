@@ -41,12 +41,10 @@ def _has_display() -> bool:
     if os.environ.get("CI") or os.environ.get("GITHUB_ACTIONS"):
         return False
 
-    if platform.system() == "Windows":
-        return bool(os.environ.get("SESSIONNAME") or os.environ.get("DISPLAY"))
-
     wayland = os.environ.get("WAYLAND_DISPLAY", "")
     if wayland:
-        runtime = os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}")
+        default_runtime = f"/run/user/{os.getuid()}" if hasattr(os, "getuid") else ""
+        runtime = os.environ.get("XDG_RUNTIME_DIR", default_runtime)
         socket_path = wayland if wayland.startswith("/") else os.path.join(runtime, wayland)
         if os.path.exists(socket_path):
             return True
@@ -59,6 +57,12 @@ def _has_display() -> bool:
                 return True
         except Exception:
             pass
+
+    if platform.system() == "Windows":
+        # Em uma sessao Windows nativa, SESSIONNAME e o indicador confiavel.
+        # DISPLAY sozinho pode vir de WSL/X11 e precisa passar pela checagem
+        # de socket acima, como nos demais sistemas.
+        return bool(os.environ.get("SESSIONNAME"))
 
     return False
 
@@ -120,7 +124,7 @@ class PacocaOverlay:
             QApplication, QLabel, QWidget, QVBoxLayout, QHBoxLayout,
             QLineEdit, QPushButton, QTextEdit, QGraphicsOpacityEffect,
         )
-        from PyQt6.QtCore import Qt, QTimer, QPropertyAnimation, QEasingCurve
+        from PyQt6.QtCore import QTimer, QPropertyAnimation, QEasingCurve
         from PyQt6.QtGui import QFont
 
         self.config = config

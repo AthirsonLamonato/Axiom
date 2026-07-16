@@ -1,0 +1,9 @@
+# Ferramentas usadas na validação local e no CI.
+-r requirements-minimal.txt
+
+fastapi>=0.115
+httpx2>=2.7
+python-multipart>=0.0.9
+pytest>=8.3
+pytest-cov>=6.0
+ruff>=0.11

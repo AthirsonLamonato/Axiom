@@ -30,12 +30,12 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install pyyaml psutil requests duckduckgo-search schedule keyboard plyer
-          pip install scikit-learn pydantic
-          pip install faster-whisper pyaudio
-          pip install google-auth google-auth-oauthlib google-api-python-client
-          pip install fastapi "uvicorn[standard]" python-multipart httpx2
-          pip install pytest
+          pip install -r requirements.txt
+          pip install -r requirements-voice.txt
+          pip install -r requirements-dev.txt
+
+      - name: Lint source
+        run: python -m ruff check core input modules output plugins storage web main.py setup_wizard.py
 
       - name: Run tests
-        run: python -m pytest tests/ -v --tb=short
+        run: python -m pytest -v --tb=short

@@ -25,8 +25,8 @@ execute `python main.py` a partir da raiz do repositório (onde está `core/`).
 
 **Erro de `pyaudio` no Windows ao instalar `requirements-voice.txt`**
 
-`pyaudio` precisa do PortAudio compilado. Use `pipwin install pyaudio` ou baixe a
-wheel pré-compilada (veja [instalacao.md](instalacao.md#4-modo-voz-stt--wake-word)).
+Use Python 3.10–3.12 e `pyaudio>=0.2.14`, que possui wheel oficial para Windows.
+Não use `pipwin`. Veja [instalacao.md](instalacao.md#4-modo-voz-stt--wake-word).
 
 ---
 

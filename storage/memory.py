@@ -7,7 +7,6 @@ import sqlite3
 import logging
 import os
 from datetime import datetime
-from pathlib import Path
 
 logger = logging.getLogger(__name__)
 

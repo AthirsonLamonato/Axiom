@@ -42,7 +42,7 @@ stt:
   noise_threshold: 300      # atualizado automaticamente pela calibração
 ```
 
-Modelos maiores = mais precisão, mais RAM/CPU. Em hardware modesto (4GB RAM), use `tiny` ou `base`.
+Modelos maiores = mais precisão, mais RAM/CPU. Em hardware modesto, use `tiny` ou `base`.
 
 ---
 
@@ -50,7 +50,7 @@ Modelos maiores = mais precisão, mais RAM/CPU. Em hardware modesto (4GB RAM), u
 
 ```yaml
 ai:
-  provider: groq            # ollama | groq
+  provider: ollama          # ollama (local, padrão) | groq (opcional)
   model: llama3              # llama3 | mistral | phi3 (Ollama)
   ollama_url: http://localhost:11434
   groq_model: llama-3.1-8b-instant
