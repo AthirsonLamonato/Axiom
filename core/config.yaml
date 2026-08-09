@@ -127,6 +127,8 @@ backup:
 # ── Privacidade e retenção de dados ──────────
 privacy:
   retention_days: 30          # dias de histórico a manter (0 = sem limpeza automática)
+  redact_sensitive: true      # mascara telefone/email/segredos antes de persistir/exibir
+  allow_screenshots: false    # opt-in local: screenshots podem conter dados privados
   # Quando ai.provider=groq, comandos são enviados para a API do Groq (online).
   # Para processamento 100% local, use ai.provider=ollama.
 

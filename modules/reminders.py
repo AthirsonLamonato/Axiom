@@ -4,10 +4,12 @@ Comandos: 'me lembra às 15h de reunião', 'me lembra em 30 minutos de fazer bac
 """
 
 import logging
+import json
 import re
 import threading
 import time
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Dict, Optional
 
 logger = logging.getLogger(__name__)
@@ -16,6 +18,53 @@ _reminders: Dict[int, dict] = {}
 _next_id = 1
 _lock = threading.Lock()
 _monitor_started = False
+STATE_PATH = Path("data/reminders.json")
+_loaded = False
+
+
+def _persist_locked() -> None:
+    STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "version": 1,
+        "next_id": _next_id,
+        "reminders": [
+            {
+                "id": rid,
+                "fire_at": item["fire_at"].isoformat(),
+                "message": item["message"],
+                "fired": bool(item["fired"]),
+            }
+            for rid, item in sorted(_reminders.items())
+        ],
+    }
+    temp = STATE_PATH.with_suffix(".json.tmp")
+    temp.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    temp.replace(STATE_PATH)
+
+
+def _ensure_loaded() -> None:
+    global _loaded, _next_id
+    if _loaded:
+        return
+    with _lock:
+        if _loaded:
+            return
+        _loaded = True
+        if not STATE_PATH.exists():
+            return
+        try:
+            payload = json.loads(STATE_PATH.read_text(encoding="utf-8"))
+            for item in payload.get("reminders", []):
+                rid = int(item["id"])
+                _reminders[rid] = {
+                    "fire_at": datetime.fromisoformat(item["fire_at"]),
+                    "message": str(item["message"]),
+                    "fired": bool(item.get("fired", False)),
+                }
+            _next_id = max(int(payload.get("next_id", 1)), max(_reminders, default=0) + 1)
+        except Exception as e:
+            logger.error("Estado de lembretes inválido; iniciando vazio: %s", e)
+            _reminders.clear()
 
 
 def _ensure_monitor() -> None:
@@ -44,21 +93,22 @@ def _fire(rid: int, message: str) -> None:
     with _lock:
         if rid in _reminders:
             _reminders[rid]["fired"] = True
+            _persist_locked()
     try:
         from output.notifier import notify
         notify("Paçoca — Lembrete", message)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("Notificação de lembrete indisponível: %s", e)
     try:
         from output import overlay
         overlay.show_message(f"Lembrete: {message}")
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("Overlay de lembrete indisponível: %s", e)
     try:
         from web.app import push_event
         push_event("reminder", f"⏰ {message}")
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("Dashboard de lembrete indisponível: %s", e)
     logger.info("Lembrete #%d disparado: %s", rid, message)
     print(f"\n[Paçoca] ⏰ Lembrete: {message}")
 
@@ -104,6 +154,7 @@ def _extract_message(raw: str) -> str:
 
 def add(raw: str, *_) -> str:
     global _next_id
+    _ensure_loaded()
     fire_at = _parse_fire_time(raw)
     if fire_at is None:
         return (
@@ -118,6 +169,7 @@ def add(raw: str, *_) -> str:
         rid = _next_id
         _next_id += 1
         _reminders[rid] = {"fire_at": fire_at, "message": message, "fired": False}
+        _persist_locked()
 
     _ensure_monitor()
 
@@ -129,6 +181,7 @@ def add(raw: str, *_) -> str:
 
 
 def list_reminders(*_) -> str:
+    _ensure_loaded()
     with _lock:
         pending = [(rid, r) for rid, r in _reminders.items() if not r["fired"]]
     if not pending:
@@ -140,15 +193,18 @@ def list_reminders(*_) -> str:
 
 
 def cancel(raw: str = "", *_) -> str:
+    _ensure_loaded()
     m = re.search(r"\d+", str(raw))
     if m:
         rid = int(m.group())
         with _lock:
             if rid in _reminders:
                 del _reminders[rid]
+                _persist_locked()
                 return f"Lembrete #{rid} cancelado."
         return f"Lembrete #{rid} não encontrado."
     with _lock:
         n = sum(1 for r in _reminders.values() if not r["fired"])
         _reminders.clear()
+        _persist_locked()
     return f"{n} lembrete(s) cancelado(s)."

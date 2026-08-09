@@ -78,6 +78,11 @@ def learn_vocabulary_from_correction(heard: str, intended: str):
     logger.info("Vocabulário aprendido: '%s' → '%s'", heard, intended)
 
 
+def rollback_last(*_) -> str:
+    from storage.memory import rollback_last_learning
+    return rollback_last_learning()
+
+
 def detect_misrecognition(raw: str, command_worked: bool) -> None:
     """
     Se um comando não funcionou, analisa se o problema pode ser de transcrição
@@ -161,19 +166,19 @@ def _fire_insight() -> None:
         from storage.file_store import save_text
         path = save_text(report, prefix="learning_insight", ext="md")
         logger.info("Insight de aprendizado salvo em %s", path)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("Não foi possível salvar insight de aprendizado: %s", e)
 
     try:
         from output.notifier import notify
         notify("Paçoca — Aprendizado", "Novo insight de uso disponível. Diga 'o que você aprendeu'.")
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("Notificação de aprendizado indisponível: %s", e)
     try:
         from web.app import push_event
         push_event("info", "🧠 Novo insight de aprendizado gerado")
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("Dashboard de aprendizado indisponível: %s", e)
 
 
 def _scheduler_loop() -> None:

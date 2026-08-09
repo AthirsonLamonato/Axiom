@@ -275,6 +275,7 @@ ROUTES: list[tuple[str, str, bool]] = [
                                           "core.orchestrator:teach_vocabulary",  False),
     (r"(relatório|relatorio)\s+de\s+aprendizado", "core.orchestrator:learning_report", False),
     (r"o\s+que\s+você\s+(aprendeu|sabe)",  "core.orchestrator:learning_report",  False),
+    (r"desfaz\s+(?:o\s+)?(?:último|ultimo)\s+aprendizado", "modules.learner:rollback_last", True),
 
     # Backup
     (r"(?:faz?|faz\s+um?|executa)\s+backup",  "modules.backup:backup_all",          False),
@@ -645,8 +646,8 @@ class Orchestrator:
         try:
             from modules import web_server
             web_server.set_orc(self)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Resolução de anáfora indisponível: %s", e)
         self._start_backup_scheduler()
 
     def _start_backup_scheduler(self) -> None:
@@ -865,8 +866,8 @@ class Orchestrator:
             if resolved_cmd and resolved_cmd != command:
                 logger.info("Anáfora resolvida: %r → %r", command, resolved_cmd)
                 command = resolved_cmd
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Telemetria indisponível: %s", e)
 
         command_lower = command.lower().strip()
         logger.debug("Despachando: %s", command_lower)
@@ -946,8 +947,8 @@ class Orchestrator:
             try:
                 from modules.clipboard_tools import set_last_response
                 set_last_response(response)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("Cache de clipboard indisponível: %s", e)
 
         # Log na KB e extração de aprendizado em background
         try:
@@ -955,8 +956,8 @@ class Orchestrator:
             log_conversation(command, response or "")
             if response:
                 extract_and_learn(command, response)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("Persistência de conversa indisponível: %s", e)
 
         self._sync_tts_profile()
         return response
@@ -1166,9 +1167,18 @@ class Orchestrator:
     def _confirm(self, action: str) -> bool:
         """Usa canal ativo de confirmação; sem canal, bloqueia."""
         try:
+            from modules.action_policy import classify_text
             from modules.intent import _confirm_action
 
-            return _confirm_action("direct_command", {"action": action})
+            policy = classify_text(action)
+            if not policy.requires_confirmation:
+                return True
+            # direct_command desconhecido é fail-closed; passa metadados da classificação.
+            return _confirm_action("direct_command", {
+                "action": action,
+                "risk": policy.risk,
+                "external": policy.external,
+            })
         except Exception as exc:
             logger.warning("Confirmação falhou para '%s': %s", action, exc)
             return False

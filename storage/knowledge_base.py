@@ -112,6 +112,8 @@ def save_memory(
     if mem_type not in MEMORY_TYPES:
         mem_type = "facts"
 
+    from modules.privacy_guard import sanitize_text
+    content = sanitize_text(content)
     tags = tags or []
     key = re.sub(r"[^\w_-]", "_", key.lower().strip())[:60]
     importance = max(0.0, min(1.0, importance))
@@ -309,6 +311,9 @@ def build_context(query: str = "", max_entries: int = 8) -> str:
 
 def log_conversation(user_input: str, response: str):
     """Appenda o par pergunta/resposta no arquivo de conversa do dia."""
+    from modules.privacy_guard import sanitize_text
+    user_input = sanitize_text(user_input)
+    response = sanitize_text(response)
     today = _today()
     path = CONV_DIR / f"{today}.md"
 
@@ -346,7 +351,8 @@ def _learn_worker(user_input: str, response: str):
     try:
         from core.config import Config
         config = Config()
-    except Exception:
+    except Exception as e:
+        logger.debug("Autoaprendizado sem configuração: %s", e)
         return
 
     # Opt-in: só aprende se habilitado explicitamente
@@ -392,12 +398,14 @@ def remember(statement: str) -> str:
     Usuário diz 'lembra que X' — salva como fato/preferência.
     Usa LLM para classificar o tipo e extrair o key.
     """
+    from modules.privacy_guard import sanitize_text
+    safe_statement = sanitize_text(statement)
     try:
         from core.config import Config
         from core.providers import get_client
         client = get_client(Config())
         raw = client.chat(
-            [{"role": "user", "content": statement}],
+            [{"role": "user", "content": safe_statement}],
             system='Classify this user statement. Reply JSON only: {"type":"preference|habit|project|correction|fact","key":"short_id","importance":0.5}',
             max_tokens=80,
         )
@@ -407,16 +415,16 @@ def remember(statement: str) -> str:
             save_memory(
                 mem_type=meta.get("type", "facts"),
                 key=meta.get("key", "user_note"),
-                content=statement,
+                content=safe_statement,
                 importance=float(meta.get("importance", 0.7)),
             )
-            return f"Memorizado: {statement}"
-    except Exception:
-        pass
+            return f"Memorizado: {safe_statement}"
+    except Exception as e:
+        logger.debug("Classificação de memória indisponível; usando fallback: %s", e)
 
     # Fallback sem LLM
-    save_memory("facts", "user_note", statement, importance=0.7)
-    return f"Memorizado: {statement}"
+    save_memory("facts", "user_note", safe_statement, importance=0.7)
+    return f"Memorizado: {safe_statement}"
 
 
 def forget(key_or_content: str) -> str:

@@ -246,4 +246,7 @@ def test_direct_route_uses_shared_confirmation_channel(orchestrator, monkeypatch
     monkeypatch.setattr("modules.intent._confirm_action", confirm)
 
     assert orchestrator._confirm("git pull") is True
-    assert captured == {"name": "direct_command", "args": {"action": "git pull"}}
+    assert captured == {
+        "name": "direct_command",
+        "args": {"action": "git pull", "risk": "medium", "external": False},
+    }

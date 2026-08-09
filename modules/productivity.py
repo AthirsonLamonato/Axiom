@@ -3,15 +3,50 @@ modules/productivity.py — Monitoramento de uso e timer de foco (Pomodoro)
 """
 
 import logging
+import json
 import time
 import threading
 from collections import defaultdict
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
 _tracker: "UsageTracker | None" = None
 _pomodoro: "PomodoroTimer | None" = None
+POMODORO_STATE_PATH = Path("data/pomodoro.json")
+
+
+def _save_pomodoro(timer: "PomodoroTimer") -> None:
+    POMODORO_STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    temp = POMODORO_STATE_PATH.with_suffix(".json.tmp")
+    temp.write_text(
+        json.dumps({"minutes": timer.minutes, "end_at": timer._end_at.isoformat()}),
+        encoding="utf-8",
+    )
+    temp.replace(POMODORO_STATE_PATH)
+
+
+def _clear_pomodoro_state() -> None:
+    POMODORO_STATE_PATH.unlink(missing_ok=True)
+
+
+def _restore_pomodoro() -> "PomodoroTimer | None":
+    if not POMODORO_STATE_PATH.exists():
+        return None
+    try:
+        payload = json.loads(POMODORO_STATE_PATH.read_text(encoding="utf-8"))
+        end_at = datetime.fromisoformat(payload["end_at"])
+        if end_at <= datetime.now():
+            _clear_pomodoro_state()
+            return None
+        timer = PomodoroTimer(int(payload["minutes"]), end_at=end_at)
+        timer.start()
+        return timer
+    except Exception as e:
+        logger.error("Estado do Pomodoro inválido: %s", e)
+        _clear_pomodoro_state()
+        return None
 
 
 # ── Rastreamento de uso ────────────────────────────────────────────────
@@ -102,12 +137,13 @@ class UsageTracker:
 # ── Timer de foco (Pomodoro) ───────────────────────────────────────────
 
 class PomodoroTimer:
-    def __init__(self, minutes: int, on_finish=None):
+    def __init__(self, minutes: int, on_finish=None, end_at: datetime | None = None):
         self.minutes = minutes
         self.on_finish = on_finish
         self._thread: "threading.Thread | None" = None
         self._running = False
         self._started_at: "datetime | None" = None
+        self._end_at = end_at
 
     def start(self) -> str:
         if self._running:
@@ -115,7 +151,10 @@ class PomodoroTimer:
             remaining = self.minutes - elapsed
             return f"Timer já ativo: {remaining} minutos restantes."
         self._running = True
-        self._started_at = datetime.now()
+        now = datetime.now()
+        self._end_at = self._end_at or (now + timedelta(minutes=self.minutes))
+        self._started_at = self._end_at - timedelta(minutes=self.minutes)
+        _save_pomodoro(self)
         self._thread = threading.Thread(target=self._run, daemon=True)
         self._thread.start()
         return f"Timer de foco iniciado: {self.minutes} minutos. Bom trabalho!"
@@ -124,23 +163,28 @@ class PomodoroTimer:
         if not self._running:
             return "Nenhum timer ativo."
         self._running = False
+        _clear_pomodoro_state()
         return "Timer cancelado."
 
     def status(self) -> str:
         if not self._running:
             return "Nenhum timer ativo."
-        elapsed = int((datetime.now() - self._started_at).total_seconds())
-        remaining = self.minutes * 60 - elapsed
+        remaining = int((self._end_at - datetime.now()).total_seconds())
         if remaining <= 0:
             return "Timer concluído."
         m, s = divmod(remaining, 60)
         return f"Timer de foco: {m:02d}:{s:02d} restantes."
 
     def _run(self):
-        time.sleep(self.minutes * 60)
+        while self._running:
+            remaining = (self._end_at - datetime.now()).total_seconds()
+            if remaining <= 0:
+                break
+            time.sleep(min(1, remaining))
         if not self._running:
             return
         self._running = False
+        _clear_pomodoro_state()
         from output.notifier import notify
         notify("Paçoca — Pomodoro", f"Sessão de {self.minutes} minutos concluída! Descanse.")
         try:
@@ -204,6 +248,8 @@ def focus_start(minutes_str: str = "25", *_) -> str:
         minutes = int(str(minutes_str).strip())
     except (ValueError, TypeError):
         minutes = 25
+    if _pomodoro is not None and _pomodoro._running:
+        return _pomodoro.start()
     _pomodoro = PomodoroTimer(minutes)
     return _pomodoro.start()
 
@@ -217,12 +263,18 @@ def focus_start_hours(hours_str: str = "1", *_) -> str:
 
 
 def focus_stop(*_) -> str:
+    global _pomodoro
+    if _pomodoro is None:
+        _pomodoro = _restore_pomodoro()
     if _pomodoro is None:
         return "Nenhum timer ativo."
     return _pomodoro.stop()
 
 
 def focus_status(*_) -> str:
+    global _pomodoro
+    if _pomodoro is None:
+        _pomodoro = _restore_pomodoro()
     if _pomodoro is None:
         return "Nenhum timer ativo."
     return _pomodoro.status()

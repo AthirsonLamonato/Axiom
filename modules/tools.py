@@ -377,7 +377,7 @@ REGISTRY: dict[str, ToolDef] = {
         schema_model=GitOperationArgs,
         executor=_exec_git_operation,
         risk="medium",
-        requires_confirmation=False,  # push/commit tratados por _needs_confirmation em intent.py
+        requires_confirmation=False,  # operação é resolvida pela política central
     ),
     "remember": ToolDef(
         schema_model=RememberArgs,
@@ -466,13 +466,42 @@ def execute(name: str, validated: BaseModel) -> str:
 def needs_confirmation(name: str) -> bool:
     """Retorna True se a ferramenta requer confirmação explícita."""
     tool = REGISTRY.get(name)
-    return bool(tool and tool.requires_confirmation)
+    if not tool:
+        return False
+    from modules.action_policy import resolve
+    return resolve(
+        name,
+        base_risk=tool.risk,
+        base_confirmation=tool.requires_confirmation,
+    ).requires_confirmation
 
 
-def get_risk(name: str) -> str:
+def get_risk(name: str, args: Optional[dict] = None) -> str:
     """Retorna o nível de risco da ferramenta."""
     tool = REGISTRY.get(name)
-    return tool.risk if tool else "unknown"
+    if not tool:
+        return "unknown"
+    from modules.action_policy import resolve
+    return resolve(
+        name,
+        args,
+        base_risk=tool.risk,
+        base_confirmation=tool.requires_confirmation,
+    ).risk
+
+
+def get_policy(name: str, args: Optional[dict] = None):
+    """Fonte pública única para risco/confirmacão/autoconfiança."""
+    from modules.action_policy import ActionPolicy, resolve
+    tool = REGISTRY.get(name)
+    if not tool:
+        return ActionPolicy("unknown", True)
+    return resolve(
+        name,
+        args,
+        base_risk=tool.risk,
+        base_confirmation=tool.requires_confirmation,
+    )
 
 
 def known_tools() -> set[str]:

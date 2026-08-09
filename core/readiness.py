@@ -57,7 +57,7 @@ def _check_ollama(config, required: bool) -> Check:
             False,
             required,
             f"indisponível: {type(exc).__name__}",
-            "instale/inicie o Ollama e execute: ollama pull llama3",
+            f"instale/inicie o Ollama e execute: ollama pull {expected}",
         )
 
 
@@ -154,6 +154,20 @@ def run_checks(config, mode: str = "voice", web: bool = False) -> list[Check]:
         _check_ollama(config, provider in ("ollama", "auto")),
         _check_groq(config, provider == "groq"),
     ]
+    try:
+        from core.hardware_profile import detect
+        profile = detect()
+        checks.append(Check(
+            "Perfil de hardware",
+            True,
+            False,
+            (
+                f"{profile.name}: RAM {profile.ram_gb} GB, CPU {profile.cpu_threads} threads, "
+                f"VRAM detectada {profile.vram_gb} GB; recomenda {profile.ollama_model}"
+            ),
+        ))
+    except Exception as exc:
+        checks.append(Check("Perfil de hardware", False, False, type(exc).__name__))
 
     if config.get("tts.enabled", True):
         tts_ok = _has_module("edge_tts") or _has_module("pyttsx3")

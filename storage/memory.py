@@ -4,6 +4,7 @@ Registra interações, preferências, vocabulário aprendido e padrões de uso.
 """
 
 import sqlite3
+import json
 import logging
 import os
 from datetime import datetime
@@ -80,6 +81,16 @@ def init():
                 updated_at  TEXT    NOT NULL
             );
 
+            CREATE TABLE IF NOT EXISTS learning_audit (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                ts          TEXT NOT NULL,
+                kind        TEXT NOT NULL,
+                item_key    TEXT NOT NULL,
+                before_json TEXT,
+                after_json  TEXT NOT NULL,
+                undone      INTEGER DEFAULT 0
+            );
+
             CREATE INDEX IF NOT EXISTS idx_interactions_ts ON interactions(ts);
             CREATE INDEX IF NOT EXISTS idx_usage_count ON usage_stats(count DESC);
         """)
@@ -91,12 +102,16 @@ def init():
 def log_interaction(raw_input: str, response: str, action: str = "",
                     resolved: str = "", success: bool = True, source: str = "voice"):
     try:
+        from modules.privacy_guard import sanitize_text
+        safe_raw = sanitize_text(raw_input)
+        safe_resolved = sanitize_text(resolved or raw_input)
+        safe_response = sanitize_text(response)
         with _connect() as conn:
             conn.execute(
                 "INSERT INTO interactions (ts, raw_input, resolved, action, response, success, source) "
                 "VALUES (?,?,?,?,?,?,?)",
-                (datetime.now().isoformat(), raw_input, resolved or raw_input,
-                 action, response, int(success), source),
+                (datetime.now().isoformat(), safe_raw, safe_resolved,
+                 action, safe_response, int(success), source),
             )
     except Exception as e:
         logger.error("Erro ao registrar interação: %s", e)
@@ -120,6 +135,9 @@ def add_vocabulary(heard: str, intended: str, confidence: float = 1.0):
         return
     try:
         with _connect() as conn:
+            previous = conn.execute(
+                "SELECT intended, confidence, uses FROM vocabulary WHERE heard=?", (heard,)
+            ).fetchone()
             conn.execute(
                 "INSERT INTO vocabulary (heard, intended, confidence, uses, created_at) "
                 "VALUES (?,?,?,1,?) "
@@ -128,6 +146,20 @@ def add_vocabulary(heard: str, intended: str, confidence: float = 1.0):
                 "  confidence=MAX(confidence, excluded.confidence), "
                 "  uses=uses+1",
                 (heard, intended, confidence, datetime.now().isoformat()),
+            )
+            current = conn.execute(
+                "SELECT intended, confidence, uses FROM vocabulary WHERE heard=?", (heard,)
+            ).fetchone()
+            conn.execute(
+                "INSERT INTO learning_audit "
+                "(ts, kind, item_key, before_json, after_json) VALUES (?,?,?,?,?)",
+                (
+                    datetime.now().isoformat(),
+                    "vocabulary",
+                    heard,
+                    json.dumps(dict(previous), ensure_ascii=False) if previous else None,
+                    json.dumps(dict(current), ensure_ascii=False),
+                ),
             )
     except Exception as e:
         logger.error("Erro ao salvar vocabulário: %s", e)
@@ -141,8 +173,36 @@ def get_vocabulary() -> dict[str, str]:
                 "SELECT heard, intended FROM vocabulary WHERE confidence >= 0.7 ORDER BY uses DESC"
             ).fetchall()
         return {r["heard"]: r["intended"] for r in rows}
-    except Exception:
+    except Exception as e:
+        logger.debug("Falha ao ler vocabulário: %s", e)
         return {}
+
+
+def rollback_last_learning() -> str:
+    """Desfaz a última alteração auditada de vocabulário."""
+    try:
+        with _connect() as conn:
+            row = conn.execute(
+                "SELECT id, kind, item_key, before_json FROM learning_audit "
+                "WHERE undone=0 ORDER BY id DESC LIMIT 1"
+            ).fetchone()
+            if not row:
+                return "Nenhum aprendizado auditado para desfazer."
+            if row["kind"] != "vocabulary":
+                return "Tipo de aprendizado ainda não suporta rollback."
+            if row["before_json"] is None:
+                conn.execute("DELETE FROM vocabulary WHERE heard=?", (row["item_key"],))
+            else:
+                before = json.loads(row["before_json"])
+                conn.execute(
+                    "UPDATE vocabulary SET intended=?, confidence=?, uses=? WHERE heard=?",
+                    (before["intended"], before["confidence"], before["uses"], row["item_key"]),
+                )
+            conn.execute("UPDATE learning_audit SET undone=1 WHERE id=?", (row["id"],))
+        return f"Último aprendizado desfeito: '{row['item_key']}'."
+    except Exception as e:
+        logger.error("Erro ao desfazer aprendizado: %s", e, exc_info=True)
+        return f"Erro ao desfazer aprendizado: {e}"
 
 
 def apply_vocabulary(text: str) -> str:
@@ -275,7 +335,8 @@ def get_trust(tool: str) -> dict:
                 "SELECT approvals, denials, streak FROM confirm_trust WHERE tool=?", (tool,)
             ).fetchone()
         return dict(row) if row else {"approvals": 0, "denials": 0, "streak": 0}
-    except Exception:
+    except Exception as e:
+        logger.debug("Falha ao ler confiança de '%s': %s", tool, e)
         return {"approvals": 0, "denials": 0, "streak": 0}
 
 
@@ -286,7 +347,8 @@ def get_all_trust() -> list[dict]:
                 "SELECT tool, approvals, denials, streak FROM confirm_trust ORDER BY streak DESC"
             ).fetchall()
         return [dict(r) for r in rows]
-    except Exception:
+    except Exception as e:
+        logger.debug("Falha ao listar confiança: %s", e)
         return []
 
 

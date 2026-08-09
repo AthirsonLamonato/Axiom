@@ -583,6 +583,8 @@ def _make_app():
 
     @app.get("/api/routines-html", response_class=HTMLResponse)
     async def routines_html():
+        from modules.routines import ACTION_SPECS
+
         routines = {}
         if _orchestrator:
             try:
@@ -609,13 +611,17 @@ def _make_app():
             )
         if not html:
             html = '<div class="empty">Nenhuma rotina configurada.</div>'
-        html += """
+        options = "".join(
+            f'<option value="{html_lib.escape(action)}">{html_lib.escape(spec["label"])}</option>'
+            for action, spec in ACTION_SPECS.items()
+        )
+        html += f"""
         <form class="add-form"
               data-post="/api/routines/add">
           <input type="text" name="name" placeholder="nome_rotina" required style="max-width:130px">
           <input type="text" name="label" placeholder="Descrição" required>
-          <input type="text" name="action" placeholder="ação (ex: notify)" required style="max-width:120px">
-          <input type="text" name="target" placeholder="target/mensagem">
+          <select name="action" required aria-label="Ação da rotina">{options}</select>
+          <input type="text" name="target" placeholder="aplicativo, mensagem ou valor">
           <button type="submit">+ Adicionar</button>
         </form>"""
         return HTMLResponse(html)
@@ -632,24 +638,35 @@ def _make_app():
             return HTMLResponse('<div class="empty">Token CSRF inválido.</div>', status_code=403)
         if _orchestrator:
             try:
+                from modules.routines import build_step, validate_routine_name
                 import yaml
+
+                safe_name = validate_routine_name(name)
+                safe_label = label.strip()
+                if not safe_label or len(safe_label) > 80:
+                    raise ValueError("Descrição deve ter entre 1 e 80 caracteres.")
                 routines = dict(_orchestrator.config.get("routines", {}) or {})
-                step: dict = {"action": action.strip()}
-                if target.strip():
-                    step["target"] = target.strip()
-                routines[name.strip()] = {"name": label.strip(), "steps": [step]}
+                step = build_step(action, target)
+                routines[safe_name] = {"name": safe_label, "steps": [step]}
                 _orchestrator.config.set("routines", routines)
-                try:
-                    cfg_path = _orchestrator.config._path
-                    with open(cfg_path, "r", encoding="utf-8") as f:
-                        data = yaml.safe_load(f)
+                cfg_path = getattr(_orchestrator.config, "_local_path", None)
+                if cfg_path:
+                    cfg_path = Path(cfg_path)
+                    data = yaml.safe_load(cfg_path.read_text(encoding="utf-8")) if cfg_path.exists() else {}
+                    data = data or {}
                     data["routines"] = routines
-                    with open(cfg_path, "w", encoding="utf-8") as f:
-                        yaml.dump(data, f, allow_unicode=True, default_flow_style=False)
-                except Exception:
-                    pass
+                    temp = cfg_path.with_suffix(".yaml.tmp")
+                    temp.write_text(
+                        yaml.safe_dump(data, allow_unicode=True, sort_keys=False),
+                        encoding="utf-8",
+                    )
+                    temp.replace(cfg_path)
             except Exception as exc:
-                return HTMLResponse(f'<div class="empty">Erro: {html_lib.escape(str(exc))}</div>')
+                logger.warning("Rotina rejeitada: %s", exc)
+                return HTMLResponse(
+                    f'<div class="empty">Erro: {html_lib.escape(str(exc))}</div>',
+                    status_code=400,
+                )
         return await routines_html()
 
     @app.post("/api/routines/delete/{name}", response_class=HTMLResponse)
@@ -662,17 +679,21 @@ def _make_app():
                 routines = dict(_orchestrator.config.get("routines", {}) or {})
                 routines.pop(name, None)
                 _orchestrator.config.set("routines", routines)
-                try:
-                    cfg_path = _orchestrator.config._path
-                    with open(cfg_path, "r", encoding="utf-8") as f:
-                        data = yaml.safe_load(f)
+                cfg_path = getattr(_orchestrator.config, "_local_path", None)
+                if cfg_path:
+                    cfg_path = Path(cfg_path)
+                    data = yaml.safe_load(cfg_path.read_text(encoding="utf-8")) if cfg_path.exists() else {}
+                    data = data or {}
                     data["routines"] = routines
-                    with open(cfg_path, "w", encoding="utf-8") as f:
-                        yaml.dump(data, f, allow_unicode=True, default_flow_style=False)
-                except Exception:
-                    pass
-            except Exception:
-                pass
+                    temp = cfg_path.with_suffix(".yaml.tmp")
+                    temp.write_text(
+                        yaml.safe_dump(data, allow_unicode=True, sort_keys=False),
+                        encoding="utf-8",
+                    )
+                    temp.replace(cfg_path)
+            except Exception as exc:
+                logger.error("Falha ao excluir rotina %r: %s", name, exc)
+                return HTMLResponse('<div class="empty">Não foi possível excluir a rotina.</div>', status_code=500)
         return await routines_html()
 
     # ── JSON API ──────────────────────────────────────────────────────

@@ -209,13 +209,20 @@ reais ficam somente em configuração local ignorada pelo Git.
 
 ```yaml
 privacy:
-  retention_days: 30      # 0 = desabilita limpeza automática
+  retention_days: 30       # 0 = desabilita limpeza automática
+  redact_sensitive: true   # mascara e-mail, telefone, token e senha
+  allow_screenshots: false # opt-in: imagens podem expor dados privados
 ```
 
 Limpeza automática roda em thread daemon no boot (`main.py:_schedule_data_retention`).
 Comando manual: `limpa os dados antigos`. Limpa: `command_history`, `transcriptions`,
 `sessions` (SQLite), arquivos em `data/transcriptions|audio|recordings`, entradas antigas
 de baixa importância na knowledge base, e trunca logs > 50MB.
+
+Com `redact_sensitive: true`, memória, knowledge base, histórico de conversa,
+clipboard e OCR são sanitizados antes de persistir ou exibir. Capturas de tela
+ficam bloqueadas por padrão; habilite `allow_screenshots` somente em
+`core/config.local.yaml`, nunca no arquivo versionado.
 
 Quando `ai.provider: groq`, um aviso é exibido no boot informando que comandos são
 enviados para a API do Groq (online). Para 100% local, use `ai.provider: ollama`.

@@ -47,12 +47,12 @@ flowchart LR
 - [x] Servidor MCP inicial não publica ações destrutivas, Git ou mensagens externas.
 - [x] Comunicações externas usam simulação fail-closed; modo real exige três travas, whitelist e confirmação.
 - [x] Backup automático nunca autoriza upload cloud e informa simulação.
-- [ ] Unificar política de risco hoje dividida entre rotas, `security`, `trust` e registry.
+- [x] Unificar política de risco entre rotas, comandos diretos, `security`, `trust` e registry.
 - [ ] Criar confirmação remota autenticada antes de publicar ferramentas de escrita no MCP.
 - [x] Redigir telefones, e-mails, tokens e senhas em logs, inclusive tracebacks.
 - [x] Remover telefone pessoal da configuração versionada e adicionar `config.local.yaml` ignorado.
 - [ ] Avaliar remoção do telefone do histórico Git; exige reescrita coordenada do repositório.
-- [ ] Classificar e redigir dados sensíveis em memória, clipboard e screenshots.
+- [x] Classificar e redigir dados sensíveis em memória e clipboard; screenshots são opt-in.
 - [x] Remover `shell=True` de dev tools e resolver wrappers Windows com argumentos controlados.
 - [x] Impedir criação e sobrescrita de arquivos fora da pasta de trabalho.
 
@@ -63,17 +63,19 @@ flowchart LR
 - [ ] Criar Desktop Agent leve com conexão de saída autenticada ao servidor central.
 - [ ] Adicionar identidade, permissões e presença por dispositivo.
 - [ ] Implementar canal privado remoto sem expor Ollama ou executor na internet.
-- [ ] Persistir filas, timers e schedules para sobreviver a reinícios e suspensão.
+- [x] Persistir lembretes, Pomodoro e estado de schedules para sobreviver a reinícios.
+- [ ] Persistir futuras filas remotas quando o orquestrador multi-dispositivo existir.
 
 ### P1 — confiabilidade funcional
 
 - [ ] Adicionar testes reais por sistema operacional para apps, áudio, brilho e mídia.
 - [x] Garantir banco IANA `tzdata` no Windows para Calendar respeitar fuso configurado.
-- [ ] Verificar estado pós-ação em vez de confiar somente no retorno do subprocesso.
-- [ ] Reduzir exceções silenciosas e registrar causa útil sem vazar dados pessoais.
+- [x] Verificar estado pós-ação nos controles desktop suportados e declarar quando só houve solicitação.
+- [x] Remover exceções silenciosas dos caminhos críticos e registrar causa com redação.
+- [ ] Continuar reduzindo fallbacks silenciosos opcionais fora dos caminhos críticos.
 - [x] Tratar falhas parciais do briefing por fonte e informar seção indisponível.
 - [x] Criar manifesto SHA-256, detectar corrupção e testar restauração em pasta isolada.
-- [ ] Adicionar auditoria e rollback para aprendizado persistente.
+- [x] Adicionar auditoria e rollback para aprendizado persistente.
 
 ### P2 — custo zero e operação local
 
@@ -82,7 +84,7 @@ flowchart LR
 - [x] TTS agora usa pyttsx3 offline por padrão.
 - [ ] Integrar Piper ou Kokoro como voz local mais natural.
 - [x] Remover linguagem que apresenta free tier cloud como garantia permanente.
-- [ ] Criar perfis de modelo conforme RAM, VRAM e CPU disponíveis.
+- [x] Detectar perfil de hardware e recomendar modelos conforme RAM, VRAM e CPU.
 
 ### P2 — UX
 
@@ -91,7 +93,7 @@ flowchart LR
 - [ ] Criar painel de memória, privacidade, retenção e exclusão.
 - [ ] Mostrar progresso de tarefas longas e botão global de cancelamento.
 - [ ] Adicionar estado offline, dispositivo alvo e origem da resposta.
-- [ ] Criar editor de rotinas estruturado; evitar ação livre em texto.
+- [x] Criar editor de rotinas estruturado com allowlist e validação de parâmetros.
 
 ## Critério de promoção
 

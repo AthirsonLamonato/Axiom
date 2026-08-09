@@ -44,7 +44,9 @@ def read_clipboard(*_) -> str:
         text = pyperclip.paste()
         if not text or not text.strip():
             return "Área de transferência vazia."
-        preview = text[:400] + "\n... (truncado)" if len(text) > 400 else text
+        from modules.privacy_guard import sanitize_text
+        safe_text = sanitize_text(text)
+        preview = safe_text[:400] + "\n... (truncado)" if len(safe_text) > 400 else safe_text
         return f"Área de transferência:\n{preview}"
     except Exception as e:
         return f"Erro ao ler clipboard: {e}"

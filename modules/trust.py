@@ -37,34 +37,45 @@ def _threshold() -> int:
         return _DEFAULT_THRESHOLD
 
 
-def _is_eligible(tool: str) -> bool:
-    """Só ações de risco médio aprendem confiança — alto nunca."""
+def _is_eligible(tool: str, args: dict | None = None) -> bool:
+    """Só ações explicitamente elegíveis pela política central aprendem."""
     try:
-        from modules.tools import get_risk
-        return get_risk(tool) == "medium"
+        from modules.tools import get_policy
+        return get_policy(tool, args).can_auto_approve
     except Exception:
         return False
 
 
-def auto_approve(tool: str) -> bool:
+def _trust_key(tool: str, args: dict | None = None) -> str:
+    operation = str((args or {}).get("operation", "")).strip().lower()
+    return f"{tool}:{operation}" if operation else tool
+
+
+def _policy_subject(key: str) -> tuple[str, dict]:
+    if key.startswith("git_operation:"):
+        return "git_operation", {"operation": key.split(":", 1)[1]}
+    return key, {}
+
+
+def auto_approve(tool: str, args: dict | None = None) -> bool:
     """True se a ação já é confiável e pode pular a confirmação."""
-    if not _is_enabled() or not _is_eligible(tool):
+    if not _is_enabled() or not _is_eligible(tool, args):
         return False
     try:
         from storage.memory import get_trust
-        streak = get_trust(tool).get("streak", 0)
+        streak = get_trust(_trust_key(tool, args)).get("streak", 0)
     except Exception:
         return False
     return streak >= _threshold()
 
 
-def record(tool: str, approved: bool) -> None:
+def record(tool: str, approved: bool, args: dict | None = None) -> None:
     """Registra a decisão de confirmação (só para ações elegíveis)."""
-    if not _is_enabled() or not _is_eligible(tool):
+    if not _is_enabled() or not _is_eligible(tool, args):
         return
     try:
         from storage.memory import record_confirmation
-        record_confirmation(tool, approved)
+        record_confirmation(_trust_key(tool, args), approved)
     except Exception as e:
         logger.debug("Falha ao registrar confiança de '%s': %s", tool, e)
 
@@ -85,7 +96,8 @@ def status(*_) -> str:
     threshold = _threshold()
     trusted, learning = [], []
     for r in rows:
-        if not _is_eligible(r["tool"]):
+        tool, args = _policy_subject(r["tool"])
+        if not _is_eligible(tool, args):
             continue
         if r["streak"] >= threshold:
             trusted.append(f"  ✓ {r['tool']} (não pergunto mais)")

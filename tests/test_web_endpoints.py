@@ -144,8 +144,32 @@ def test_routines_add_accepts_valid_csrf_token(client):
         )
         assert resp.status_code == 200
         assert "r1" in resp.text
+        assert web_app._orchestrator.config.get("routines")["r1"]["steps"] == [
+            {"action": "notify", "message": "oi"}
+        ]
     finally:
         web_app._orchestrator = None
+
+
+def test_routines_add_rejects_unknown_action(client):
+    web_app._orchestrator = _FakeOrchestrator()
+    try:
+        resp = client.post(
+            "/api/routines/add",
+            data={"name": "r1", "label": "Rotina 1", "action": "shell", "target": "x"},
+            headers={"X-CSRF-Token": web_app._CSRF_TOKEN},
+        )
+        assert resp.status_code == 400
+        assert web_app._orchestrator.config.get("routines") == {}
+    finally:
+        web_app._orchestrator = None
+
+
+def test_routines_html_uses_action_allowlist(client):
+    resp = client.get("/api/routines-html")
+    assert resp.status_code == 200
+    assert '<select name="action"' in resp.text
+    assert '<input type="text" name="action"' not in resp.text
 
 
 def test_docs_page_renders(client):

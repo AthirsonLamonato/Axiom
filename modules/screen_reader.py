@@ -51,6 +51,8 @@ def read_screen(*_) -> str:
         text = _ocr(img)
         if not text:
             return "Nenhum texto detectado na tela."
+        from modules.privacy_guard import sanitize_text
+        text = sanitize_text(text)
         if len(text) > 1000:
             text = text[:1000] + "\n... (truncado — use 'lê a janela' para foco)"
         return f"Texto detectado na tela:\n{text}"
@@ -76,6 +78,8 @@ def read_region(*_) -> str:
         text = _ocr(img)
         if not text:
             return "Nenhum texto detectado na região central."
+        from modules.privacy_guard import sanitize_text
+        text = sanitize_text(text)
         if len(text) > 800:
             text = text[:800] + "\n... (truncado)"
         return f"Texto na região central:\n{text}"
@@ -87,6 +91,12 @@ def save_screenshot(*_) -> str:
     """Salva um screenshot em data/screenshots/."""
     import os
     from datetime import datetime
+    from modules.privacy_guard import screenshots_allowed
+    if not screenshots_allowed():
+        return (
+            "Screenshot bloqueado pela privacidade. Para permitir, defina "
+            "privacy.allow_screenshots: true em core/config.local.yaml."
+        )
     try:
         img = _grab_screen()
     except ImportError:

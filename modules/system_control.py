@@ -4,6 +4,8 @@ Abre/fecha apps, pastas e ferramentas do sistema dinamicamente.
 Compatível com Windows e Linux (incluindo WSL).
 """
 
+import base64
+import os
 import re
 import subprocess
 import logging
@@ -139,7 +141,7 @@ def _resolve_with_ai(name: str) -> str:
             max_tokens=30,
         )
         cmd = (raw or "").strip().split()[0] if raw else ""
-        if cmd and len(cmd) < 50:
+        if re.fullmatch(r"[A-Za-z0-9_.-]{1,50}", cmd):
             _cache_command(name, cmd)
             logger.info("AI resolveu '%s' → '%s'", name, cmd)
             return cmd
@@ -149,14 +151,23 @@ def _resolve_with_ai(name: str) -> str:
 
 
 def _run_win(cmd: str) -> bool:
-    """Executa um comando Windows via PowerShell. Retorna True se não deu erro."""
+    """Solicita abertura e valida se o launcher aceitou o comando."""
     try:
-        subprocess.Popen(
-            ["powershell.exe", "-NoProfile", "-Command", f'Start-Process "{cmd}"'],
-            start_new_session=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+        if OS == "Windows":
+            os.startfile(cmd)  # type: ignore[attr-defined]
+            return True
+        # WSL: argumento vira literal PowerShell e o script completo é codificado.
+        # Isso impede que pontuação fornecida pelo usuário vire outro comando.
+        literal = cmd.replace("'", "''")
+        script = f"Start-Process -FilePath '{literal}'"
+        encoded = base64.b64encode(script.encode("utf-16-le")).decode("ascii")
+        result = subprocess.run(
+            ["powershell.exe", "-NoProfile", "-NonInteractive", "-EncodedCommand", encoded],
+            capture_output=True, timeout=10,
         )
-        return True
-    except Exception:
+        return result.returncode == 0
+    except Exception as e:
+        logger.warning("Launcher Windows falhou para '%s': %s", cmd, e)
         return False
 
 
@@ -172,31 +183,28 @@ def open_app(name: str) -> str:
 
     # VS Code tem integração nativa WSL
     if IS_WSL and any(k in name_lower for k in ("vs code", "vscode", "visual studio code")):
-        subprocess.Popen("code .", shell=True, start_new_session=True)
-        return "Abrindo VS Code."
+        subprocess.Popen(["code", "."], start_new_session=True)
+        return "Abertura solicitada para VS Code."
 
     if IS_WSL or OS == "Windows":
         # 1. Menu Iniciar (apps instalados)
         match = _find_wsl_app(name)
         if match:
             found_name, app_id = match
-            subprocess.Popen(
-                ["powershell.exe", "-NoProfile", "-Command",
-                 f'Start-Process "shell:AppsFolder\\{app_id}"'],
-                start_new_session=True
-            )
-            return f"Abrindo {found_name.title()}."
+            if _run_win(f"shell:AppsFolder\\{app_id}"):
+                return f"Abertura solicitada para {found_name.title()}."
 
         # 2. Start-Process direto — resolve exes e .msc no PATH do Windows
-        _run_win(name)
+        if _run_win(name):
+            return f"Abertura solicitada para {name.title()}."
 
         # 3. IA: traduz nome natural → comando Windows e tenta de novo
         ai_cmd = _resolve_with_ai(name)
         if ai_cmd and ai_cmd.lower() != name.lower():
-            _run_win(ai_cmd)
-            return f"Abrindo {name.title()}."
+            if _run_win(ai_cmd):
+                return f"Abertura solicitada para {name.title()}."
 
-        return f"Abrindo {name.title()}."
+        return f"Não consegui confirmar a abertura de '{name}'."
 
     # Linux nativo
     try:
@@ -210,14 +218,21 @@ def close_app(name: str) -> str:
     import psutil
     name = _clean_name(name.strip()).lower()
     killed = []
+    pending = []
     for proc in psutil.process_iter(["name", "pid"]):
         if name in proc.info["name"].lower():
             try:
                 proc.terminate()
-                killed.append(proc.info["name"])
+                try:
+                    proc.wait(timeout=3)
+                    killed.append(proc.info["name"])
+                except psutil.TimeoutExpired:
+                    pending.append(proc.info["name"])
             except (psutil.NoSuchProcess, psutil.AccessDenied):
                 pass
-    return f"Encerrei: {', '.join(killed)}." if killed else f"Nenhum processo '{name}' encontrado."
+    if pending:
+        return f"Encerramento solicitado, mas ainda ativo: {', '.join(pending)}."
+    return f"Encerramento confirmado: {', '.join(killed)}." if killed else f"Nenhum processo '{name}' encontrado."
 
 
 # ── Pastas ─────────────────────────────────────────────────────────────
@@ -403,14 +418,19 @@ def _set_volume_windows(level: int) -> str:
         interface = devices.Activate(IAudioEndpointVolume._iid_, CLSCTX_ALL, None)
         volume = cast(interface, POINTER(IAudioEndpointVolume))
         volume.SetMasterVolumeLevelScalar(level / 100, None)
-        return f"Volume ajustado para {level}%."
+        actual = round(float(volume.GetMasterVolumeLevelScalar()) * 100)
+        if abs(actual - level) > 2:
+            return f"Volume solicitado em {level}%, mas o sistema reportou {actual}%."
+        return f"Volume confirmado em {actual}%."
     except ImportError:
         return "pycaw não instalado."
 
 
 def _set_volume_linux(level: int) -> str:
-    subprocess.run(["amixer", "-q", "sset", "Master", f"{level}%"])
-    return f"Volume ajustado para {level}%."
+    result = subprocess.run(["amixer", "-q", "sset", "Master", f"{level}%"])
+    if result.returncode != 0:
+        return "Não consegui confirmar o ajuste de volume."
+    return f"Volume solicitado em {level}%."
 
 
 def mute(*_) -> str:
@@ -424,7 +444,10 @@ def mute(*_) -> str:
             vol = cast(interface, POINTER(IAudioEndpointVolume))
             current = vol.GetMute()
             vol.SetMute(not current, None)
-            return "Som silenciado." if not current else "Som ativado."
+            actual = bool(vol.GetMute())
+            if actual == bool(current):
+                return "Não consegui confirmar a alteração do mudo."
+            return "Som silenciado." if actual else "Som ativado."
         except ImportError:
             return "pycaw não instalado."
     subprocess.run(["amixer", "-q", "sset", "Master", "toggle"])
@@ -448,15 +471,21 @@ def _adjust_brightness(delta: int) -> str:
             c = wmi.WMI(namespace="wmi")
             methods = c.WmiMonitorBrightnessMethods()[0]
             current = c.WmiMonitorBrightness()[0].CurrentBrightness
-            methods.WmiSetBrightness(max(0, min(100, current + delta)), 0)
-            return "Brilho ajustado."
+            target = max(0, min(100, current + delta))
+            methods.WmiSetBrightness(target, 0)
+            actual = c.WmiMonitorBrightness()[0].CurrentBrightness
+            if abs(int(actual) - target) > 2:
+                return f"Brilho solicitado em {target}%, mas o sistema reportou {actual}%."
+            return f"Brilho confirmado em {actual}%."
         except Exception as e:
             return f"Erro ao ajustar brilho: {e}"
     try:
         result = subprocess.run(["brightnessctl", "get"], capture_output=True, text=True)
         new_val = max(0, int(result.stdout.strip()) + delta * 10)
-        subprocess.run(["brightnessctl", "set", str(new_val)])
-        return "Brilho ajustado."
+        changed = subprocess.run(["brightnessctl", "set", str(new_val)])
+        if changed.returncode != 0:
+            return "Não consegui confirmar o ajuste de brilho."
+        return "Brilho solicitado; verificação direta indisponível neste sistema."
     except FileNotFoundError:
         return "brightnessctl não encontrado."
 

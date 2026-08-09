@@ -11,12 +11,28 @@ from modules.reminders import _parse_fire_time, _extract_message, add, list_remi
 
 
 @pytest.fixture(autouse=True)
-def reset_reminders():
+def reset_reminders(tmp_path, monkeypatch):
+    monkeypatch.setattr("modules.reminders.STATE_PATH", tmp_path / "reminders.json")
+    monkeypatch.setattr("modules.reminders._loaded", True)
     with _lock:
         _reminders.clear()
     yield
     with _lock:
         _reminders.clear()
+
+
+def test_pending_reminders_survive_reload(tmp_path, monkeypatch):
+    from modules import reminders
+    state = tmp_path / "reminders.json"
+    monkeypatch.setattr(reminders, "STATE_PATH", state)
+    reminders.add("em 60 minutos de persistir")
+
+    with reminders._lock:
+        reminders._reminders.clear()
+    monkeypatch.setattr(reminders, "_loaded", False)
+
+    result = reminders.list_reminders()
+    assert "persistir" in result
 
 
 # ── _parse_fire_time ──────────────────────────────────────────────────

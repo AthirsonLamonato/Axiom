@@ -1,6 +1,6 @@
 """Testes para o agendador automático de rotinas (modules/routines.py)."""
 
-from datetime import datetime
+from datetime import date, datetime
 
 from modules import routines
 
@@ -24,8 +24,25 @@ def test_matches_schedule_daily_ignores_days():
     assert routines._matches_schedule({"time": "07:30", "days": "daily"}, now) is True
 
 
-def test_scheduler_loop_runs_routine_once_per_day(monkeypatch):
+def test_unknown_condition_is_fail_closed():
+    assert routines._evaluate_condition("typo", datetime(2026, 6, 20, 7, 30)) is False
+
+
+def test_build_step_validates_action_and_value():
+    assert routines.build_step("notify", "olá") == {"action": "notify", "message": "olá"}
+    assert routines.build_step("set_volume", "42") == {"action": "set_volume", "target": "42"}
+
+    import pytest
+    with pytest.raises(ValueError):
+        routines.build_step("shell", "echo x")
+    with pytest.raises(ValueError):
+        routines.build_step("set_volume", "101")
+
+
+def test_scheduler_loop_runs_routine_once_per_day(monkeypatch, tmp_path):
     routines._last_run_date.clear()
+    routines._schedule_state_loaded = False
+    monkeypatch.setattr(routines, "SCHEDULE_STATE_PATH", tmp_path / "routine_schedule.json")
     fake_config = {"routines": {"teste": {"schedule": {"time": "10:00", "days": "daily"}}}}
     monkeypatch.setattr(routines, "_get_config", lambda: type(
         "C", (), {"get": lambda self, k, d=None: fake_config.get(k, d)}
@@ -46,3 +63,18 @@ def test_scheduler_loop_runs_routine_once_per_day(monkeypatch):
     routines._scheduler_loop()
 
     assert called == ["teste"]
+    assert routines.SCHEDULE_STATE_PATH.exists()
+
+
+def test_schedule_state_survives_restart(monkeypatch, tmp_path):
+    state_path = tmp_path / "routine_schedule.json"
+    monkeypatch.setattr(routines, "SCHEDULE_STATE_PATH", state_path)
+    routines._last_run_date.clear()
+    routines._last_run_date["teste"] = date(2026, 6, 16)
+    routines._save_schedule_state()
+
+    routines._last_run_date.clear()
+    routines._schedule_state_loaded = False
+    routines._load_schedule_state()
+
+    assert routines._last_run_date == {"teste": date(2026, 6, 16)}

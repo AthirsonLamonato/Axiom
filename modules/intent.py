@@ -496,30 +496,14 @@ _NLU_SYSTEM = (
 _CONFIDENCE_THRESHOLD = 0.70  # abaixo disso → cai para LLM
 _clf_state: dict = {}         # singleton lazy
 
-# Ações que requerem confirmação mesmo vindas do NLU
-_NEEDS_CONFIRM: set[tuple] = {
-    ('close_application',),
-    ('git_operation', 'push'),
-    ('git_operation', 'commit'),
-    ('git_operation', 'pull'),
-}
-
-
 def _needs_confirmation(name: str, args: dict) -> bool:
     """
     Verifica se a ação requer confirmação.
     Combina a flag do ToolRegistry com a lista de operações específicas
     (ex: git push/commit são destrutivos mas git status não é).
     """
-    try:
-        from modules.tools import needs_confirmation as registry_needs_confirm
-        if registry_needs_confirm(name):
-            return True
-    except Exception:
-        pass
-    # Operações git destrutivas (push/commit) requerem confirmação mesmo sem flag no registry
-    operation = args.get('operation')
-    return (name, operation) in _NEEDS_CONFIRM
+    from modules.tools import get_policy
+    return get_policy(name, args).requires_confirmation
 
 
 def _confirm_action(name: str, args: dict) -> bool:
@@ -529,20 +513,25 @@ def _confirm_action(name: str, args: dict) -> bool:
     """
     try:
         from core.config import Config
-        if not Config().get("security.confirm_critical", True):
-            return True
+        confirmations_enabled = Config().get("security.confirm_critical", True)
     except Exception:
-        pass
+        confirmations_enabled = True
+
+    from modules.tools import get_policy
+    policy = get_policy(name, args)
+    # Fail-closed: risco alto/externo nunca é liberado por configuração global.
+    if not confirmations_enabled and policy.risk not in ("high", "unknown") and not policy.external:
+        return True
 
     # Confiança aprendida: ações de risco MÉDIO já aprovadas N vezes seguidas
     # passam direto. Risco alto nunca é elegível (ver modules/trust.py).
     try:
         from modules import trust
-        if trust.auto_approve(name):
+        if trust.auto_approve(name, args):
             logger.info("Confirmação auto-aprovada por confiança aprendida: %s", name)
             return True
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("Falha ao consultar confiança de '%s': %s", name, e)
 
     op     = args.get('operation') or args.get('action') or ''
     target = args.get('name') or args.get('message') or args.get('branch_name') or ''
@@ -569,9 +558,9 @@ def _confirm_action(name: str, args: dict) -> bool:
         # Aprende com a decisão real do usuário (só ações elegíveis são contadas)
         try:
             from modules import trust
-            trust.record(name, decision)
-        except Exception:
-            pass
+            trust.record(name, decision, args)
+        except Exception as e:
+            logger.debug("Falha ao registrar confirmação de '%s': %s", name, e)
         return decision
 
     # Canal 3: nenhum canal disponível → bloqueia por segurança

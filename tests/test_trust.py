@@ -19,15 +19,15 @@ def fresh_mem(tmp_path, monkeypatch):
 
 
 def test_trusts_after_threshold(fresh_mem, monkeypatch):
-    monkeypatch.setattr("modules.tools.get_risk", lambda n: "medium")
-    assert trust.auto_approve("git_operation") is False
+    args = {"operation": "pull"}
+    assert trust.auto_approve("git_operation", args) is False
     for _ in range(3):
-        trust.record("git_operation", True)
-    assert trust.auto_approve("git_operation") is True
+        trust.record("git_operation", True, args)
+    assert trust.auto_approve("git_operation", args) is True
 
 
 def test_denial_resets_trust(fresh_mem, monkeypatch):
-    monkeypatch.setattr("modules.tools.get_risk", lambda n: "medium")
+    monkeypatch.setattr("modules.tools.get_policy", lambda n, args=None: type("P", (), {"can_auto_approve": True})())
     for _ in range(3):
         trust.record("x", True)
     assert trust.auto_approve("x") is True
@@ -36,14 +36,23 @@ def test_denial_resets_trust(fresh_mem, monkeypatch):
 
 
 def test_high_risk_never_auto_approved(fresh_mem, monkeypatch):
-    monkeypatch.setattr("modules.tools.get_risk", lambda n: "high")
     for _ in range(10):
         trust.record("send_whatsapp_message", True)
     assert trust.auto_approve("send_whatsapp_message") is False
 
 
+def test_status_lists_operation_specific_trust(fresh_mem):
+    args = {"operation": "pull"}
+    for _ in range(3):
+        trust.record("git_operation", True, args)
+
+    result = trust.status()
+
+    assert "git_operation:pull" in result
+
+
 def test_disabled_never_trusts(fresh_mem, monkeypatch):
-    monkeypatch.setattr("modules.tools.get_risk", lambda n: "medium")
+    monkeypatch.setattr("modules.tools.get_policy", lambda n, args=None: type("P", (), {"can_auto_approve": True})())
     monkeypatch.setattr(trust, "_is_enabled", lambda: False)
     for _ in range(5):
         trust.record("git_operation", True)

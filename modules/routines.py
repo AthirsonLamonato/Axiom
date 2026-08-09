@@ -2,10 +2,13 @@
 modules/routines.py — Automação de rotinas configuráveis com suporte a condições
 """
 
+import json
 import logging
+import re
 import threading
 import time
 from datetime import datetime, date, timedelta
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -14,6 +17,80 @@ _scheduler_thread: "threading.Thread | None" = None
 _last_run_date: dict = {}   # nome da rotina -> date() do último disparo automático
 _SCHEDULER_INTERVAL = 60    # segundos entre verificações
 _FIRE_WINDOW = timedelta(minutes=2)  # tolerância p/ não perder o minuto-alvo por drift do loop
+SCHEDULE_STATE_PATH = Path("data/routine_schedule.json")
+_schedule_state_loaded = False
+
+ACTION_SPECS = {
+    "open_app": {"label": "Abrir aplicativo", "argument": "target"},
+    "close_app": {"label": "Fechar aplicativo", "argument": "target"},
+    "set_volume": {"label": "Definir volume", "argument": "target"},
+    "notify": {"label": "Notificação local", "argument": "message"},
+    "save_transcriptions": {"label": "Salvar transcrições", "argument": None},
+    "close_overlay": {"label": "Fechar overlay", "argument": None},
+    "daily_report": {"label": "Relatório diário", "argument": None},
+    "focus": {"label": "Iniciar foco", "argument": "target"},
+}
+
+
+def build_step(action: str, value: str = "") -> dict:
+    """Valida e normaliza uma etapa criada por interface externa."""
+    action = action.strip()
+    if action not in ACTION_SPECS:
+        raise ValueError("Ação de rotina não permitida.")
+    value = value.strip()
+    if len(value) > 200:
+        raise ValueError("Parâmetro da rotina excede 200 caracteres.")
+    argument = ACTION_SPECS[action]["argument"]
+    if argument and not value:
+        raise ValueError("Esta ação exige um parâmetro.")
+    if action == "set_volume":
+        try:
+            volume = int(value)
+        except ValueError as exc:
+            raise ValueError("Volume deve ser um número entre 0 e 100.") from exc
+        if not 0 <= volume <= 100:
+            raise ValueError("Volume deve ser um número entre 0 e 100.")
+        value = str(volume)
+    if action == "focus":
+        try:
+            minutes = int(value)
+        except ValueError as exc:
+            raise ValueError("Foco deve ter entre 1 e 180 minutos.") from exc
+        if not 1 <= minutes <= 180:
+            raise ValueError("Foco deve ter entre 1 e 180 minutos.")
+        value = str(minutes)
+    return {"action": action, **({argument: value} if argument else {})}
+
+
+def validate_routine_name(name: str) -> str:
+    name = name.strip().lower()
+    if not re.fullmatch(r"[a-z0-9_]{1,40}", name):
+        raise ValueError("Nome deve usar apenas letras minúsculas, números e _. ")
+    return name
+
+
+def _load_schedule_state() -> None:
+    global _schedule_state_loaded
+    if _schedule_state_loaded:
+        return
+    _schedule_state_loaded = True
+    if not SCHEDULE_STATE_PATH.exists():
+        return
+    try:
+        payload = json.loads(SCHEDULE_STATE_PATH.read_text(encoding="utf-8"))
+        for name, value in payload.get("last_run", {}).items():
+            _last_run_date[str(name)] = date.fromisoformat(str(value))
+    except Exception as exc:
+        logger.error("Estado do agendador inválido; reiniciando vazio: %s", exc)
+        _last_run_date.clear()
+
+
+def _save_schedule_state() -> None:
+    SCHEDULE_STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    payload = {"version": 1, "last_run": {k: v.isoformat() for k, v in _last_run_date.items()}}
+    temp = SCHEDULE_STATE_PATH.with_suffix(".json.tmp")
+    temp.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    temp.replace(SCHEDULE_STATE_PATH)
 
 
 def _get_config():
@@ -97,10 +174,13 @@ def _evaluate_condition(condition: str, now: "datetime | None" = None) -> bool:
         return 18 <= now.hour < 24
 
     logger.warning(f"Condição desconhecida: {condition!r}")
-    return True  # condição desconhecida → não bloqueia
+    return False
 
 
 def _execute_step(action: str, target: str = "", message: str = "") -> "str | None":
+    if action not in ACTION_SPECS:
+        logger.warning("Ação de rotina bloqueada: %r", action)
+        return None
     try:
         if action == "open_app":
             from modules.system_control import open_app
@@ -159,6 +239,7 @@ def _matches_schedule(schedule: dict, now: datetime) -> bool:
 
 def _scheduler_loop() -> None:
     global _scheduler_running
+    _load_schedule_state()
     while _scheduler_running:
         try:
             now = datetime.now()
@@ -173,6 +254,7 @@ def _scheduler_loop() -> None:
                 if _matches_schedule(schedule, now):
                     logger.info("Rotina '%s' disparada automaticamente pelo agendador.", name)
                     _last_run_date[name] = date.today()
+                    _save_schedule_state()
                     run(name)
         except Exception as e:
             logger.error("Erro no agendador de rotinas: %s", e)
