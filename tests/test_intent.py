@@ -190,6 +190,10 @@ class TestNeedsConfirmation:
         from modules.intent import _needs_confirmation
         assert _needs_confirmation("git_operation", {"operation": "commit"})
 
+    def test_git_pull_requires_confirmation(self):
+        from modules.intent import _needs_confirmation
+        assert _needs_confirmation("git_operation", {"operation": "pull"})
+
     def test_git_status_no_confirmation(self):
         from modules.intent import _needs_confirmation
         assert not _needs_confirmation("git_operation", {"operation": "status"})

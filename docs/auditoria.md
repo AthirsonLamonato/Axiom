@@ -42,11 +42,14 @@ flowchart LR
 ### P0 — segurança e limites
 
 - [x] Criação e alteração de eventos agora exigem confirmação.
+- [x] `git pull` e formatação do projeto agora exigem confirmação.
+- [x] Rotas diretas e NLU agora usam mesmo canal de confirmação, inclusive voz.
 - [x] Servidor MCP inicial não publica ações destrutivas, Git ou mensagens externas.
 - [ ] Unificar política de risco hoje dividida entre rotas, `security`, `trust` e registry.
 - [ ] Criar confirmação remota autenticada antes de publicar ferramentas de escrita no MCP.
 - [ ] Classificar e redigir dados sensíveis em logs, memória, clipboard e screenshots.
-- [ ] Remover `shell=True` de dev tools ou restringir argumentos a listas permitidas.
+- [x] Remover `shell=True` de dev tools e resolver wrappers Windows com argumentos controlados.
+- [x] Impedir criação e sobrescrita de arquivos fora da pasta de trabalho.
 
 ### P1 — arquitetura do produto planejado
 
@@ -93,3 +96,5 @@ flowchart LR
 3. Segurança de ferramentas novas estiver documentada e testada.
 4. Dashboard passar desktop e mobile sem erro de console.
 5. Upgrade e rollback estiverem documentados.
+
+CI roda em Windows e Ubuntu para `homologacao`, branches estáveis e pull requests.

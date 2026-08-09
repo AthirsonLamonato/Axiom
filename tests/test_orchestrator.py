@@ -221,3 +221,29 @@ def test_routes_pass_only_semantic_arguments(command, handler, groups):
     matched_handler, matched_groups, _ = _matched_route(command)
     assert matched_handler == handler
     assert matched_groups == groups
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "git pull",
+        "formata o código",
+        "adiciona evento dentista amanhã às 10h30",
+    ],
+)
+def test_routes_require_confirmation_for_writes(command):
+    _, _, requires_confirmation = _matched_route(command)
+    assert requires_confirmation is True
+
+
+def test_direct_route_uses_shared_confirmation_channel(orchestrator, monkeypatch):
+    captured = {}
+
+    def confirm(name, args):
+        captured.update(name=name, args=args)
+        return True
+
+    monkeypatch.setattr("modules.intent._confirm_action", confirm)
+
+    assert orchestrator._confirm("git pull") is True
+    assert captured == {"name": "direct_command", "args": {"action": "git pull"}}

@@ -7,16 +7,29 @@ import subprocess
 import logging
 import os
 import platform
+import shutil
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 OS = platform.system()
+
+
+def _command_args(command: str, *args: str) -> list[str]:
+    """Resolve executável sem `shell=True`; trata wrappers .cmd/.bat no Windows."""
+    executable = shutil.which(command)
+    if not executable:
+        raise FileNotFoundError(f"Comando não encontrado: {command}")
+    if OS == "Windows" and executable.lower().endswith((".cmd", ".bat")):
+        payload = subprocess.list2cmdline([executable, *args])
+        return ["cmd.exe", "/d", "/s", "/c", payload]
+    return [executable, *args]
 
 
 # ── VS Code ────────────────────────────────────────────────────────────
 
 def open_vscode(*_) -> str:
     try:
-        subprocess.Popen("code .", shell=True)
+        subprocess.Popen(_command_args("code", "."))
         return "VS Code aberto."
     except Exception as e:
         return f"Erro ao abrir VS Code: {e}"
@@ -29,7 +42,7 @@ def open_file(filename: str, *_) -> str:
     if path is None:
         return f"Arquivo '{filename}' não encontrado."
     try:
-        subprocess.Popen(["code", path], shell=True)
+        subprocess.Popen(_command_args("code", path))
         return f"Abrindo {path} no VS Code."
     except Exception as e:
         return f"Erro ao abrir arquivo: {e}"
@@ -43,7 +56,7 @@ def goto_line(line: str, *_) -> str:
     # Pega o arquivo mais recentemente modificado como alvo (heurística)
     try:
         subprocess.run(
-            ["code", "--goto", f":{line}"], shell=True, capture_output=True
+            _command_args("code", "--goto", f":{line}"), capture_output=True
         )
         return f"Navegando para linha {line}."
     except Exception as e:
@@ -52,7 +65,7 @@ def goto_line(line: str, *_) -> str:
 
 def open_terminal(*_) -> str:
     if OS == "Windows":
-        subprocess.Popen("wt", shell=True)
+        subprocess.Popen(_command_args("wt"))
     elif OS == "Linux":
         for term in ("gnome-terminal", "xterm", "konsole"):
             try:
@@ -80,10 +93,17 @@ def create_file(file_type: str, filename: str) -> str:
                 filename += ext
                 break
     try:
-        with open(filename, "w", encoding="utf-8") as f:
+        workspace = Path.cwd().resolve()
+        target = (workspace / filename).resolve()
+        if target != workspace and workspace not in target.parents:
+            return "Caminho recusado: arquivo deve ficar dentro da pasta atual."
+        target.parent.mkdir(parents=True, exist_ok=True)
+        with target.open("x", encoding="utf-8") as f:
             f.write("")
-        logger.info(f"Arquivo criado: {filename}")
+        logger.info("Arquivo criado: %s", target)
         return f"Arquivo '{filename}' criado."
+    except FileExistsError:
+        return f"Arquivo '{filename}' já existe; nada foi sobrescrito."
     except Exception as e:
         return f"Erro ao criar '{filename}': {e}"
 

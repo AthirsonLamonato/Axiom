@@ -89,14 +89,14 @@ ROUTES: list[tuple[str, str, bool]] = [
     # Git
     (r"commit\s+[\"']?(.+)[\"']?",        "modules.dev_tools:git_commit",       True),
     (r"git\s+push",                       "modules.dev_tools:git_push",         True),
-    (r"git\s+pull",                       "modules.dev_tools:git_pull",         False),
+    (r"git\s+pull",                       "modules.dev_tools:git_pull",         True),
     (r"(o\s+que\s+mudou|git\s+status)",   "modules.dev_tools:git_status",        False),
     (r"git\s+log|últimos?\s+commits?|mostra.{0,20}commits?|ultimos\s+commits?",
                                           "modules.dev_tools:git_log",          False),
     (r"cria\s+branch\s+(.+)",             "modules.dev_tools:git_create_branch", False),
     (r"(branch|ramo)\s+atual",            "modules.dev_tools:git_branch_current",False),
     (r"(roda|executa)\s+(os\s+)?testes",  "modules.dev_tools:run_tests",        False),
-    (r"formata(?:r)?\s+(?:o\s+)?c[óo]digo", "modules.dev_tools:format_code",    False),
+    (r"formata(?:r)?\s+(?:o\s+)?c[óo]digo", "modules.dev_tools:format_code",    True),
 
     # Overlay específico (antes de "abre/fecha" genérico)
     (r"abr[ae]\s+o\s+overlay",               "output.overlay:show",                False),
@@ -217,7 +217,7 @@ ROUTES: list[tuple[str, str, bool]] = [
     (r"(próximo|proximo)\s+(evento|compromisso|reunião|reuniao)",
                                                   "modules.calendar_integration:get_next_event",   False),
     (r"(?:adiciona|marca|cria)\s+(?:no\s+calendário|no\s+calendario|evento|reunião|reuniao)\s+(.+)",
-                                                  "modules.calendar_integration:add_event",        False),
+                                                  "modules.calendar_integration:add_event",        True),
     (r"(?:apaga|cancela|remove)\s+(?:o\s+)?(?:evento|reunião|reuniao)\s+(.+)",
                                                   "modules.calendar_integration:delete_event",     True),
     (r"autoriza\s+(calendário|calendario|google\s+calendar)",
@@ -1164,11 +1164,11 @@ class Orchestrator:
             pass
 
     def _confirm(self, action: str) -> bool:
-        """Solicita confirmação para ações críticas. Nega automaticamente fora do terminal."""
-        import sys
-        if not sys.stdin.isatty():
-            logger.warning("Ação crítica '%s' bloqueada fora do modo texto.", action)
+        """Usa canal ativo de confirmação; sem canal, bloqueia."""
+        try:
+            from modules.intent import _confirm_action
+
+            return _confirm_action("direct_command", {"action": action})
+        except Exception as exc:
+            logger.warning("Confirmação falhou para '%s': %s", action, exc)
             return False
-        print(f"\n  [!] Ação crítica: '{action}'")
-        resp = input("      Confirmar? (s/N): ").strip().lower()
-        return resp == "s"

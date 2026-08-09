@@ -2,9 +2,9 @@ name: Tests
 
 on:
   push:
-    branches: [main, dev]
+    branches: [master, homologacao, main, dev]
   pull_request:
-    branches: [main]
+    branches: [master, main]
 
 jobs:
   test:
@@ -35,7 +35,7 @@ jobs:
           pip install -r requirements-dev.txt
 
       - name: Lint source
-        run: python -m ruff check core input modules output plugins storage web main.py setup_wizard.py
+        run: python -m ruff check core input modules output plugins storage web main.py mcp_server.py setup_wizard.py
 
       - name: Run tests
         run: python -m pytest -v --tb=short

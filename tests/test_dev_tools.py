@@ -9,7 +9,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from modules.dev_tools import (
     git_status, git_log, git_branch_current,
     create_file, _resolve_file, explain_file,
-    git_create_branch, run_tests, format_code,
+    git_create_branch, run_tests, format_code, _command_args,
 )
 
 
@@ -53,6 +53,38 @@ def test_create_file_with_extension(tmp_path, monkeypatch):
     result = create_file("arquivo", "notas.txt")
     assert "notas.txt" in result
     assert (tmp_path / "notas.txt").exists()
+
+
+def test_create_file_refuses_path_outside_workspace(tmp_path, monkeypatch):
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    monkeypatch.chdir(workspace)
+
+    result = create_file("txt", "../fora.txt")
+
+    assert "recusado" in result.lower()
+    assert not (tmp_path / "fora.txt").exists()
+
+
+def test_create_file_never_overwrites_existing(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    target = tmp_path / "existente.txt"
+    target.write_text("preservar", encoding="utf-8")
+
+    result = create_file("txt", "existente.txt")
+
+    assert "nada foi sobrescrito" in result
+    assert target.read_text(encoding="utf-8") == "preservar"
+
+
+def test_command_args_avoids_shell_true(monkeypatch):
+    monkeypatch.setattr("modules.dev_tools.OS", "Windows")
+    monkeypatch.setattr("modules.dev_tools.shutil.which", lambda _: r"C:\bin\code.cmd")
+
+    command = _command_args("code", "arquivo com espaço.py")
+
+    assert command[:4] == ["cmd.exe", "/d", "/s", "/c"]
+    assert "arquivo com espaço.py" in command[4]
 
 
 def test_resolve_file_finds_existing(tmp_path, monkeypatch):

@@ -501,6 +501,7 @@ _NEEDS_CONFIRM: set[tuple] = {
     ('close_application',),
     ('git_operation', 'push'),
     ('git_operation', 'commit'),
+    ('git_operation', 'pull'),
 }
 
 
