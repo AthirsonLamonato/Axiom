@@ -14,6 +14,7 @@ pydantic>=2.0       # validação de args das ferramentas no ToolRegistry
 plyer>=2.1
 duckduckgo-search>=3.9
 schedule>=1.2
+tzdata>=2024.1; platform_system == "Windows"  # ZoneInfo/IANA no Windows
 keyring>=23.0  # armazenamento seguro de chaves de API (opcional mas recomendado)
 
 # ── Text-to-Speech ──────────────────────────────────────────────────

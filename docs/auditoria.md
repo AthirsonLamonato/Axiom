@@ -63,6 +63,7 @@ flowchart LR
 ### P1 — confiabilidade funcional
 
 - [ ] Adicionar testes reais por sistema operacional para apps, áudio, brilho e mídia.
+- [x] Garantir banco IANA `tzdata` no Windows para Calendar respeitar fuso configurado.
 - [ ] Verificar estado pós-ação em vez de confiar somente no retorno do subprocesso.
 - [ ] Reduzir exceções silenciosas e registrar causa útil sem vazar dados pessoais.
 - [ ] Tratar falhas parciais do briefing por fonte.
