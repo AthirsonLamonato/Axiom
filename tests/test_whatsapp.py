@@ -4,6 +4,7 @@ import sys
 import types
 
 from modules import whatsapp
+from modules.external_actions import LIVE_ENV_TOKEN, LIVE_ENV_VAR
 
 
 def _config_with(**overrides):
@@ -11,6 +12,8 @@ def _config_with(**overrides):
         "whatsapp.enabled": True,
         "whatsapp.allowed_numbers": ["+5554991102959"],
         "whatsapp.contacts": {"fulano": "+5554991102959", "estranho": "+5511988887777"},
+        "external_actions.mode": "simulate",
+        "external_actions.live_enabled": False,
     }
     data.update(overrides)
     return type("C", (), {"get": lambda self, k, d=None: data.get(k, d)})()
@@ -39,7 +42,8 @@ def test_send_blocks_number_outside_whitelist(monkeypatch):
     monkeypatch.setattr(whatsapp, "_get_config", lambda: _config_with())
     result = whatsapp.send("estranho", "oi")
     assert "segurança" in result.lower()
-    assert "+5511988887777" in result
+    assert "***7777" in result
+    assert "+5511988887777" not in result
 
 
 def test_send_blocks_unknown_contact(monkeypatch):
@@ -54,8 +58,31 @@ def test_send_respects_enabled_flag(monkeypatch):
     assert "desabilitado" in result.lower()
 
 
-def test_send_to_allowed_number_calls_pywhatkit(monkeypatch):
+def test_send_defaults_to_simulation_without_calling_pywhatkit(monkeypatch):
     monkeypatch.setattr(whatsapp, "_get_config", lambda: _config_with())
+
+    fake_pywhatkit = types.ModuleType("pywhatkit")
+    calls = []
+    fake_pywhatkit.sendwhatmsg_instantly = lambda *args, **kwargs: calls.append(args)
+    monkeypatch.setitem(sys.modules, "pywhatkit", fake_pywhatkit)
+
+    result = whatsapp.send("fulano", "Oi!")
+
+    assert calls == []
+    assert "SIMULAÇÃO" in result
+    assert "Nada foi enviado" in result
+
+
+def test_mocked_live_send_calls_pywhatkit_only_with_all_locks(monkeypatch):
+    monkeypatch.setattr(
+        whatsapp,
+        "_get_config",
+        lambda: _config_with(**{
+            "external_actions.mode": "live",
+            "external_actions.live_enabled": True,
+        }),
+    )
+    monkeypatch.setenv(LIVE_ENV_VAR, LIVE_ENV_TOKEN)
 
     fake_pywhatkit = types.ModuleType("pywhatkit")
     calls = []
@@ -73,7 +100,15 @@ def test_send_to_allowed_number_calls_pywhatkit(monkeypatch):
 
 
 def test_send_without_pywhatkit_installed_returns_friendly_error(monkeypatch):
-    monkeypatch.setattr(whatsapp, "_get_config", lambda: _config_with())
+    monkeypatch.setattr(
+        whatsapp,
+        "_get_config",
+        lambda: _config_with(**{
+            "external_actions.mode": "live",
+            "external_actions.live_enabled": True,
+        }),
+    )
+    monkeypatch.setenv(LIVE_ENV_VAR, LIVE_ENV_TOKEN)
     monkeypatch.setitem(sys.modules, "pywhatkit", None)
 
     result = whatsapp.send("fulano", "oi")

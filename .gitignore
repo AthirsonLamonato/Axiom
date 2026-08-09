@@ -35,6 +35,7 @@ core/google_token.json
 
 # ── Config local (use config.yaml como base) ──
 # core/config.yaml  ← versionado propositalmente
+core/config.local.yaml
 
 # ── Claude Code ───────────────────────────────
 .claude/

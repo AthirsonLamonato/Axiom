@@ -4,8 +4,8 @@ core/embeddings.py — Provedor de embeddings para memória semântica
 Mesmo padrão arquitetural de core/providers.py (LLMClient): backend
 configurável, circuit breaker próprio, cache TTL, nunca propaga exceção.
 
-Backends gratuitos suportados (ai.embeddings_provider):
-  - gemini : API REST gratuita do Google AI Studio (requer GEMINI_API_KEY)
+Backends suportados (ai.embeddings_provider):
+  - gemini : API REST cloud do Google AI Studio (requer GEMINI_API_KEY)
   - ollama : local, via /api/embeddings (requer `ollama pull nomic-embed-text`)
   - auto   : tenta gemini se houver chave, senão ollama, senão None (padrão)
   - none   : desabilita — chamador cai no fallback de busca por palavra-chave

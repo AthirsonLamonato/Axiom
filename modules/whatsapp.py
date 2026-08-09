@@ -10,6 +10,8 @@ camada é uma segunda barreira, independente da confirmação.
 import logging
 import re
 
+from modules.external_actions import live_enabled, mask_recipient, simulation_result
+
 logger = logging.getLogger(__name__)
 
 
@@ -57,6 +59,7 @@ def send(contact: str, message: str, *_) -> str:
     Camadas de segurança, nesta ordem:
       1. ToolRegistry/orchestrator já exigiu confirmação explícita antes de chamar isto.
       2. O número resolvido precisa estar em whatsapp.allowed_numbers (whitelist).
+      3. Simulação é o padrão. Envio real exige três travas independentes.
     """
     config = _get_config()
     if not config.get("whatsapp.enabled", True):
@@ -69,14 +72,18 @@ def send(contact: str, message: str, *_) -> str:
     if not _is_allowed(number):
         return (
             f"Por segurança, só posso enviar mensagens para números autorizados em "
-            f"whatsapp.allowed_numbers. '{contact}' ({number}) não está na lista — "
+            f"whatsapp.allowed_numbers. '{contact}' ({mask_recipient(number)}) não está na lista — "
             f"nenhuma mensagem foi enviada."
         )
 
+    if not live_enabled(config):
+        logger.info("WhatsApp simulado para %s; integração de envio não chamada", number[-4:])
+        return simulation_result("WhatsApp", number)
+
     logger.warning(
-        "⚠ ENVIANDO MENSAGEM REAL VIA WHATSAPP para %s: %r", number, message
+        "⚠ ENVIO REAL VIA WHATSAPP autorizado para final %s", number[-4:]
     )
-    print(f"\n[Paçoca] ⚠ Enviando mensagem real via WhatsApp para {number}: {message!r}")
+    print(f"\n[Paçoca] ⚠ Envio real autorizado para WhatsApp ***{number[-4:]}")
 
     try:
         import pywhatkit

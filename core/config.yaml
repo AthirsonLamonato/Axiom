@@ -36,7 +36,7 @@ ai:
   auto_learn: false     # extrai fatos de cada conversa e salva na KB (opt-in)
                         # quando true, cada troca é enviada ao LLM configurado
   embeddings_provider: ollama           # ollama | gemini | auto | none — padrão sem custo e local
-  embeddings_model: gemini-embedding-001  # modelo Gemini (free tier)
+  embeddings_model: gemini-embedding-001  # cloud opcional; quotas podem mudar
   embeddings_ollama_model: nomic-embed-text  # requer `ollama pull nomic-embed-text`
   embeddings_api_key: ""                # sobrescrito por GEMINI_API_KEY no .env
   system_prompt: |
@@ -94,6 +94,15 @@ calendar:
   credentials_path: core/credentials.json  # OAuth 2.0 client secrets (baixe do Google Cloud)
   token_path: core/google_token.json        # gerado automaticamente após primeira auth
   timezone: America/Sao_Paulo
+
+# ── Ações externas reais ──────────────────────
+# Fail-closed: em "simulate", WhatsApp e ações de Calendar com convidados
+# apenas geram uma prévia. Para produção ainda são necessárias confirmação
+# por ação, whitelist e a variável PACOCA_ALLOW_REAL_EXTERNAL_ACTIONS com a
+# frase documentada. Nunca habilite durante desenvolvimento/testes.
+external_actions:
+  mode: simulate             # simulate | live
+  live_enabled: false        # segunda trava; false por padrão
 
 # ── Dashboard web ─────────────────────────────
 web:
@@ -207,9 +216,8 @@ learner:
 # cautela — esta é a última barreira antes de um envio real.
 whatsapp:
   enabled: true
-  allowed_numbers:
-    - "+5554991102959"       # seu número — único autorizado por padrão
-  contacts: {}                # nome -> número, ex: fulano: "+5511999999999"
+  allowed_numbers: []         # nunca versione telefone pessoal; configure localmente
+  contacts: {}                # nome -> número; valores reais só no config.local.yaml
 
 # ── Roteamento semântico que aprende ────────────
 # Cache que reaproveita resoluções do LLM para paráfrases futuras, sem rede

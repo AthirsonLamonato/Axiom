@@ -12,6 +12,8 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from modules.external_actions import live_enabled, simulation_result
+
 logger = logging.getLogger(__name__)
 
 SCOPES = [
@@ -188,6 +190,18 @@ def get_next_event(*_) -> str:
 EMAIL_RE = re.compile(r"\b[\w.+-]+@[\w-]+\.[a-zA-Z]{2,}\b")
 
 
+def _external_live_enabled() -> bool:
+    return live_enabled(_get_config())
+
+
+def _blocked_attendee_action(action: str, attendees: Optional[list[str]]) -> str:
+    """Bloqueia qualquer mutação que possa alcançar convidados reais."""
+    if not attendees or _external_live_enabled():
+        return ""
+    recipients = ", ".join(attendees)
+    return simulation_result(f"Google Calendar ({action})", recipients)
+
+
 def _insert_event(
     title: str, start_dt: datetime, timezone_name: str, service,
     attendees: Optional[list[str]] = None,
@@ -197,6 +211,10 @@ def _insert_event(
     estruturados, usado pelo loop agentivo).
     attendees: lista de e-mails a convidar (opcional). Quando presente, o
     Google Calendar envia convite/notificação por e-mail a cada um."""
+    blocked = _blocked_attendee_action("convite", attendees)
+    if blocked:
+        return blocked
+
     end_dt = start_dt + timedelta(hours=1)
     clean_title = title.strip()
     # Só garante 1ª letra maiúscula — .capitalize() forçaria o resto pra
@@ -241,19 +259,23 @@ def add_event(raw: str, *_) -> str:
     """Adiciona um evento via linguagem natural (rota direta de voz/texto).
     Exemplos: 'reunião amanhã às 14h', 'dentista hoje às 10h30 sobre consulta'
     """
+    raw = raw.strip()
+    now = datetime.now()
+
+    # E-mails mencionados no comando → convidados (ex: "reunião com pessoa@example.invalid")
+    attendees = EMAIL_RE.findall(raw)
+    raw_sem_emails = EMAIL_RE.sub("", raw) if attendees else raw
+
+    blocked = _blocked_attendee_action("convite", attendees)
+    if blocked:
+        return blocked
+
     try:
         service = _get_service()
     except (FileNotFoundError, RuntimeError) as e:
         return str(e)
     except Exception as e:
         return f"Erro ao conectar com o Google Calendar: {e}"
-
-    raw = raw.strip()
-    now = datetime.now()
-
-    # E-mails mencionados no comando → convidados (ex: "reunião com x@y.com")
-    attendees = EMAIL_RE.findall(raw)
-    raw_sem_emails = EMAIL_RE.sub("", raw) if attendees else raw
 
     # Detectar dia
     if re.search(r"\bamanhã\b", raw_sem_emails, re.I):
@@ -295,6 +317,10 @@ def create_event(
     time:      horário no formato HH:MM
     attendees: e-mails a convidar (opcional) — Google envia convite por e-mail
     """
+    blocked = _blocked_attendee_action("convite", attendees)
+    if blocked:
+        return blocked
+
     try:
         service = _get_service()
     except (FileNotFoundError, RuntimeError) as e:
@@ -372,6 +398,13 @@ def delete_event(title: str, day: str = "", *_) -> str:
         return "\n".join(lines)
 
     ev = matches[0]
+    blocked = _blocked_attendee_action(
+        "exclusão de evento com convidados",
+        [a.get("email", "") for a in ev.get("attendees", []) if a.get("email")],
+    )
+    if blocked:
+        return blocked
+
     try:
         service.events().delete(
             calendarId="primary",
@@ -418,6 +451,13 @@ def update_event(
         return "\n".join(lines)
 
     ev = matches[0]
+    blocked = _blocked_attendee_action(
+        "alteração de evento com convidados",
+        [a.get("email", "") for a in ev.get("attendees", []) if a.get("email")],
+    )
+    if blocked:
+        return blocked
+
     cur_start_str = ev.get("start", {}).get("dateTime")
     if not cur_start_str:
         return "Esse evento é de dia todo — alteração de data/horário ainda não é suportada para esse tipo."

@@ -63,3 +63,31 @@ def test_file_not_found():
 def test_all_returns_dict(config):
     assert isinstance(config.all(), dict)
     assert "profile" in config.all()
+
+
+def test_local_config_deeply_overrides_without_losing_siblings(tmp_path):
+    base = tmp_path / "config.yaml"
+    local = tmp_path / "config.local.yaml"
+    base.write_text(
+        yaml.safe_dump({"whatsapp": {"enabled": True, "allowed_numbers": []}}),
+        encoding="utf-8",
+    )
+    local.write_text(
+        yaml.safe_dump({"whatsapp": {"allowed_numbers": ["+5511999991234"]}}),
+        encoding="utf-8",
+    )
+
+    loaded = Config(str(base), local_path=str(local))
+
+    assert loaded.get("whatsapp.enabled") is True
+    assert loaded.get("whatsapp.allowed_numbers") == ["+5511999991234"]
+
+
+def test_invalid_local_config_fails_explicitly(tmp_path):
+    base = tmp_path / "config.yaml"
+    local = tmp_path / "config.local.yaml"
+    base.write_text(yaml.safe_dump({"profile": {"active": "work"}}), encoding="utf-8")
+    local.write_text("- item", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="Config local"):
+        Config(str(base), local_path=str(local))

@@ -42,25 +42,29 @@ def generate(*_) -> str:
         from modules.weather import get_weather
         parts.append(get_weather(""))
     except Exception as e:
-        logger.debug("Briefing: clima indisponível: %s", e)
+        logger.warning("Briefing parcial: clima indisponível: %s", e)
+        parts.append("⚠ Clima indisponível neste briefing.")
 
     try:
         from modules.calendar_integration import get_today_events
         parts.append(get_today_events())
     except Exception as e:
-        logger.debug("Briefing: agenda indisponível: %s", e)
+        logger.warning("Briefing parcial: agenda indisponível: %s", e)
+        parts.append("⚠ Agenda indisponível neste briefing.")
 
     try:
         from modules.reminders import list_reminders
         parts.append(list_reminders())
     except Exception as e:
-        logger.debug("Briefing: lembretes indisponíveis: %s", e)
+        logger.warning("Briefing parcial: lembretes indisponíveis: %s", e)
+        parts.append("⚠ Lembretes indisponíveis neste briefing.")
 
     try:
         from modules.productivity import show_usage
         parts.append(show_usage())
     except Exception as e:
-        logger.debug("Briefing: produtividade indisponível: %s", e)
+        logger.warning("Briefing parcial: produtividade indisponível: %s", e)
+        parts.append("⚠ Produtividade indisponível neste briefing.")
 
     return "\n\n".join(parts)
 
@@ -70,18 +74,18 @@ def _fire_briefing() -> None:
     try:
         from output.notifier import notify
         notify("Paçoca — Bom dia", "Seu briefing do dia está pronto.")
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("Briefing: notificação indisponível: %s", e)
     try:
         from output import overlay
         overlay.show_message("Briefing do dia gerado. Confira o histórico.", duration_ms=8000)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("Briefing: overlay indisponível: %s", e)
     try:
         from web.app import push_event
         push_event("info", "☀️ Briefing diário gerado")
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("Briefing: dashboard indisponível: %s", e)
     logger.info("Briefing diário disparado automaticamente.")
     print(f"\n[Paçoca] {text}\n")
 

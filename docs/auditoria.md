@@ -45,9 +45,14 @@ flowchart LR
 - [x] `git pull` e formatação do projeto agora exigem confirmação.
 - [x] Rotas diretas e NLU agora usam mesmo canal de confirmação, inclusive voz.
 - [x] Servidor MCP inicial não publica ações destrutivas, Git ou mensagens externas.
+- [x] Comunicações externas usam simulação fail-closed; modo real exige três travas, whitelist e confirmação.
+- [x] Backup automático nunca autoriza upload cloud e informa simulação.
 - [ ] Unificar política de risco hoje dividida entre rotas, `security`, `trust` e registry.
 - [ ] Criar confirmação remota autenticada antes de publicar ferramentas de escrita no MCP.
-- [ ] Classificar e redigir dados sensíveis em logs, memória, clipboard e screenshots.
+- [x] Redigir telefones, e-mails, tokens e senhas em logs, inclusive tracebacks.
+- [x] Remover telefone pessoal da configuração versionada e adicionar `config.local.yaml` ignorado.
+- [ ] Avaliar remoção do telefone do histórico Git; exige reescrita coordenada do repositório.
+- [ ] Classificar e redigir dados sensíveis em memória, clipboard e screenshots.
 - [x] Remover `shell=True` de dev tools e resolver wrappers Windows com argumentos controlados.
 - [x] Impedir criação e sobrescrita de arquivos fora da pasta de trabalho.
 
@@ -66,8 +71,8 @@ flowchart LR
 - [x] Garantir banco IANA `tzdata` no Windows para Calendar respeitar fuso configurado.
 - [ ] Verificar estado pós-ação em vez de confiar somente no retorno do subprocesso.
 - [ ] Reduzir exceções silenciosas e registrar causa útil sem vazar dados pessoais.
-- [ ] Tratar falhas parciais do briefing por fonte.
-- [ ] Testar restauração de backup; backup sem restauração validada é incompleto.
+- [x] Tratar falhas parciais do briefing por fonte e informar seção indisponível.
+- [x] Criar manifesto SHA-256, detectar corrupção e testar restauração em pasta isolada.
 - [ ] Adicionar auditoria e rollback para aprendizado persistente.
 
 ### P2 — custo zero e operação local
@@ -76,13 +81,13 @@ flowchart LR
 - [x] Embeddings agora usam Ollama por padrão.
 - [x] TTS agora usa pyttsx3 offline por padrão.
 - [ ] Integrar Piper ou Kokoro como voz local mais natural.
-- [ ] Remover linguagem que apresenta free tier cloud como garantia permanente.
+- [x] Remover linguagem que apresenta free tier cloud como garantia permanente.
 - [ ] Criar perfis de modelo conforme RAM, VRAM e CPU disponíveis.
 
 ### P2 — UX
 
 - [x] Dashboard ganhou cabeçalho, navegação consistente e layout responsivo.
-- [ ] Mostrar permissões e risco antes de cada ferramenta sensível.
+- [x] Mostrar modo externo e prévia de risco antes de comandos no dashboard.
 - [ ] Criar painel de memória, privacidade, retenção e exclusão.
 - [ ] Mostrar progresso de tarefas longas e botão global de cancelamento.
 - [ ] Adicionar estado offline, dispositivo alvo e origem da resposta.

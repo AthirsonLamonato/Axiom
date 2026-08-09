@@ -13,11 +13,27 @@ CONFIG_PATH = (
     or os.environ.get("AXIOM_CONFIG_PATH")  # retrocompatibilidade com builds antigos
     or os.path.join(os.path.dirname(__file__), "config.yaml")
 )
+LOCAL_CONFIG_PATH = os.environ.get("PACOCA_CONFIG_LOCAL_PATH")
+
+
+def _deep_merge(base: dict, override: dict) -> dict:
+    """Mescla dicionários sem apagar chaves irmãs da configuração base."""
+    for key, value in override.items():
+        if isinstance(value, dict) and isinstance(base.get(key), dict):
+            _deep_merge(base[key], value)
+        else:
+            base[key] = value
+    return base
 
 
 class Config:
-    def __init__(self, path: str = CONFIG_PATH):
+    def __init__(self, path: str = CONFIG_PATH, local_path: str | None = None):
         self._path = path
+        self._local_path = (
+            local_path
+            or LOCAL_CONFIG_PATH
+            or os.path.join(os.path.dirname(path), "config.local.yaml")
+        )
         self._data: dict = {}
         self._load()
 
@@ -31,6 +47,12 @@ class Config:
             )
         with open(self._path, "r", encoding="utf-8") as f:
             self._data = yaml.safe_load(f) or {}
+        if os.path.exists(self._local_path):
+            with open(self._local_path, "r", encoding="utf-8") as f:
+                local_data = yaml.safe_load(f) or {}
+            if not isinstance(local_data, dict):
+                raise ValueError("Config local deve conter um objeto YAML no nível raiz.")
+            _deep_merge(self._data, local_data)
 
     def get(self, key: str, default: Any = None) -> Any:
         """

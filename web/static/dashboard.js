@@ -86,6 +86,40 @@ function sendCommand() {
   input.value = "";
 }
 
+function assessCommandRisk(command) {
+  const text = (command || "").toLocaleLowerCase("pt-BR");
+  const external = /(whatsapp|e-?mail|mensagem\s+(?:para|pra)|convida|convite|@)/i.test(text);
+  const high = external || /(apaga|deleta|exclui|fecha\s+(?:o|a|tudo)|git\s+(?:push|reset)|formatar)/i.test(text);
+  const medium = /(git\s+(?:commit|pull)|cria.*evento|adiciona.*evento|remarca|altera.*evento|esquece)/i.test(text);
+  if (high) {
+    return {
+      level: "high",
+      title: external ? "Saída externa protegida" : "Alto risco",
+      detail: external
+        ? "Modo padrão: simulação. Nada é enviado; confirmação continua obrigatória."
+        : "Ação destrutiva: confirmação explícita obrigatória.",
+    };
+  }
+  if (medium) {
+    return { level: "medium", title: "Risco médio", detail: "Altera estado e pode exigir confirmação." };
+  }
+  return { level: "low", title: "Baixo risco", detail: "Comandos sensíveis exigem confirmação no executor." };
+}
+
+function updateCommandRisk() {
+  const input = document.getElementById("cmd-input");
+  const preview = document.getElementById("command-risk");
+  if (!input || !preview) return;
+  const risk = assessCommandRisk(input.value);
+  preview.className = `risk-preview risk-${risk.level}`;
+  preview.replaceChildren();
+  const title = document.createElement("strong");
+  const detail = document.createElement("span");
+  title.textContent = risk.title;
+  detail.textContent = risk.detail;
+  preview.append(title, detail);
+}
+
 let eventWs;
 let eventReconnectTimer;
 
@@ -130,6 +164,7 @@ document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("cmd-input")?.addEventListener("keydown", (event) => {
     if (event.key === "Enter") sendCommand();
   });
+  document.getElementById("cmd-input")?.addEventListener("input", updateCommandRisk);
   document.getElementById("send-command")?.addEventListener("click", sendCommand);
 
   document.addEventListener("submit", (event) => {

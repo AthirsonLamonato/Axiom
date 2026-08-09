@@ -168,6 +168,7 @@ def test_add_event_extracts_emails_as_attendees(monkeypatch):
     service = _Service()
     monkeypatch.setattr(calendar, "_get_service", lambda: service)
     monkeypatch.setattr(calendar, "_get_config", lambda: _Config())
+    monkeypatch.setattr(calendar, "_external_live_enabled", lambda: True)
 
     result = calendar.add_event("reunião amanhã às 14h com a@x.com e b@y.com")
 
@@ -183,6 +184,7 @@ def test_create_event_with_attendees_sends_invite(monkeypatch):
     service = _Service()
     monkeypatch.setattr(calendar, "_get_service", lambda: service)
     monkeypatch.setattr(calendar, "_get_config", lambda: _Config())
+    monkeypatch.setattr(calendar, "_external_live_enabled", lambda: True)
 
     calendar.create_event("Reunião", "amanhã", "15:00", attendees=["a@x.com", "b@y.com"])
 
@@ -201,6 +203,23 @@ def test_create_event_without_attendees_does_not_send_updates(monkeypatch):
     body = service._events.inserted_body
     assert "attendees" not in body
     assert service._events.send_updates == "none"
+
+
+def test_create_event_with_attendees_simulates_without_opening_service(monkeypatch):
+    monkeypatch.setattr(calendar, "_external_live_enabled", lambda: False)
+    monkeypatch.setattr(
+        calendar,
+        "_get_service",
+        lambda: (_ for _ in ()).throw(AssertionError("serviço externo não deve abrir")),
+    )
+
+    result = calendar.create_event(
+        "Reunião", "amanhã", "15:00", attendees=["alice@example.com"]
+    )
+
+    assert "SIMULAÇÃO" in result
+    assert "Nada foi enviado" in result
+    assert "alice@example.com" not in result
 
 
 # ── delete_event ────────────────────────────────────────────────────
@@ -227,10 +246,29 @@ def test_delete_event_sends_updates_when_attendees_present(monkeypatch):
     service = _Service(list_items=items)
     monkeypatch.setattr(calendar, "_get_service", lambda: service)
     monkeypatch.setattr(calendar, "_get_config", lambda: _Config())
+    monkeypatch.setattr(calendar, "_external_live_enabled", lambda: True)
 
     calendar.delete_event("TESTE v3")
 
     assert service._events.deleted_send_updates == "all"
+
+
+def test_delete_event_with_attendees_is_blocked_in_simulation(monkeypatch):
+    items = [{
+        "id": "evt1", "summary": "Reunião externa",
+        "start": {"dateTime": "2026-06-17T16:00:00-03:00"},
+        "attendees": [{"email": "alice@example.com"}],
+    }]
+    service = _Service(list_items=items)
+    monkeypatch.setattr(calendar, "_get_service", lambda: service)
+    monkeypatch.setattr(calendar, "_get_config", lambda: _Config())
+    monkeypatch.setattr(calendar, "_external_live_enabled", lambda: False)
+
+    result = calendar.delete_event("Reunião externa")
+
+    assert service._events.deleted_event_id is None
+    assert "SIMULAÇÃO" in result
+    assert "alice@example.com" not in result
 
 
 def test_delete_event_multiple_matches_does_not_delete(monkeypatch):

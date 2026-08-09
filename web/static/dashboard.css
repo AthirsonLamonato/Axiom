@@ -235,6 +235,26 @@ a:hover { color: #a7f3f0; text-decoration: underline; }
 
 .cmd-row { display: flex; gap: 10px; }
 
+.risk-preview {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+  padding: 9px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: .78rem;
+}
+
+.risk-preview strong { flex: 0 0 auto; }
+.risk-preview span { color: var(--muted); }
+.risk-low { background: rgba(100,217,139,.07); }
+.risk-low strong { color: var(--success); }
+.risk-medium { border-color: rgba(246,189,96,.26); background: var(--accent-soft); }
+.risk-medium strong { color: var(--warn); }
+.risk-high { border-color: rgba(255,123,114,.32); background: rgba(255,123,114,.09); }
+.risk-high strong { color: var(--danger); }
+
 input[type="text"],
 input[type="password"] {
   width: 100%;
@@ -362,6 +382,7 @@ code, .kbd { padding: 2px 7px; border: 1px solid var(--border); border-radius: 6
   .card.full { grid-column: auto; }
   .cmd-row { flex-direction: column; }
   .cmd-row button { width: 100%; }
+  .risk-preview { align-items: flex-start; flex-direction: column; gap: 3px; }
   .routine-row { align-items: flex-start; flex-direction: column; }
   .routine-row button { width: 100%; }
 }

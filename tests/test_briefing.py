@@ -17,7 +17,7 @@ def test_generate_combines_all_sections(monkeypatch):
     assert "Uso de apps" in text
 
 
-def test_generate_skips_section_on_error(monkeypatch):
+def test_generate_marks_partial_section_on_error(monkeypatch):
     def boom(*a, **kw):
         raise RuntimeError("sem rede")
 
@@ -30,6 +30,8 @@ def test_generate_skips_section_on_error(monkeypatch):
 
     assert "Agenda vazia" in text
     assert "Nenhum lembrete" in text
+    assert "Clima indisponível" in text
+    assert "sem rede" not in text
 
 
 def test_fire_briefing_does_not_raise_without_optional_deps(monkeypatch):

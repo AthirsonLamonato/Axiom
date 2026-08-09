@@ -44,10 +44,11 @@ ollama pull llama3
 O `core/config.yaml` já usa `ai.provider: ollama`. Groq é apenas um fallback
 opcional; para habilitá-lo, configure `GROQ_API_KEY` no `.env`.
 
-**Memória semântica (opcional, gratuita)**: sem configurar nada, a busca de
+**Memória semântica (opcional)**: sem configurar nada, a busca de
 memórias usa palavra-chave. Para busca por significado, configure
-`GEMINI_API_KEY` no `.env` (free tier em https://aistudio.google.com/apikey)
-ou rode `ollama pull nomic-embed-text` se já usa Ollama. Detalhes em
+`GEMINI_API_KEY` no `.env` (quota/preço externos podem mudar)
+ou rode `ollama pull nomic-embed-text` localmente, caminho sem custo recorrente.
+Detalhes em
 [configuracao.md](configuracao.md#ai).
 
 ---

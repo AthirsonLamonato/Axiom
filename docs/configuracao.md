@@ -1,7 +1,18 @@
 # Referência de Configuração
 
-Todas as configurações vivem em `core/config.yaml`. Acesse valores no código sempre via
-`config.get("secao.chave", valor_default)` — nunca hardcode.
+Valores padrão vivem em `core/config.yaml`. Dados pessoais e segredos ficam em
+`core/config.local.yaml`, ignorado pelo Git e mesclado sobre a base. Acesse
+valores no código sempre via `config.get("secao.chave", valor_default)`.
+
+Exemplo local:
+
+```yaml
+whatsapp:
+  allowed_numbers:
+    - "+55..."
+  contacts:
+    eu: "+55..."
+```
 
 ---
 
@@ -59,7 +70,7 @@ ai:
   use_context: true            # injeta histórico da sessão no prompt
   auto_learn: false             # extrai fatos de cada conversa para a KB (opt-in)
   embeddings_provider: ollama            # ollama | gemini | auto | none
-  embeddings_model: gemini-embedding-001   # modelo Gemini (free tier)
+  embeddings_model: gemini-embedding-001   # cloud opcional; quotas podem mudar
   embeddings_ollama_model: nomic-embed-text  # requer `ollama pull nomic-embed-text`
   embeddings_api_key: ""                 # prefira GEMINI_API_KEY no .env
   system_prompt: |
@@ -76,9 +87,9 @@ Groq permanece alternativa opcional para quem decidir configurar uma chave.
 (`storage/knowledge_base.py`) busca memórias por *significado*, não só por
 palavra-chave — ex: perguntar "o que eu gosto de ouvir?" encontra uma memória
 salva como "prefere rock e jazz", mesmo sem nenhuma palavra em comum.
-- `embeddings_provider: gemini` — API gratuita do Google AI Studio
+- `embeddings_provider: gemini` — API cloud do Google AI Studio
   (console.cloud.google.com/apis, crie uma chave grátis e exporte
-  `GEMINI_API_KEY`). Free tier generoso, suficiente para uso pessoal.
+  `GEMINI_API_KEY`). Quotas, disponibilidade e preço podem mudar.
 - `embeddings_provider: ollama` — local, sem chave nova, mas requer
   `ollama pull nomic-embed-text` (modelo dedicado de embeddings, diferente do
   `ai.model` usado para chat).
@@ -167,6 +178,27 @@ security:
 
 Ações marcadas `⚠` em [comandos.md](comandos.md) pedem confirmação antes de executar
 (`modules/security.py`).
+
+### Comunicações externas
+
+WhatsApp e ações de Calendar com convidados iniciam em simulação. Nesse modo,
+o Paçoca mostra uma prévia e não chama a integração de envio.
+
+```yaml
+external_actions:
+  mode: simulate
+  live_enabled: false
+```
+
+O modo real exige simultaneamente `mode: live`, `live_enabled: true`,
+destinatário na whitelist da integração, confirmação explícita da ação e:
+
+```powershell
+$env:PACOCA_ALLOW_REAL_EXTERNAL_ACTIONS="CONFIRM_REAL_EXTERNAL_ACTIONS"
+```
+
+Não habilite essa variável em desenvolvimento ou testes. Telefones e e-mails
+reais ficam somente em configuração local ignorada pelo Git.
 
 `session_timeout_min` controla o logout automático do dashboard web por inatividade
 (`web/app.py:_session_timeout_s()`) — não afeta comandos de voz/texto.

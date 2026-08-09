@@ -4,9 +4,14 @@ Salva localmente e opcionalmente no Google Drive.
 """
 
 import logging
+import hashlib
+import json
 import os
 import shutil
 from datetime import datetime
+from pathlib import Path
+
+from modules.external_actions import live_enabled
 
 logger = logging.getLogger(__name__)
 
@@ -21,31 +26,105 @@ def _get_config():
     return Config()
 
 
-def backup_all(*_) -> str:
+def _file_hashes(root: Path) -> dict[str, str]:
+    hashes: dict[str, str] = {}
+    for path in sorted(root.rglob("*")):
+        if path.is_file() and path.name != "manifest.json":
+            hashes[path.relative_to(root).as_posix()] = hashlib.sha256(path.read_bytes()).hexdigest()
+    return hashes
+
+
+def _write_manifest(backup_path: Path) -> None:
+    manifest = {"version": 1, "files": _file_hashes(backup_path)}
+    temp_path = backup_path / "manifest.json.tmp"
+    temp_path.write_text(json.dumps(manifest, indent=2, sort_keys=True), encoding="utf-8")
+    temp_path.replace(backup_path / "manifest.json")
+
+
+def verify_backup(backup_path: str | os.PathLike[str]) -> tuple[bool, str]:
+    """Confere manifesto e SHA-256 de todos os arquivos do backup."""
+    root = Path(backup_path).resolve()
+    manifest_path = root / "manifest.json"
+    if not root.is_dir() or not manifest_path.is_file():
+        return False, "Backup inválido: diretório ou manifesto ausente."
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        expected = manifest.get("files", {})
+    except (OSError, json.JSONDecodeError) as e:
+        return False, f"Manifesto de backup inválido: {e}"
+    if not isinstance(expected, dict) or expected != _file_hashes(root):
+        return False, "Backup corrompido ou alterado: hashes não conferem."
+    return True, f"Backup íntegro: {len(expected)} arquivo(s) verificado(s)."
+
+
+def backup_all(*_, allow_external: bool = False) -> str:
     """Faz backup de todos os arquivos de data/."""
     config = _get_config()
     local_dir = config.get("backup.local_dir", "data/backups")
     os.makedirs(local_dir, exist_ok=True)
 
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    backup_path = os.path.join(local_dir, f"backup_{timestamp}")
-    os.makedirs(backup_path, exist_ok=True)
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+    backup_path = Path(local_dir) / f"backup_{timestamp}"
+    backup_path.mkdir(parents=True, exist_ok=False)
 
     results = []
     for folder in ("data/transcriptions", "data/summaries"):
         if os.path.exists(folder):
-            dest = os.path.join(backup_path, os.path.basename(folder))
+            dest = backup_path / os.path.basename(folder)
             shutil.copytree(folder, dest)
             results.append(folder)
+
+    _write_manifest(backup_path)
 
     msg = f"Backup local criado em {backup_path}."
     logger.info(msg)
 
     if config.get("backup.google_drive.enabled", False):
-        drive_result = _upload_to_drive(backup_path, config)
-        msg += f" {drive_result}"
+        if allow_external and live_enabled(config):
+            drive_result = _upload_to_drive(str(backup_path), config)
+            msg += f" {drive_result}"
+        else:
+            msg += " [SIMULAÇÃO] Upload ao Google Drive não executado."
 
     return msg
+
+
+def restore_backup(backup_name: str, destination: str = "") -> str:
+    """Restaura em pasta nova, dentro do workspace, sem sobrescrever dados vivos."""
+    config = _get_config()
+    backup_root = Path(config.get("backup.local_dir", "data/backups")).resolve()
+    source = (backup_root / backup_name).resolve()
+    try:
+        source.relative_to(backup_root)
+    except ValueError:
+        return "Restauração bloqueada: backup fora do diretório autorizado."
+
+    valid, detail = verify_backup(source)
+    if not valid:
+        return detail
+
+    workspace = Path.cwd().resolve()
+    target = Path(destination).resolve() if destination else (workspace / "data" / "restored" / source.name)
+    try:
+        target.relative_to(workspace)
+    except ValueError:
+        return "Restauração bloqueada: destino fora do workspace."
+    if target.exists():
+        return f"Restauração bloqueada: destino já existe: {target}"
+
+    try:
+        shutil.copytree(source, target)
+        restored_valid, restored_detail = verify_backup(target)
+        if not restored_valid:
+            shutil.rmtree(target)
+            return f"Restauração falhou na verificação: {restored_detail}"
+    except Exception as e:
+        if target.exists():
+            shutil.rmtree(target)
+        logger.error("Falha ao restaurar backup: %s", e, exc_info=True)
+        return f"Falha ao restaurar backup: {e}"
+
+    return f"Backup restaurado e verificado em {target}. {detail}"
 
 
 def _get_drive_service(config):

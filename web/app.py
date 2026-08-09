@@ -242,8 +242,8 @@ def _make_app():
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Paçoca Dashboard</title>
-<link rel="stylesheet" href="/static/dashboard.css?v=3">
-<script src="/static/dashboard.js?v=3" defer></script>
+<link rel="stylesheet" href="/static/dashboard.css?v=4">
+<script src="/static/dashboard.js?v=4" defer></script>
 </head>
 <body>
 <header class="app-header">
@@ -278,6 +278,9 @@ def _make_app():
   <!-- Comando (WebSocket) -->
   <div class="card full">
     <h2>Enviar Comando</h2>
+    <div id="command-risk" class="risk-preview risk-low" aria-live="polite">
+      <strong>Baixo risco</strong><span>Comandos sensíveis exigem confirmação no executor.</span>
+    </div>
     <div class="cmd-row">
       <input type="text" id="cmd-input" placeholder="Digite um comando... (suporta 'e depois', 'em seguida')" autofocus>
       <button id="send-command" type="button">Enviar</button>
@@ -481,8 +484,15 @@ def _make_app():
         lang_display = html_lib.escape(str(lang_display))
         meeting = "🔴 Em reunião" if data["in_meeting"] else "⚪ Aguardando"
         detector = "✅ Ativo" if data["detector_on"] else "⏸ Inativo"
+        external_mode = data["external_mode"]
+        external_badge = (
+            '<span class="badge badge-focus">⚠ EXTERNO REAL</span>'
+            if external_mode == "live"
+            else '<span class="badge badge-meeting">SIMULAÇÃO EXTERNA</span>'
+        )
         return HTMLResponse(f"""
             <div><b>Perfil:</b> <span class="badge {badge_cls}">{profile}</span></div>
+            <div><b>Saídas:</b> {external_badge}</div>
             <div style="margin-top:8px"><b>Idioma STT:</b> {lang_display}</div>
             <div style="margin-top:4px"><b>Detector de reunião:</b> {detector}</div>
             <div style="margin-top:4px"><b>Estado:</b> {meeting}</div>
@@ -1000,6 +1010,7 @@ def _get_status_data() -> dict:
     plugin_count = 0
     in_meeting = False
     detector_on = False
+    external_mode = "simulate"
 
     try:
         from core.profiles import _get_manager
@@ -1033,6 +1044,11 @@ def _get_status_data() -> dict:
     except Exception:
         pass
     try:
+        from modules.external_actions import live_enabled
+        external_mode = "live" if live_enabled() else "simulate"
+    except Exception:
+        external_mode = "simulate"
+    try:
         from modules.meeting_detector import _in_meeting as _im, _monitoring as _mon
         in_meeting = _im
         detector_on = _mon
@@ -1048,6 +1064,7 @@ def _get_status_data() -> dict:
         "plugin_count": plugin_count,
         "in_meeting": in_meeting,
         "detector_on": detector_on,
+        "external_mode": external_mode,
     }
 
 

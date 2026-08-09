@@ -372,14 +372,14 @@ overlay:
 # TTS
 tts:
   enabled: true
-  engine: pyttsx3         # pyttsx3 (offline) | edge (online gratuito) | coqui
+  engine: pyttsx3         # pyttsx3 (offline) | edge (online) | coqui
 
 # Dashboard web
 web:
   password: ""            # deixe vazio para sem autenticação
 ```
 
-### Groq como fallback (opcional, gratuito)
+### Groq como fallback cloud (opcional)
 
 1. Crie conta gratuita em [console.groq.com](https://console.groq.com) e gere uma API key
 2. Defina a variável de ambiente:
@@ -391,7 +391,8 @@ export GROQ_API_KEY=gsk_...   # Linux/Mac
 
 3. Em `config.yaml`: `ai.provider: groq`
 
-O plano gratuito da Groq oferece 30 requisições/minuto e 6.000 tokens/minuto — mais que suficiente para uso pessoal.
+Quotas, disponibilidade e preço de serviços cloud podem mudar. O caminho sem
+custo recorrente garantido pelo projeto é `ai.provider: ollama` local.
 
 ### Memória semântica (opcional, gratuito)
 
@@ -534,15 +535,15 @@ Pacoca/
 | Speech-to-Text | faster-whisper (Whisper small por padrão) | Local / offline |
 | Wake word | openWakeWord (`hey_jarvis`, sem API key) | Local / offline |
 | LLM | Ollama (llama3 / mistral / phi3) | Local / offline |
-| LLM cloud | Groq API (llama3, free tier) | Opcional / gratuito |
-| Embeddings (memória semântica) | Gemini API (free tier) ou Ollama local (`nomic-embed-text`) | Opcional / gratuito |
+| LLM cloud | Groq API | Opcional; quotas/preço externos podem mudar |
+| Embeddings (memória semântica) | Gemini API ou Ollama local (`nomic-embed-text`) | Ollama local sem custo recorrente |
 | TTS | pyttsx3 offline; edge-tts e Coqui opcionais | Gratuito / offline por padrão |
 | Busca web | duckduckgo-search | Gratuito |
 | Janela de desktop | PyQt6 | Open-source |
 | Monitoramento | psutil | Open-source |
 | Banco de dados | SQLite | Open-source |
-| Backup nuvem | Google Drive API | Gratuito |
-| Google Calendar | Google Calendar API (OAuth 2.0) | Gratuito |
+| Backup nuvem | Google Drive API | Opcional; sujeito a quotas externas |
+| Google Calendar | Google Calendar API (OAuth 2.0) | Opcional; sujeito a quotas externas |
 | Dashboard web | FastAPI + JavaScript local + uvicorn + WebSocket | Open-source |
 | Config | PyYAML | Open-source |
 | Empacotamento | PyInstaller | Open-source |
@@ -617,7 +618,7 @@ Windows + Linux.
 - [x] Token Google unificado (`google_token.json`) — cobre Calendar + Drive em um único OAuth
 
 ### v0.6 — Concluído
-- [x] Substituição do Anthropic por **Groq** como fallback cloud (free tier, llama3)
+- [x] Substituição do Anthropic por **Groq** como fallback cloud opcional (llama3)
 - [x] OAuth Google unificado no código-fonte; o usuário fornece seu próprio `credentials.json`
 - [ ] Distribuição do OAuth pelo wizard — depende da validação/publicação do instalador
 - [ ] Download automático de `Pacoca.exe` — depende da primeira release publicada
@@ -632,7 +633,7 @@ Windows + Linux.
 - [x] Sessão do dashboard com cookie assinado (HMAC) em vez de hash estático da senha
 - [x] CI em matriz Windows + Linux
 - [x] **Memória semântica** (`core/embeddings.py`) — busca por significado, não só
-      palavra-chave, via Gemini (free tier) ou Ollama local (`nomic-embed-text`)
+      palavra-chave, via Gemini opcional ou Ollama local (`nomic-embed-text`)
 - [x] Loop agentivo mais confiável — retry automático para falhas de formatação do
       Groq, e nunca afirma sucesso quando uma ferramenta falhou de verdade
 - [x] **CRUD completo de calendário** no loop agentivo — criar, ler, editar e apagar
