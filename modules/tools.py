@@ -408,7 +408,8 @@ REGISTRY: dict[str, ToolDef] = {
     "create_calendar_event": ToolDef(
         schema_model=CreateCalendarEventArgs,
         executor=_exec_create_calendar_event,
-        risk="low",  # mesmo nível da rota direta de voz (add_event não exige confirmação)
+        risk="high",
+        requires_confirmation=True,
     ),
     "delete_calendar_event": ToolDef(
         schema_model=DeleteCalendarEventArgs,
@@ -420,7 +421,7 @@ REGISTRY: dict[str, ToolDef] = {
         schema_model=UpdateCalendarEventArgs,
         executor=_exec_update_calendar_event,
         risk="medium",
-        requires_confirmation=False,  # reversível (pode remarcar de volta)
+        requires_confirmation=True,
     ),
     "send_whatsapp_message": ToolDef(
         schema_model=SendWhatsappMessageArgs,

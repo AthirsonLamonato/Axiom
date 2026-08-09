@@ -223,7 +223,7 @@ def _make_app():
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Paçoca — Login</title>
-<link rel="stylesheet" href="/static/dashboard.css">
+<link rel="stylesheet" href="/static/dashboard.css?v=3">
 </head>
 <body class="login-body">
 <div class="card login-card">
@@ -242,17 +242,25 @@ def _make_app():
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Paçoca Dashboard</title>
-<link rel="stylesheet" href="/static/dashboard.css">
-<script src="/static/dashboard.js" defer></script>
+<link rel="stylesheet" href="/static/dashboard.css?v=3">
+<script src="/static/dashboard.js?v=3" defer></script>
 </head>
 <body>
-<h1>⚡ Paçoca <span id="ws-status">● conectando...</span></h1>
-<nav class="nav">
-  <a href="/" class="active">Dashboard</a>
-  <a href="/metrics">Métricas</a>
-  <a href="/integrations">Integrações</a>
-  <a href="/docs">Documentação</a>
-</nav>
+<header class="app-header">
+  <div class="brand-block">
+    <span class="brand-mark" aria-hidden="true">P</span>
+    <div>
+      <h1>Paçoca <span id="ws-status">● conectando...</span></h1>
+      <p class="eyebrow">Assistente local · controle e automação</p>
+    </div>
+  </div>
+  <nav class="nav" aria-label="Navegação principal">
+    <a href="/" class="active" aria-current="page">Dashboard</a>
+    <a href="/metrics">Métricas</a>
+    <a href="/integrations">Integrações</a>
+    <a href="/docs">Documentação</a>
+  </nav>
+</header>
 
 <div class="grid">
   <!-- Status -->
@@ -721,15 +729,19 @@ def _make_app():
 <html lang="pt-BR"><head><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Paçoca — Integrações</title>
-<link rel="stylesheet" href="/static/dashboard.css">
+<link rel="stylesheet" href="/static/dashboard.css?v=3">
 </head><body>
-<h1>⚡ Paçoca — Integrações</h1>
-<nav class="nav">
+<header class="app-header">
+<div class="brand-block"><span class="brand-mark" aria-hidden="true">P</span><div>
+<h1>Integrações</h1><p class="eyebrow">Conectividade e saúde dos serviços</p>
+</div></div>
+<nav class="nav" aria-label="Navegação principal">
   <a href="/">Dashboard</a>
   <a href="/metrics">Métricas</a>
-  <a href="/integrations" class="active">Integrações</a>
+  <a href="/integrations" class="active" aria-current="page">Integrações</a>
   <a href="/docs">Documentação</a>
 </nav>
+</header>
 <div class="card">
 <table>
 <tr><th></th><th>Integração</th><th>Status</th><th>Ação</th></tr>
@@ -811,16 +823,19 @@ async function testIntegration(name) {{
 <html lang="pt-BR"><head><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Paçoca — Documentação</title>
-<link rel="stylesheet" href="/static/dashboard.css">
+<link rel="stylesheet" href="/static/dashboard.css?v=3">
 </head><body>
-<h1>⚡ Paçoca — Documentação</h1>
-<p class="subtitle">Referência completa de comandos, atalhos, configuração e arquitetura.</p>
-<nav class="nav">
+<header class="app-header">
+<div class="brand-block"><span class="brand-mark" aria-hidden="true">P</span><div>
+<h1>Documentação</h1><p class="eyebrow">Comandos, atalhos e arquitetura</p>
+</div></div>
+<nav class="nav" aria-label="Navegação principal">
   <a href="/">Dashboard</a>
   <a href="/metrics">Métricas</a>
   <a href="/integrations">Integrações</a>
-  <a href="/docs" class="active">Documentação</a>
+  <a href="/docs" class="active" aria-current="page">Documentação</a>
 </nav>
+</header>
 
 <div class="two-col" style="margin-bottom:14px">
   <!-- Atalhos de teclado -->
@@ -934,15 +949,19 @@ async function testIntegration(name) {{
 <html lang="pt-BR"><head><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Paçoca — Métricas</title>
-<link rel="stylesheet" href="/static/dashboard.css">
+<link rel="stylesheet" href="/static/dashboard.css?v=3">
 </head><body>
-<h1>⚡ Paçoca — Métricas</h1>
-<nav class="nav">
+<header class="app-header">
+<div class="brand-block"><span class="brand-mark" aria-hidden="true">P</span><div>
+<h1>Métricas</h1><p class="eyebrow">Desempenho e confiabilidade</p>
+</div></div>
+<nav class="nav" aria-label="Navegação principal">
   <a href="/">Dashboard</a>
-  <a href="/metrics" class="active">Métricas</a>
+  <a href="/metrics" class="active" aria-current="page">Métricas</a>
   <a href="/integrations">Integrações</a>
   <a href="/docs">Documentação</a>
 </nav>
+</header>
 <div class="card full stat-row">
   <div class="stat"><div class="stat-val">{total}</div><div class="stat-lbl">Comandos</div></div>
   <div class="stat"><div class="stat-val">{success}%</div><div class="stat-lbl">Sucesso</div></div>

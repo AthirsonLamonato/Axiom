@@ -257,9 +257,13 @@ class TestExecuteTool:
         result = _check_required_args("update_calendar_event", {"title": "TESTE"})
         assert result != ""
 
-    def test_update_calendar_event_does_not_require_confirmation(self):
+    def test_update_calendar_event_requires_confirmation(self):
         from modules.intent import _needs_confirmation
-        assert _needs_confirmation("update_calendar_event", {"title": "x"}) is False
+        assert _needs_confirmation("update_calendar_event", {"title": "x"}) is True
+
+    def test_create_calendar_event_requires_confirmation(self):
+        from modules.intent import _needs_confirmation
+        assert _needs_confirmation("create_calendar_event", {"title": "x"}) is True
 
     def test_open_application_delegates(self):
         from modules.intent import _execute_tool

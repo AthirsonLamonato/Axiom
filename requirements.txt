@@ -17,8 +17,8 @@ schedule>=1.2
 keyring>=23.0  # armazenamento seguro de chaves de API (opcional mas recomendado)
 
 # ── Text-to-Speech ──────────────────────────────────────────────────
-edge-tts>=6.1        # engine padrão (tts.engine: edge); requer internet, gratuito
-pyttsx3>=2.90        # fallback 100% offline, usado automaticamente se edge-tts faltar
+pyttsx3>=2.90        # engine padrão 100% offline
+edge-tts>=6.1        # alternativa online gratuita; habilite com tts.engine: edge
 
 # ── Interface visual (overlay) ────────────────────────────────────────
 PyQt6>=6.4

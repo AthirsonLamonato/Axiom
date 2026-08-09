@@ -35,7 +35,7 @@ ai:
   use_context: true     # injeta histórico da sessão no prompt (memória contextual)
   auto_learn: false     # extrai fatos de cada conversa e salva na KB (opt-in)
                         # quando true, cada troca é enviada ao LLM configurado
-  embeddings_provider: auto             # auto | gemini | ollama | none — memória semântica da KB
+  embeddings_provider: ollama           # ollama | gemini | auto | none — padrão sem custo e local
   embeddings_model: gemini-embedding-001  # modelo Gemini (free tier)
   embeddings_ollama_model: nomic-embed-text  # requer `ollama pull nomic-embed-text`
   embeddings_api_key: ""                # sobrescrito por GEMINI_API_KEY no .env
@@ -47,7 +47,7 @@ ai:
 # ── Text-to-Speech ────────────────────────────
 tts:
   enabled: true
-  engine: edge          # edge | pyttsx3 | coqui
+  engine: pyttsx3       # pyttsx3 = offline; edge = online gratuito; coqui = local pesado
   edge_voice: pt-BR-FranciscaNeural  # pt-BR-FranciscaNeural | pt-BR-AntonioNeural
   edge_rate: "-8%"      # edge-tts: fala um pouco mais calma/natural
   edge_pitch: "+0Hz"    # edge-tts: ajuste de tom

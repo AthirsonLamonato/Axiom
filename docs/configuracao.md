@@ -58,7 +58,7 @@ ai:
   max_tokens: 1024
   use_context: true            # injeta histórico da sessão no prompt
   auto_learn: false             # extrai fatos de cada conversa para a KB (opt-in)
-  embeddings_provider: auto              # auto | gemini | ollama | none
+  embeddings_provider: ollama            # ollama | gemini | auto | none
   embeddings_model: gemini-embedding-001   # modelo Gemini (free tier)
   embeddings_ollama_model: nomic-embed-text  # requer `ollama pull nomic-embed-text`
   embeddings_api_key: ""                 # prefira GEMINI_API_KEY no .env
@@ -69,8 +69,8 @@ ai:
 **Resolução de API key** (`_resolve_key()` em `core/providers.py`): variável de ambiente >
 keyring > YAML (com aviso de log se vier do YAML em texto puro).
 
-**Online-first**: Groq é primário (mais rápido, sem hardware exigido); Ollama é fallback local
-automático se Groq falhar 3 vezes (circuit breaker abre por 120s) ou estiver sem internet.
+**Local-first**: Ollama é padrão, sem cobrança e sem enviar conversas para terceiros.
+Groq permanece alternativa opcional para quem decidir configurar uma chave.
 
 **Memória semântica** (`core/embeddings.py`): a base de conhecimento
 (`storage/knowledge_base.py`) busca memórias por *significado*, não só por
@@ -82,8 +82,9 @@ salva como "prefere rock e jazz", mesmo sem nenhuma palavra em comum.
 - `embeddings_provider: ollama` — local, sem chave nova, mas requer
   `ollama pull nomic-embed-text` (modelo dedicado de embeddings, diferente do
   `ai.model` usado para chat).
-- `embeddings_provider: auto` (padrão) — tenta Gemini se houver chave, senão
-  Ollama, senão `none`.
+- `embeddings_provider: ollama` (padrão) — usa modelo local, sem chave ou cobrança.
+- `embeddings_provider: auto` — tenta Gemini quando há chave; caso contrário,
+  tenta Ollama e por fim usa busca por palavras-chave.
 - `embeddings_provider: none` — desativa; a busca volta a ser só por
   palavra-chave (comportamento de antes desta funcionalidade, zero
   configuração necessária).
@@ -98,7 +99,7 @@ salva como "prefere rock e jazz", mesmo sem nenhuma palavra em comum.
 ```yaml
 tts:
   enabled: true
-  engine: edge              # edge | pyttsx3 | coqui
+  engine: pyttsx3           # pyttsx3 | edge | coqui
   edge_voice: pt-BR-FranciscaNeural
   edge_rate: "-8%"            # edge-tts: mais lento/mais natural
   edge_pitch: "+0Hz"          # edge-tts: tom
@@ -108,9 +109,9 @@ tts:
   volume: 0.9
 ```
 
-`edge` (Microsoft Edge TTS) é o motor padrão — vozes naturais, requer internet e
-`pip install edge-tts` (não está em requirements.txt por padrão, ver [instalacao.md](instalacao.md)).
-`pyttsx3` funciona 100% offline, mas costuma soar mais robótico.
+`pyttsx3` é o motor padrão: funciona 100% offline, sem chave ou cobrança.
+`edge` oferece vozes mais naturais, mas requer internet. `coqui` roda localmente,
+porém exige mais memória e espaço em disco.
 
 ---
 

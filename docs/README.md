@@ -1,5 +1,7 @@
 # Documentação do Paçoca
 
+- [Auditoria funcional e roadmap técnico](auditoria.md)
+
 - [comandos.md](comandos.md) — Referência completa dos 120+ comandos por categoria
 - [configuracao.md](configuracao.md) — Todas as chaves de `core/config.yaml` explicadas
 - [instalacao.md](instalacao.md) — Guia detalhado de instalação (modo texto, voz, opcionais)

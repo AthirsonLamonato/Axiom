@@ -71,6 +71,21 @@ python main.py --edit-routines
 python main.py --doctor --mode voice --web
 ```
 
+### Servidor MCP local
+
+O Paçoca expõe ferramentas locais de baixo risco pelo protocolo MCP. Ações
+destrutivas, Git e mensagens externas não são publicadas enquanto não existir
+confirmação remota autenticada.
+
+```bash
+pip install -r requirements-mcp.txt
+python mcp_server.py
+```
+
+O transporte padrão é `stdio`: cliente MCP inicia processo local sem abrir
+porta de rede. Modelo poderá rodar em outro servidor; executor do Windows
+continua neste computador, ligado por canal privado autenticado.
+
 ---
 
 ## Funcionalidades
@@ -80,7 +95,7 @@ python main.py --doctor --mode voice --web
 | **STT** | Transcrição via Whisper (`faster-whisper`). Calibração automática de ruído; VAD por energia RMS. Wake word **“Hey Jarvis”** via openWakeWord e push-to-talk `ctrl+shift+space` como alternativa |
 | **Janela de desktop** | Interface PyQt6 (`overlay.enabled: true`): histórico de conversa, caixa de texto, botão de microfone (comando de voz único) e botão de conta Google (Calendar/Drive). Toggle: `ctrl+shift+a`. Desabilitada, roda só por texto/voz no terminal |
 | **Transcrição** | Captura microfone ou loopback do sistema (Windows: WASAPI · Linux: PulseAudio). Auto-save a cada 5 min |
-| **Resumo / IA** | Resumo e explicações via Ollama (local) com fallback para Groq API (gratuito) |
+| **Resumo / IA** | Resumo e explicações via Ollama local; Groq permanece alternativa opcional, nunca requisito |
 | **Pesquisa** | Roteamento automático: perguntas factuais/atuais → DuckDuckGo + IA; demais → LLM local |
 | **Dev tools** | VS Code, abrir arquivo por nome, ir para linha, criar arquivo, git status/log/commit/push/pull/branch, rodar testes, explicar código via IA |
 | **Rotinas** | Sequências configuráveis em YAML com condições (`weekday`, `weekend`, `morning`, `afternoon`, `evening`). Suportam `schedule: {time, days}` para disparo **automático**, sem precisar de comando |
@@ -112,7 +127,7 @@ python main.py --doctor --mode voice --web
 | **Modo reunião auto** | Detecta Zoom/Teams/Slack via psutil; ativa perfil meeting e transcrição automaticamente. Ao fim da reunião, gera e salva o **sumário sozinho** (`meeting_detector.auto_summarize`), sem precisar pedir |
 | **TTS profile-aware** | Rate e volume do TTS sincronizados ao trocar perfil |
 | **Banco de dados** | SQLite — histórico de comandos, sessões e transcrições |
-| **TTS** | edge-tts (Microsoft Neural, padrão, requer internet) com fallback automático para pyttsx3 (100% offline) |
+| **TTS** | pyttsx3 como padrão 100% offline; edge-tts é alternativa online gratuita |
 | **WhatsApp** | Envia mensagens via WhatsApp Web (`pywhatkit`, opcional). Composição natural pelo LLM ("pede pro fulano o que ele está fazendo"). **Dupla barreira de segurança**: sempre pede confirmação explícita + só envia para números em `whatsapp.allowed_numbers` (whitelist) |
 
 ---
@@ -357,7 +372,7 @@ overlay:
 # TTS
 tts:
   enabled: true
-  engine: edge            # edge (online, voz neural) | pyttsx3 (offline) | coqui
+  engine: pyttsx3         # pyttsx3 (offline) | edge (online gratuito) | coqui
 
 # Dashboard web
 web:
@@ -456,7 +471,7 @@ Pacoca/
 ├── modules/
 │   ├── system_control.py      # apps, volume, brilho, processos
 │   ├── transcription.py       # mic + loopback, auto-save
-│   ├── summarizer.py          # Ollama + fallback Groq (gratuito)
+│   ├── summarizer.py          # Ollama local + Groq opcional
 │   ├── search.py              # roteamento IA local vs DuckDuckGo
 │   ├── dev_tools.py           # VS Code, Git, arquivos, testes
 │   ├── routines.py            # rotinas YAML com condições
@@ -479,7 +494,7 @@ Pacoca/
 │   └── web_server.py          # inicia o servidor do dashboard
 │
 ├── output/
-│   ├── tts.py                 # edge-tts (padrão) com fallback pyttsx3/Coqui
+│   ├── tts.py                 # pyttsx3 offline + edge-tts/Coqui opcionais
 │   ├── overlay.py             # janela de desktop PyQt6 (texto/mic/conta Google), thread-safe
 │   └── notifier.py            # notificações desktop
 │
@@ -521,7 +536,7 @@ Pacoca/
 | LLM | Ollama (llama3 / mistral / phi3) | Local / offline |
 | LLM cloud | Groq API (llama3, free tier) | Opcional / gratuito |
 | Embeddings (memória semântica) | Gemini API (free tier) ou Ollama local (`nomic-embed-text`) | Opcional / gratuito |
-| TTS | edge-tts (padrão, voz neural) com fallback para pyttsx3 | Gratuito / offline opcional |
+| TTS | pyttsx3 offline; edge-tts e Coqui opcionais | Gratuito / offline por padrão |
 | Busca web | duckduckgo-search | Gratuito |
 | Janela de desktop | PyQt6 | Open-source |
 | Monitoramento | psutil | Open-source |
