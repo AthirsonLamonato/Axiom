@@ -40,6 +40,7 @@ stt:
   device: cpu              # cpu | cuda
   auto_calibrate: true      # calibra ruído ambiente no boot do modo voz
   noise_threshold: 300      # atualizado automaticamente pela calibração
+  input_device: ""          # nome/parte do nome ou índice PyAudio; vazio = padrão
 ```
 
 Modelos maiores = mais precisão, mais RAM/CPU. Em hardware modesto (4GB RAM), use `tiny` ou `base`.
@@ -106,7 +107,20 @@ tts:
   edge_timeout: 15            # segundos antes de cair para fallback
   rate: 160                   # só pyttsx3
   volume: 0.9
+  output_device: ""            # nome/parte do nome ou índice PyAudio; vazio = padrão
 ```
+
+### Dispositivos de áudio
+
+Use `python main.py --list-audio-devices` para obter os índices e nomes
+ disponíveis. Configure `stt.input_device` para o microfone e `tts.output_device`
+para o fone/saída desejado. Cada valor pode ser o índice, o nome completo ou uma
+parte do nome; deixe vazio para usar o dispositivo padrão do sistema. A alteração
+entra em vigor ao reiniciar o Paçoca.
+
+Para direcionar MP3 do motor `edge` ao fone selecionado, o `ffmpeg` precisa estar
+instalado. Se a seleção não puder ser aplicada, o sistema registra um aviso e
+mantém o fallback para a saída padrão.
 
 `edge` (Microsoft Edge TTS) é o motor padrão — vozes naturais, requer internet e
 `pip install edge-tts` (não está em requirements.txt por padrão, ver [instalacao.md](instalacao.md)).

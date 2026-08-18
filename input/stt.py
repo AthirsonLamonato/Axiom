@@ -120,6 +120,10 @@ class VoiceInput:
         self.config = config
         self._whisper = self._load_whisper()
         self._pa = self._load_pyaudio()
+        from core.audio_devices import resolve_device_index
+        self._input_device_index = resolve_device_index(
+            self._pa, config.get("stt.input_device", ""), "input"
+        )
         self._noise_threshold: float = config.get("stt.noise_threshold", MIN_ENERGY)
 
         if config.get("wake_word.enabled", True):
@@ -184,6 +188,12 @@ class VoiceInput:
             self._mode = "push_to_talk"
             return None
 
+    def _open_input_stream(self, **kwargs):
+        """Abre o microfone configurado ou usa o dispositivo padrão."""
+        if self._input_device_index is not None:
+            kwargs["input_device_index"] = self._input_device_index
+        return self._pa.open(**kwargs)
+
     # ── Interface principal ────────────────────────────────────────────
 
     def listen_for_command(self) -> str:
@@ -197,7 +207,7 @@ class VoiceInput:
     def _listen_wake_word(self) -> str:
         import pyaudio
         threshold = self.config.get("wake_word.sensitivity", 0.5)
-        stream = self._pa.open(
+        stream = self._open_input_stream(
             rate=SAMPLE_RATE,
             channels=1,
             format=pyaudio.paInt16,
@@ -234,7 +244,7 @@ class VoiceInput:
         """Mede o ruído ambiente por CALIBRATION_DURATION segundos e ajusta o limiar."""
         import pyaudio
         print("[Paçoca] Calibrando microfone...", end=" ", flush=True)
-        stream = self._pa.open(
+        stream = self._open_input_stream(
             rate=SAMPLE_RATE, channels=1, format=pyaudio.paInt16,
             input=True, frames_per_buffer=CHUNK,
         )
@@ -266,7 +276,7 @@ class VoiceInput:
         language = self.config.get("stt.language", "pt")
         max_chunks = int(SAMPLE_RATE / CHUNK * MAX_COMMAND_DURATION)
 
-        stream = self._pa.open(
+        stream = self._open_input_stream(
             rate=SAMPLE_RATE, channels=1, format=pyaudio.paInt16,
             input=True, frames_per_buffer=CHUNK,
         )
@@ -306,7 +316,7 @@ class VoiceInput:
         """
         import pyaudio
         max_chunks = int(SAMPLE_RATE / CHUNK * timeout)
-        stream = self._pa.open(
+        stream = self._open_input_stream(
             rate=SAMPLE_RATE, channels=1, format=pyaudio.paInt16,
             input=True, frames_per_buffer=CHUNK,
         )

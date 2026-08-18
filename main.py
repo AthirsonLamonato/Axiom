@@ -96,6 +96,11 @@ def parse_args():
         action="store_true",
         help="Inicia o dashboard web em http://127.0.0.1:7755",
     )
+    parser.add_argument(
+        "--list-audio-devices",
+        action="store_true",
+        help="Lista os dispositivos de entrada e saída disponíveis e encerra",
+    )
     return parser.parse_args()
 
 
@@ -245,6 +250,20 @@ def main():
     _ensure_directories()
 
     config = Config()
+
+    if args.list_audio_devices:
+        from core.audio_devices import list_devices
+        try:
+            for device in list_devices():
+                directions = "/".join(
+                    direction for direction, enabled in (
+                        ("entrada", device["input"]), ("saída", device["output"])
+                    ) if enabled
+                )
+                print(f"{device['index']}: {device['name']} [{directions}]")
+        except Exception as exc:
+            print(f"Não foi possível listar dispositivos de áudio: {exc}")
+        return
 
     # Logging deve ser o primeiro subsistema a iniciar
     setup_logging(config)

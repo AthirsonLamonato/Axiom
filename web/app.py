@@ -1095,7 +1095,9 @@ async function testIntegration(name) {{
       <tr><td><code>ai.model</code></td><td>llama3 | mistral | phi3</td></tr>
       <tr><td><code>ai.groq_model</code></td><td>llama-3.1-8b-instant (padrão)</td></tr>
       <tr><td><code>stt.model</code></td><td>tiny | base | small | medium | large</td></tr>
+      <tr><td><code>stt.input_device</code></td><td>nome ou índice do microfone; vazio = padrão</td></tr>
       <tr><td><code>tts.engine</code></td><td>edge | pyttsx3 | coqui</td></tr>
+      <tr><td><code>tts.output_device</code></td><td>nome ou índice do fone; vazio = padrão</td></tr>
       <tr><td><code>overlay.position</code></td><td>top-left | top-right | bottom-left | bottom-right</td></tr>
       <tr><td><code>privacy.retention_days</code></td><td>dias de histórico (0 = sem limpeza)</td></tr>
       <tr><td><code>obsidian.vault_path</code></td><td>caminho para vault Markdown</td></tr>

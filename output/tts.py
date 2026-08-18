@@ -11,6 +11,7 @@ import tempfile
 import os
 import platform
 import shutil
+import wave
 from typing import Generator
 
 logger = logging.getLogger(__name__)
@@ -170,7 +171,14 @@ class TTS:
             os.unlink(path)
 
     def _play_audio_file(self, path: str):
-        """Reproduz MP3 com o player disponível, sem depender só de mpg123."""
+        """Reproduz áudio e respeita ``tts.output_device`` quando configurado."""
+        if self.config.get("tts.output_device", "") not in (None, "", "auto", "default"):
+            try:
+                self._play_audio_selected(path)
+                return
+            except Exception as exc:
+                logger.warning("Não foi possível usar o fone configurado (%s); usando saída padrão", exc)
+
         if platform.system() == "Windows" or IS_WSL:
             self._play_audio_windows(path)
             return
@@ -185,6 +193,49 @@ class TTS:
                 subprocess.run(cmd, capture_output=True, timeout=30)
                 return
         raise RuntimeError("Nenhum player de MP3 encontrado (instale mpg123 ou ffmpeg).")
+
+    def _play_audio_selected(self, path: str):
+        """Decodifica WAV/MP3 e envia PCM ao dispositivo PyAudio escolhido."""
+        import pyaudio
+        from core.audio_devices import resolve_device_index
+
+        pa = pyaudio.PyAudio()
+        stream = None
+        try:
+            device_index = resolve_device_index(
+                pa, self.config.get("tts.output_device"), "output"
+            )
+            if device_index is None:
+                raise RuntimeError("dispositivo de saída inválido")
+
+            if path.lower().endswith(".wav"):
+                with wave.open(path, "rb") as wav:
+                    channels = wav.getnchannels()
+                    rate = wav.getframerate()
+                    sample_width = wav.getsampwidth()
+                    payload = wav.readframes(wav.getnframes())
+                fmt = pa.get_format_from_width(sample_width)
+            else:
+                if not shutil.which("ffmpeg"):
+                    raise RuntimeError("ffmpeg é necessário para direcionar áudio MP3")
+                proc = subprocess.run(
+                    ["ffmpeg", "-nostdin", "-loglevel", "error", "-i", path,
+                     "-f", "s16le", "-acodec", "pcm_s16le", "-ac", "2", "-ar", "44100", "pipe:1"],
+                    capture_output=True, timeout=30, check=True,
+                )
+                channels, rate, fmt, payload = 2, 44100, pyaudio.paInt16, proc.stdout
+
+            stream = pa.open(
+                format=fmt, channels=channels, rate=rate, output=True,
+                output_device_index=device_index,
+            )
+            for offset in range(0, len(payload), 4096):
+                stream.write(payload[offset:offset + 4096])
+        finally:
+            if stream is not None:
+                stream.stop_stream()
+                stream.close()
+            pa.terminate()
 
     def _play_audio_windows(self, path: str):
         ps = shutil.which("powershell.exe") or shutil.which("powershell")
