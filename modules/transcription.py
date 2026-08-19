@@ -346,7 +346,7 @@ def _run_diarization(audio_path: str) -> str:
         if not segments:
             return "Diarização concluída. Nenhum segmento de fala detectado."
 
-        n_speakers = len({seg.split("]")[0].lstrip("  [") for seg in segments})
+        n_speakers = len({seg.split("]", 1)[0].removeprefix("  [") for seg in segments})
         header = f"Diarização concluída — {n_speakers} falante(s) identificado(s):\n"
         return header + "\n".join(segments)
 

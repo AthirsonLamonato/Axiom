@@ -109,6 +109,23 @@ O diagnóstico pode ser executado em modo texto com `--no-tts --no-overlay` para
 separar problemas da instalação principal de problemas específicos de microfone,
 PyAudio, Whisper ou PyQt6.
 
+### Padrão de qualidade
+
+A validação contínua executa em **Windows e Ubuntu**, usando Python 3.10, lint
+com Ruff, testes unitários e testes de integração explicitamente marcados. A CI
+mantém permissões mínimas de leitura, reutiliza o cache de dependências e publica
+o relatório XML de cobertura como artefato. Integrações que exigem credenciais,
+hardware, GPU ou serviços externos permanecem isoladas e não bloqueiam a suíte
+unitária padrão.
+
+Para reproduzir localmente a validação principal:
+
+```bash
+python -m ruff check core input modules output plugins storage web main.py mcp_server.py setup_wizard.py tests
+python -m ruff check --select B core input modules output plugins storage web main.py mcp_server.py setup_wizard.py tests
+python -m pytest tests -q --capture=no --cov=core --cov=modules --cov=web --cov-report=term-missing
+```
+
 ---
 
 ## Funcionalidades

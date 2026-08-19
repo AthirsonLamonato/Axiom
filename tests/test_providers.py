@@ -13,7 +13,9 @@ Integração (requer GROQ_API_KEY e/ou Ollama rodando):
 """
 
 import time
+
 import pytest
+import requests
 
 
 # ── Unit: circuit breaker ────────────────────────────────────────────
@@ -100,7 +102,7 @@ def test_tool_use_failed_does_not_count_toward_circuit_breaker(monkeypatch):
     )())
     monkeypatch.setattr(p, "_retry_http", lambda fn, **k: fn())
 
-    with pytest.raises(Exception):
+    with pytest.raises(requests.HTTPError):
         client._groq_raw([{"role": "user", "content": "oi"}])
 
     assert p._groq_failures == 0
@@ -263,3 +265,48 @@ def test_ollama_chat_returns_text():
     client = get_client(Config())
     resp = client._ollama_chat([{"role": "user", "content": "responda apenas: ok"}], max_tokens=10)
     assert isinstance(resp, str)
+
+
+def test_ttl_cache_is_thread_safe_and_removes_expired_entry(monkeypatch):
+    from core.providers import _TTLCache
+
+    now = iter([100.0, 100.0, 101.0, 102.0])
+    monkeypatch.setattr("core.providers.time.monotonic", lambda: next(now))
+    cache = _TTLCache(ttl=1)
+    cache.set("key", "value")
+    assert cache.get("key") == "value"
+    assert cache.get("key") is None
+    assert cache._store == {}
+
+
+def test_ollama_stream_uses_shared_http_session(monkeypatch):
+    import core.providers as providers
+
+    class Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def raise_for_status(self):
+            return None
+
+        def iter_lines(self):
+            yield b'{"message":{"content":"ok"},"done":true}'
+
+    class Session:
+        def __init__(self):
+            self.called = False
+
+        def post(self, *_args, **_kwargs):
+            self.called = True
+            return Response()
+
+    session = Session()
+    monkeypatch.setattr(providers, "_get_session", lambda: session)
+    monkeypatch.setattr(providers.LLMClient, "_ollama_url", lambda _self: "http://ollama")
+    monkeypatch.setattr(providers.LLMClient, "_ollama_model", lambda _self: "llama3")
+    client = providers.LLMClient.__new__(providers.LLMClient)
+    assert list(client._ollama_stream([{"role": "user", "content": "oi"}])) == ["ok"]
+    assert session.called is True

@@ -23,6 +23,10 @@ ENV/
 data/
 logs/
 *.log
+.coverage
+coverage.xml
+htmlcov/
+.pytest_cache/
 
 # ── Credenciais e segredos ────────────────────
 core/credentials.json

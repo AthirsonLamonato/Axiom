@@ -93,7 +93,7 @@ def test_pack_unpack_roundtrip_exact():
     packed = emb.pack_embedding(vec)
     restored = emb.unpack_embedding(packed)
     assert len(restored) == len(vec)
-    for a, b in zip(vec, restored):
+    for a, b in zip(vec, restored, strict=True):
         assert abs(a - b) < 1e-6
 
 

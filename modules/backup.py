@@ -134,8 +134,10 @@ def _get_drive_service(config):
         from google_auth_oauthlib.flow import InstalledAppFlow
         from google.auth.transport.requests import Request
         from googleapiclient.discovery import build
-    except ImportError:
-        raise RuntimeError("Instale: pip install google-api-python-client google-auth-oauthlib")
+    except ImportError as err:
+        raise RuntimeError(
+            "Instale: pip install google-api-python-client google-auth-oauthlib"
+        ) from err
 
     creds_path = config.get("backup.google_drive.credentials_path", "core/credentials.json")
     token_path = config.get("backup.google_drive.token_path", "core/google_token.json")

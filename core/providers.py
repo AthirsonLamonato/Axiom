@@ -376,8 +376,10 @@ class LLMClient:
     def _ollama_stream(self, messages: list[dict], max_tokens: int = 1024) -> Generator[str, None, None]:
         url = self._ollama_url() + "/api/chat"
         try:
-            with requests.post(
+            session = _get_session()
+            with session.post(
                 url,
+
                 json={
                     "model": self._ollama_model(),
                     "messages": messages,
@@ -409,20 +411,28 @@ class LLMClient:
 
 class _TTLCache:
     def __init__(self, ttl: int = 300):
-        self._ttl = ttl
+        self._ttl = max(float(ttl), 0.0)
         self._store: dict[str, tuple[float, Any]] = {}
+        self._lock = threading.RLock()
 
     def get(self, key: str) -> Optional[Any]:
-        entry = self._store.get(key)
-        if entry and time.monotonic() - entry[0] < self._ttl:
-            return entry[1]
-        return None
+        with self._lock:
+            entry = self._store.get(key)
+            if entry is None:
+                return None
+            created_at, value = entry
+            if time.monotonic() - created_at < self._ttl:
+                return value
+            self._store.pop(key, None)
+            return None
 
     def set(self, key: str, value: Any) -> None:
-        self._store[key] = (time.monotonic(), value)
+        with self._lock:
+            self._store[key] = (time.monotonic(), value)
 
     def clear(self) -> None:
-        self._store.clear()
+        with self._lock:
+            self._store.clear()
 
 
 _weather_cache = _TTLCache(ttl=600)    # 10 min

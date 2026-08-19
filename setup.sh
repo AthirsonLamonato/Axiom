@@ -1,7 +1,20 @@
 #!/usr/bin/env bash
-set -e
+
+set -Eeuo pipefail
+
+ROOT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+cd "$ROOT_DIR"
+VENV_DIR="$ROOT_DIR/.venv"
+PYTHON_BIN="$VENV_DIR/bin/python"
+
+cleanup_on_error() {
+    echo "[ERRO] A instalação falhou na linha ${BASH_LINENO[0]}." >&2
+    echo "       Verifique a mensagem acima e execute novamente após corrigir o requisito." >&2
+}
+trap cleanup_on_error ERR
 
 echo ""
+
 echo "██████╗  █████╗  ██████╗ ██████╗  ██████╗  █████╗"
 echo "██╔══██╗██╔══██╗██╔════╝██╔═══██╗██╔════╝ ██╔══██╗"
 echo "██████╔╝███████║██║     ██║   ██║██║      ███████║"
@@ -9,7 +22,7 @@ echo "██╔═══╝ ██╔══██║██║     ██║   �
 echo "██║     ██║  ██║╚██████╗╚██████╔╝╚██████╗ ██║  ██║"
 echo "╚═╝     ╚═╝  ╚═╝ ╚═════╝ ╚═════╝  ╚═════╝ ╚═╝  ╚═╝"
 echo ""
-echo " Instalador do Paçoca — Assistente Pessoal v0.5.0"
+echo " Instalador do Paçoca — Assistente Pessoal v0.8-dev"
 echo "════════════════════════════════════════════════════"
 echo ""
 echo " Níveis de instalação:"
@@ -37,14 +50,21 @@ check_python() {
 
 check_python
 
+if [ ! -x "$PYTHON_BIN" ]; then
+    echo "[Preparando ambiente virtual em $VENV_DIR...]"
+    python3 -m venv "$VENV_DIR"
+fi
+"$PYTHON_BIN" -m pip install --upgrade pip
+
 case "$NIVEL" in
+
   1)
     echo ""
     echo "[Instalação Mínima]"
     echo "Suficiente para: python3 main.py --mode text --no-tts --no-overlay"
     echo ""
     echo "[1/3] Instalando dependências mínimas..."
-    pip3 install -r requirements-minimal.txt
+    "$PYTHON_BIN" -m pip install -r requirements-minimal.txt
     echo "[OK] Dependências instaladas."
     ;;
   2)
@@ -53,7 +73,7 @@ case "$NIVEL" in
     echo "Inclui: TTS, overlay PyQt6, controle de sistema."
     echo ""
     echo "[1/3] Instalando dependências completas..."
-    pip3 install -r requirements.txt
+    "$PYTHON_BIN" -m pip install -r requirements.txt
     echo "[OK] Dependências instaladas."
     ;;
   3)
@@ -61,7 +81,7 @@ case "$NIVEL" in
     echo "[Instalação com Voz]"
     echo ""
     echo "[1/4] Instalando dependências base..."
-    pip3 install -r requirements.txt
+    "$PYTHON_BIN" -m pip install -r requirements.txt
     echo "[OK] Dependências base instaladas."
 
     echo ""
@@ -69,19 +89,20 @@ case "$NIVEL" in
     # Linux: requer portaudio19-dev
     if command -v apt-get &>/dev/null; then
         echo "Detectado apt. Instalando PortAudio via apt..."
-        sudo apt-get install -y portaudio19-dev python3-pyaudio
+        sudo apt-get install -y portaudio19-dev
+
     elif command -v brew &>/dev/null; then
         echo "Detectado Homebrew (Mac). Instalando PortAudio via brew..."
         brew install portaudio
-        pip3 install pyaudio
+        "$PYTHON_BIN" -m pip install pyaudio
     else
         echo "[AVISO] Gerenciador de pacotes não reconhecido."
-        echo "        Instale PortAudio manualmente e depois: pip3 install pyaudio"
+        echo "        Instale PortAudio manualmente e depois: $PYTHON_BIN -m pip install pyaudio"
     fi
 
     echo ""
     echo "[3/4] Instalando dependências de ML (STT + wake word)..."
-    pip3 install faster-whisper openwakeword || echo "[AVISO] Falha parcial — o modo voz pode não funcionar."
+    "$PYTHON_BIN" -m pip install -r requirements-voice.txt
     echo "[OK] Dependências de voz processadas."
     ;;
   *)
@@ -99,10 +120,10 @@ echo "[OK] Diretórios criados."
 # ── Testes ────────────────────────────────────────────────────────────
 echo ""
 echo "[Verificando instalação (testes)...]"
-if python3 -m pytest tests/ -q --tb=no 2>/dev/null; then
+if "$PYTHON_BIN" -m pytest tests/ -q --tb=no 2>/dev/null; then
     echo "[OK] Todos os testes passaram."
 else
-    echo "[AVISO] Alguns testes falharam. Execute 'python3 -m pytest tests/ -v' para detalhes."
+    echo "[AVISO] Alguns testes falharam. Execute '$PYTHON_BIN -m pytest tests/ -v' para detalhes."
 fi
 
 # ── Ollama ────────────────────────────────────────────────────────────
@@ -134,18 +155,18 @@ echo " Instalação concluída!"
 echo ""
 if [ "$NIVEL" = "1" ]; then
     echo " Para iniciar:"
-    echo "   python3 main.py --mode text --no-tts --no-overlay"
+    echo "   $PYTHON_BIN main.py --mode text --no-tts --no-overlay"
 elif [ "$NIVEL" = "2" ]; then
     echo " Para iniciar:"
-    echo "   python3 main.py --mode text --no-tts    (sem voz, com overlay)"
-    echo "   python3 main.py --mode text              (texto com TTS)"
+    echo "   $PYTHON_BIN main.py --mode text --no-tts    (sem voz, com overlay)"
+    echo "   $PYTHON_BIN main.py --mode text              (texto com TTS)"
 else
     echo " Para iniciar:"
-    echo "   python3 main.py --mode text --no-tts    (sem voz, com overlay)"
-    echo "   python3 main.py --mode voice             (modo voz completo)"
-    echo "   python3 main.py                          (modo padrão: voz)"
+    echo "   $PYTHON_BIN main.py --mode text --no-tts    (sem voz, com overlay)"
+    echo "   $PYTHON_BIN main.py --mode voice             (modo voz completo)"
+    echo "   $PYTHON_BIN main.py                          (modo padrão: voz)"
 fi
-echo "   python3 main.py --web                    (com dashboard web)"
+echo "   $PYTHON_BIN main.py --web                    (com dashboard web)"
 echo ""
 echo " Dica: use './run.sh' para iniciar rapidamente."
 echo ""

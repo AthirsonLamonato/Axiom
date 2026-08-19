@@ -36,8 +36,10 @@ def _get_service():
         from google_auth_oauthlib.flow import InstalledAppFlow
         from google.auth.transport.requests import Request
         from googleapiclient.discovery import build
-    except ImportError:
-        raise RuntimeError("Instale: pip install google-api-python-client google-auth-oauthlib")
+    except ImportError as err:
+        raise RuntimeError(
+            "Instale: pip install google-api-python-client google-auth-oauthlib"
+        ) from err
 
     config = _get_config()
     creds_path = config.get("calendar.credentials_path", CREDS_PATH)
