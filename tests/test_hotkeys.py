@@ -57,3 +57,40 @@ def test_voice_input_waits_for_registered_push_to_talk():
     voice.request_push_to_talk()
 
     assert voice._listen_push_to_talk() == "comando transcrito"
+
+
+def test_wake_phrase_only_is_not_a_command():
+    from input.stt import _is_wake_phrase_only
+
+    assert _is_wake_phrase_only("Ei, Javis.") is True
+    assert _is_wake_phrase_only("Hey Jarvis") is True
+    assert _is_wake_phrase_only("Hey Jarvis, abre o Spotify") is False
+
+
+def test_init_voice_reuses_single_instance(monkeypatch):
+    import input.stt as stt
+
+    created = []
+
+    class FakeVoice:
+        def __init__(self, config):
+            created.append(config)
+
+    monkeypatch.setattr(stt, "_voice", None)
+    monkeypatch.setattr(stt, "VoiceInput", FakeVoice)
+
+    first = stt.init_voice(object())
+    second = stt.init_voice(object())
+
+    assert first is second
+    assert len(created) == 1
+
+
+def test_voice_activation_callback_is_immediate():
+    voice = VoiceInput.__new__(VoiceInput)
+    calls = []
+    voice._activation_callback = lambda: calls.append("activated")
+
+    voice._notify_activation()
+
+    assert calls == ["activated"]

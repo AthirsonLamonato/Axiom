@@ -215,6 +215,11 @@ def _matched_route(command):
             "modules.local_info:current_time",
             (),
         ),
+        (
+            "quando eu falar spot fire entenda spotify",
+            "core.orchestrator:teach_vocabulary",
+            ("spot fire", "spotify"),
+        ),
     ],
 )
 def test_routes_pass_only_semantic_arguments(command, handler, groups):

@@ -10,6 +10,7 @@ profile:
 # ── Wake word ─────────────────────────────────
 wake_word:
   enabled: true
+  startup_greeting: false # inicia silencioso; apenas espera a frase de ativação
   sensitivity: 0.5      # 0.0 (menos sensível) → 1.0 (mais sensível)
   keyword: "hey jarvis" # frase real do modelo padrão quando model_path está vazio
   model_path: ""        # Caminho para modelo .onnx customizado (ex: pacoca.onnx)
@@ -18,11 +19,15 @@ wake_word:
 
 # ── Speech-to-Text ────────────────────────────
 stt:
-  model: small          # tiny | base | small | medium | large
+  model: base           # base reduz a latência no CPU; small prioriza precisão
   language: pt          # código do idioma
   device: cpu           # cpu | cuda (GPU Nvidia)
-  auto_calibrate: true  # calibrar ruído ambiente na inicialização do modo voz
+  local_files_only: true # usa o modelo já baixado e evita consulta ao Hugging Face no boot
+  auto_calibrate: false # evita abrir o microfone no boot; diga "calibrar microfone" quando necessário
   noise_threshold: 300  # limiar de energia RMS (atualizado automaticamente na calibração)
+  beep_enabled: true    # sinal curto: comece a falar depois dele
+  beam_size: 2          # equilíbrio entre precisão e velocidade no CPU
+  initial_prompt: "Comandos para Paçoca: Spotify, Chrome, navegador, volume, pausar, continuar, próxima música, abrir aplicativo, pesquisar na internet."
 
 # ── IA local (Ollama) ─────────────────────────
 ai:
@@ -47,9 +52,9 @@ ai:
 # ── Text-to-Speech ────────────────────────────
 tts:
   enabled: true
-  engine: pyttsx3       # pyttsx3 = offline; edge = online gratuito; coqui = local pesado
+  engine: edge          # voz neural gratuita; pyttsx3 é offline, mas mais robótico
   edge_voice: pt-BR-FranciscaNeural  # pt-BR-FranciscaNeural | pt-BR-AntonioNeural
-  edge_rate: "-8%"      # edge-tts: fala um pouco mais calma/natural
+  edge_rate: "+4%"      # natural, sem alongar demais as respostas
   edge_pitch: "+0Hz"    # edge-tts: ajuste de tom
   edge_volume: "+0%"    # edge-tts: volume relativo
   edge_timeout: 15      # segundos antes de cair para fallback
@@ -59,10 +64,10 @@ tts:
 # ── Overlay visual ────────────────────────────
 overlay:
   enabled: true
-  position: top-left    # top-left | top-right | bottom-left | bottom-right
+  position: center      # center | top-left | top-right | bottom-left | bottom-right
   theme: blue            # blue | green | purple | orange — cor de destaque (botão enviar, bordas)
   duration_ms: 4000     # não usado (histórico de chat substitui as mensagens em toast); mantido p/ compat
-  opacity: 0.92
+  opacity: 1.0
 
 # ── Segurança ─────────────────────────────────
 security:

@@ -273,6 +273,8 @@ ROUTES: list[tuple[str, str, bool]] = [
     # Vocabulário e aprendizado
     (r"aprende\s+que\s+(.+?)\s+(?:significa|é|quer dizer)\s+(.+)",
                                           "core.orchestrator:teach_vocabulary",  False),
+    (r"quando\s+eu\s+(?:disser|falar)\s+(.+?)\s+(?:entenda|interprete)\s+(.+)",
+                                          "core.orchestrator:teach_vocabulary",  False),
     (r"(relatório|relatorio)\s+de\s+aprendizado", "core.orchestrator:learning_report", False),
     (r"o\s+que\s+você\s+(aprendeu|sabe)",  "core.orchestrator:learning_report",  False),
     (r"desfaz\s+(?:o\s+)?(?:último|ultimo)\s+aprendizado", "modules.learner:rollback_last", True),
@@ -787,20 +789,84 @@ class Orchestrator:
             logger.warning("Callback de confirmação por voz não registrado: %s", e)
 
         mode = voice._mode
+        keyword = self.config.get("wake_word.keyword", "paçoca")
         if mode == "push_to_talk":
             trigger = "Ctrl+Shift+Space" if hotkeys and hotkeys._active else "Enter"
             print(f"[Paçoca] Modo push-to-talk ativo. Pressione {trigger} para falar.\n")
         else:
-            keyword = self.config.get("wake_word.keyword", "paçoca")
-            print(f"[Paçoca] Aguardando wake word '{keyword}'...\n")
-        self.tts.speak("Paçoca online.")
+            print(
+                f"[Paçoca] Em espera local. Diga '{keyword}' para ativar; "
+                "fale o comando depois do sinal.\n",
+                flush=True,
+            )
+        if overlay:
+            overlay.set_state_detail("idle", f"Aguardando {keyword}" if mode != "push_to_talk" else "Em espera")
+        if self.config.get("wake_word.startup_greeting", False):
+            self.tts.speak("Paçoca online.")
+
+        # Escuta e execução ficam em fluxos separados. Assim a wake word
+        # continua disponível enquanto uma resposta/ação está processando.
+        import queue as _queue
+
+        command_queue: _queue.Queue = _queue.Queue(maxsize=3)
+        stop_listening = threading.Event()
+        generation_lock = threading.Lock()
+        activation_generation = [0]
+
+        def _current_generation() -> int:
+            with generation_lock:
+                return activation_generation[0]
+
+        def _on_activation() -> None:
+            with generation_lock:
+                activation_generation[0] += 1
+            # A ativação é "barge-in": corta a fala atual imediatamente.
+            self.tts.stop()
+            if overlay:
+                overlay.set_state_detail("listening", "Pode falar")
+
+        voice.set_activation_callback(_on_activation)
+
+        def _enqueue_latest(item) -> None:
+            while True:
+                try:
+                    command_queue.put_nowait(item)
+                    return
+                except _queue.Full:
+                    try:
+                        command_queue.get_nowait()
+                    except _queue.Empty:
+                        return
+
+        def _listener_loop() -> None:
+            while not stop_listening.is_set():
+                try:
+                    command = voice.listen_for_command()
+                    generation = _current_generation()
+                    if command:
+                        _enqueue_latest((command, generation))
+                    elif overlay:
+                        overlay.set_state_detail("idle", f"Aguardando {keyword}")
+                except Exception as exc:
+                    if not stop_listening.is_set():
+                        logger.warning("Escuta contínua falhou: %s", exc, exc_info=True)
+
+        listener = threading.Thread(
+            target=_listener_loop,
+            daemon=True,
+            name="voice-listener",
+        )
+        listener.start()
 
         try:
             while True:
-                if overlay:
-                    overlay.set_state("listening")
-                command = voice.listen_for_command()
+                try:
+                    command, command_generation = command_queue.get(timeout=0.25)
+                except _queue.Empty:
+                    continue
                 if command and _is_voice_exit(command):
+                    stop_listening.set()
+                    self.tts.stop()
                     self.tts.speak("Até logo.")
                     print("[Paçoca] Encerrando modo voz.")
                     break
@@ -814,13 +880,17 @@ class Orchestrator:
 
                     self._tts_done = False
                     response = self.dispatch_chain(corrected)
+                    interrupted = _current_generation() != command_generation
                     if response:
-                        print(f"\n  Paçoca: {response}\n")
-                        if overlay:
-                            overlay.show_message(response)
-                            overlay.set_state("speaking")
-                        if not self._tts_done:
-                            self.tts.speak(response)
+                        if interrupted:
+                            logger.info("Resposta anterior descartada após nova ativação")
+                        else:
+                            print(f"\n  Paçoca: {response}\n")
+                            if overlay:
+                                overlay.show_message(response)
+                                overlay.set_state("speaking")
+                            if not self._tts_done:
+                                self.tts.speak(response)
 
                     if learner:
                         success = bool(response and "não entendi" not in response.lower()
@@ -828,9 +898,11 @@ class Orchestrator:
                         learner.record(command, response or "", resolved=corrected, source="voice",
                                        success=success)
 
-                    if overlay:
-                        overlay.set_state("idle")
+                    if overlay and not interrupted:
+                        overlay.set_state_detail("idle", f"Aguardando {keyword}")
         finally:
+            stop_listening.set()
+            voice.set_activation_callback(None)
             if hotkeys:
                 hotkeys.stop()
             voice.close()

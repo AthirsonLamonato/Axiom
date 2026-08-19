@@ -93,10 +93,10 @@ DEFAULT_THEME = "blue"
 UI = {
     "bg": "#04060c",
     "bg_2": "#0a1622",
-    "card": "rgba(13, 22, 36, 235)",
+    "card": "#0d1624",
     "card_alt": "#070d16",
-    "border": "rgba(0, 229, 255, 46)",
-    "border_focus": "rgba(0, 229, 255, 102)",
+    "border": "#163746",
+    "border_focus": "#176578",
     "text": "#d8f3ff",
     "muted": "#5d7a8c",
     "response": "#3df0ff",
@@ -123,6 +123,7 @@ class PacocaOverlay:
         from PyQt6.QtWidgets import (
             QApplication, QLabel, QWidget, QVBoxLayout, QHBoxLayout,
             QLineEdit, QPushButton, QTextEdit, QGraphicsOpacityEffect,
+            QStackedWidget, QFrame, QGridLayout, QSizePolicy,
         )
         from PyQt6.QtCore import QTimer, QPropertyAnimation, QEasingCurve
         from PyQt6.QtGui import QFont
@@ -134,42 +135,116 @@ class PacocaOverlay:
         self._theme = THEMES.get(theme_name, THEMES[DEFAULT_THEME])
 
         self._app = QApplication.instance() or QApplication(sys.argv)
+        self._app.setFont(QFont("Segoe UI", 10))
         # Por padrão, fechar a última janela visível mata o QApplication —
         # como esta janela agora tem barra de título (clicável no X), isso
         # mataria o processo do Paçoca inteiro (incluindo a thread do
         # orchestrator). Fechar deve só ocultar, como toggle()/hide() já fazem.
         self._app.setQuitOnLastWindowClosed(False)
         self._window = QWidget()
+        self._window.setObjectName("AppRoot")
         self._window.setWindowTitle("Paçoca")
-        self._window.resize(520, 680)
+        self._window.resize(980, 700)
+        self._window.setMinimumSize(840, 600)
         self._window.setStyleSheet(
-            f"background: qlineargradient(x1:0, y1:0, x2:0, y2:1,"
-            f" stop:0 {UI['bg_2']}, stop:1 {UI['bg']}); color: {UI['text']};"
+            f"QWidget#AppRoot {{ background: {UI['bg']}; color: {UI['text']}; }}"
+            f"QLabel {{ color: {UI['text']}; background: transparent; }}"
+            f"QFrame#Sidebar {{ background: #080d15; border-right: 1px solid {UI['border']}; }}"
+            "QFrame#TopCard, QFrame#InfoCard { background: #0d1624; border: 1px solid #163746; border-radius: 12px; }"
+            f"QPushButton {{ background: #101c2b; color: {UI['text']}; border: 1px solid #1b3e50;"
+            " border-radius: 9px; padding: 10px 14px; text-align: left; font-size: 12px; }}"
+            "QPushButton:hover { background: #14283a; border-color: #2a7187; }"
+            "QPushButton:pressed { background: #0a111b; }"
+            f"QPushButton:disabled {{ color: {UI['muted']}; border-color: #162330; }}"
+            f"QPushButton#Primary {{ background: {self._theme['accent']}; color: white; border: none;"
+            " text-align: center; font-weight: 700; }}"
+            f"QPushButton#Primary:hover {{ background: {self._theme['accent_hover']}; }}"
+            f"QPushButton#Nav {{ background: transparent; color: {UI['muted']}; border: none;"
+            " padding: 11px 12px; text-align: left; font-weight: 600; }}"
+            "QPushButton#Nav:hover { background: #101c2b; color: #d8f3ff; }"
+            f"QPushButton#NavActive {{ background: #102536; color: {self._theme['accent_text']};"
+            " border: 1px solid #1d5366; padding: 11px 12px; text-align: left; font-weight: 700; }}"
+            f"QTextEdit {{ background: #0a111b; color: {UI['text']}; border: 1px solid #163746;"
+            " border-radius: 12px; padding: 14px; selection-background-color: #176578; }}"
+            f"QLineEdit {{ background: #0a111b; color: {UI['text']}; border: 1px solid #176578;"
+            " border-radius: 10px; padding: 11px 14px; }}"
+            f"QLineEdit:focus {{ border: 1px solid {self._theme['accent_text']}; }}"
         )
 
-        root = QVBoxLayout(self._window)
-        root.setContentsMargins(18, 18, 18, 18)
-        root.setSpacing(12)
+        root = QHBoxLayout(self._window)
+        root.setContentsMargins(0, 0, 0, 0)
+        root.setSpacing(0)
 
-        # Header: estado + conta Google
-        header = QHBoxLayout()
-        header.setSpacing(10)
-        title_box = QVBoxLayout()
-        title_box.setSpacing(2)
-        self._title_label = QLabel("⚡ Paçoca")
-        self._title_label.setFont(QFont("Segoe UI", 16))
+        # Navegação lateral
+        sidebar = QFrame()
+        sidebar.setObjectName("Sidebar")
+        sidebar.setFixedWidth(220)
+        side = QVBoxLayout(sidebar)
+        side.setContentsMargins(18, 22, 18, 18)
+        side.setSpacing(9)
+
+        self._title_label = QLabel("PAÇOCA")
+        self._title_label.setFont(QFont("Segoe UI", 19, 700))
         self._title_label.setStyleSheet(
-            f"color: {self._theme['accent_text']}; background: transparent; border: none; letter-spacing: 2px;"
+            f"color: {self._theme['accent_text']}; background: transparent; border: none;"
         )
-        self._subtitle_label = QLabel("Assistente pessoal inteligente")
-        self._subtitle_label.setFont(QFont("Segoe UI", 9))
+        self._subtitle_label = QLabel("Assistente local")
+        self._subtitle_label.setFont(QFont("Segoe UI", 9, 500))
         self._subtitle_label.setStyleSheet(f"color: {UI['muted']}; background: transparent; border: none;")
-        title_box.addWidget(self._title_label)
-        title_box.addWidget(self._subtitle_label)
-        header.addLayout(title_box)
-        header.addStretch()
+        side.addWidget(self._title_label)
+        side.addWidget(self._subtitle_label)
+        side.addSpacing(18)
         _glow(self._title_label, self._theme["accent_glow"], blur=28, strength=140)
 
+        self._stack = QStackedWidget()
+        self._nav_buttons = []
+        for label, index in (("Conversa", 0), ("Ações rápidas", 1), ("Central de controle", 2)):
+            button = QPushButton(label)
+            button.setObjectName("NavActive" if index == 0 else "Nav")
+            button.clicked.connect(lambda _checked=False, i=index: self._switch_page(i))
+            side.addWidget(button)
+            self._nav_buttons.append(button)
+        side.addStretch()
+
+        privacy = QLabel(
+            "<b>PRIVACIDADE LOCAL</b><br>O áudio só é transcrito depois de <i>Hey Jarvis</i>. "
+            "Mensagens externas permanecem em simulação."
+        )
+        privacy.setWordWrap(True)
+        privacy.setStyleSheet(
+            "background: #0d1c20; color: #86d9c4; border: 1px solid #1c5148; "
+            "border-radius: 10px; padding: 11px; font-size: 10px;"
+        )
+        side.addWidget(privacy)
+
+        self._account_btn = QPushButton("Conectar Google")
+        self._account_btn.clicked.connect(self._on_account_clicked)
+        side.addWidget(self._account_btn)
+        version = QLabel("v0.6 · execução local")
+        version.setStyleSheet(f"color: {UI['muted']}; padding: 4px; font-size: 9px;")
+        side.addWidget(version)
+        root.addWidget(sidebar)
+
+        # Página 1: conversa
+        chat_page = QWidget()
+        chat_layout = QVBoxLayout(chat_page)
+        chat_layout.setContentsMargins(26, 24, 26, 24)
+        chat_layout.setSpacing(14)
+
+        top_card = QFrame()
+        top_card.setObjectName("TopCard")
+        top = QHBoxLayout(top_card)
+        top.setContentsMargins(16, 13, 16, 13)
+        heading_box = QVBoxLayout()
+        heading = QLabel("Conversa")
+        heading.setFont(QFont("Segoe UI", 18, 700))
+        heading.setStyleSheet("color: #f4f8fb; border: none;")
+        hint = QLabel("Diga “Hey Jarvis”, espere o sinal e fale normalmente.")
+        hint.setStyleSheet(f"color: {UI['muted']}; border: none;")
+        heading_box.addWidget(heading)
+        heading_box.addWidget(hint)
+        top.addLayout(heading_box)
+        top.addStretch()
         self._state_dot = QLabel("●")
         self._state_dot.setFont(QFont("Segoe UI", 11))
         self._state_dot.setStyleSheet(f"color: {UI['muted']}; background: transparent; border: none;")
@@ -182,78 +257,135 @@ class PacocaOverlay:
         self._dot_anim.setKeyValueAt(1.0, 1.0)
         self._dot_anim.setEasingCurve(QEasingCurve.Type.InOutSine)
         self._dot_anim.setLoopCount(-1)
-        self._state_label = QLabel("Paçoca")
-        self._state_label.setFont(QFont("Segoe UI", 9))
+        self._state_label = QLabel("Inicializando")
+        self._state_label.setFont(QFont("Segoe UI", 10, 600))
         self._state_label.setStyleSheet(f"color: {UI['muted']}; background: transparent; border: none;")
-        header.addWidget(self._state_dot)
-        header.addWidget(self._state_label)
+        top.addWidget(self._state_dot)
+        top.addWidget(self._state_label)
+        chat_layout.addWidget(top_card)
 
-        self._account_btn = QPushButton("Conectar Google")
-        self._account_btn.setStyleSheet(
-            f"QPushButton {{ background: {UI['card']}; color: {self._theme['accent_text']};"
-            f" border: 1px solid {UI['border_focus']}; border-radius: 6px; padding: 7px 11px; font-size: 11px; }}"
-            f"QPushButton:hover {{ background: {UI['border']}; }}"
-            f"QPushButton:disabled {{ color: {UI['muted']}; }}"
-        )
-        self._account_btn.clicked.connect(self._on_account_clicked)
-        header.addWidget(self._account_btn)
-        root.addLayout(header)
-
-        divider = QLabel("Dashboard · Desktop · Comandos")
-        divider.setFont(QFont("Segoe UI", 9))
-        divider.setStyleSheet(
-            f"color: {UI['muted']}; background: transparent; border-bottom: 1px solid {UI['border']}; padding: 0 0 10px 0;"
-        )
-        root.addWidget(divider)
-
-        # Histórico de conversa (log completo, não só as últimas mensagens)
         self._chat_log = QTextEdit()
         self._chat_log.setReadOnly(True)
         self._chat_log.setFont(QFont("Segoe UI", 10))
-        self._chat_log.setStyleSheet(
-            f"QTextEdit {{ background: {UI['card']}; color: {UI['text']}; border: 1px solid {UI['border']};"
-            " border-radius: 8px; padding: 10px; selection-background-color: #1f6feb; }}"
+        self._chat_log.viewport().setStyleSheet("background-color: #0a111b;")
+        self._chat_log.document().setDefaultStyleSheet(
+            "html, body { background-color: #0a111b; color: #d8f3ff; margin: 0; }"
         )
-        root.addWidget(self._chat_log)
+        self._chat_log.setPlaceholderText(
+            "As respostas aparecerão aqui. Você também pode digitar um comando abaixo."
+        )
+        chat_layout.addWidget(self._chat_log, 1)
 
-        # Caixa de texto + botões
         input_row = QHBoxLayout()
         input_row.setSpacing(8)
         self._input = QLineEdit()
-        self._input.setPlaceholderText("Digite um comando…")
+        self._input.setPlaceholderText("Digite um comando para o Paçoca…")
         self._input.setFont(QFont("Segoe UI", 11))
         self._input.setStyleSheet(
-            f"QLineEdit {{ background: {UI['card_alt']}; color: {UI['text']}; border: 1px solid {UI['border_focus']};"
-            " border-radius: 6px; padding: 8px 12px; }}"
-            f"QLineEdit:focus {{ border-color: {self._theme['accent_text']}; }}"
-            f"QLineEdit:disabled {{ color: {UI['muted']}; }}"
+            f"background-color: #0a111b; color: {UI['text']}; "
+            f"border: 1px solid {UI['border_focus']}; border-radius: 10px; "
+            "padding: 11px 14px;"
         )
         self._input.returnPressed.connect(self._on_submit_text)
         input_row.addWidget(self._input)
 
-        self._mic_btn = QPushButton("Mic")
-        self._mic_btn.setFixedWidth(48)
-        self._mic_btn.setStyleSheet(
-            f"QPushButton {{ background: {UI['card']}; color: {UI['text']}; border: 1px solid {UI['border_focus']};"
-            " border-radius: 6px; padding: 8px 10px; font-size: 12px; }}"
-            f"QPushButton:hover {{ background: {UI['border']}; }}"
-            f"QPushButton:disabled {{ color: {UI['muted']}; }}"
-        )
+        self._mic_btn = QPushButton("Falar")
+        self._mic_btn.setFixedWidth(82)
         self._mic_btn.clicked.connect(self._on_mic_clicked)
         input_row.addWidget(self._mic_btn)
 
         self._send_btn = QPushButton("Enviar")
-        self._send_btn.setStyleSheet(
-            f"QPushButton {{ background: {self._theme['accent']}; color: white; border: none; border-radius: 6px;"
-            " padding: 8px 16px; font-size: 13px; }}"
-            f"QPushButton:hover {{ background: {self._theme['accent_hover']}; }}"
-            f"QPushButton:disabled {{ background: {UI['border']}; color: {UI['muted']}; }}"
-        )
+        self._send_btn.setObjectName("Primary")
+        self._send_btn.setFixedWidth(92)
         self._send_btn.clicked.connect(self._on_submit_text)
         input_row.addWidget(self._send_btn)
         _glow(self._send_btn, self._theme["accent_glow"], blur=16, strength=130)
+        chat_layout.addLayout(input_row)
+        self._stack.addWidget(chat_page)
 
-        root.addLayout(input_row)
+        # Página 2: ações rápidas
+        actions_page = QWidget()
+        actions_layout = QVBoxLayout(actions_page)
+        actions_layout.setContentsMargins(26, 24, 26, 24)
+        actions_layout.setSpacing(14)
+        actions_title = QLabel("Ações rápidas")
+        actions_title.setFont(QFont("Segoe UI", 18, 700))
+        actions_subtitle = QLabel("Atalhos locais para as tarefas mais comuns. Você pode continuar usando voz.")
+        actions_subtitle.setStyleSheet(f"color: {UI['muted']};")
+        actions_layout.addWidget(actions_title)
+        actions_layout.addWidget(actions_subtitle)
+        action_grid = QGridLayout()
+        action_grid.setSpacing(12)
+        quick_actions = (
+            ("Abrir Spotify", "abre o Spotify"),
+            ("Pausar música", "pausa o Spotify"),
+            ("Próxima faixa", "próxima música"),
+            ("Abrir navegador", "abre o Chrome"),
+            ("Ver lembretes", "lista lembretes"),
+            ("Resumo do dia", "resumo do dia"),
+            ("Modo foco", "modo foco"),
+            ("Status do sistema", "status das integrações"),
+        )
+        for index, (label, command) in enumerate(quick_actions):
+            button = QPushButton(label)
+            button.setMinimumHeight(58)
+            button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+            button.clicked.connect(
+                lambda _checked=False, cmd=command: self._run_quick_command(cmd)
+            )
+            action_grid.addWidget(button, index // 2, index % 2)
+        actions_layout.addLayout(action_grid)
+        actions_layout.addStretch()
+        self._stack.addWidget(actions_page)
+
+        # Página 3: explica o painel web em linguagem simples
+        center_page = QWidget()
+        center_layout = QVBoxLayout(center_page)
+        center_layout.setContentsMargins(26, 24, 26, 24)
+        center_layout.setSpacing(14)
+        center_title = QLabel("Central de controle")
+        center_title.setFont(QFont("Segoe UI", 18, 700))
+        center_intro = QLabel(
+            "É uma tela opcional no navegador para acompanhar o Paçoca. "
+            "Você não precisa deixá-la aberta para usar voz ou comandos."
+        )
+        center_intro.setWordWrap(True)
+        center_intro.setStyleSheet(f"color: {UI['muted']}; font-size: 12px;")
+        center_layout.addWidget(center_title)
+        center_layout.addWidget(center_intro)
+        info_grid = QGridLayout()
+        info_grid.setSpacing(12)
+        info_items = (
+            ("Histórico", "Veja comandos e respostas recentes."),
+            ("Métricas", "Entenda velocidade, rotas e falhas."),
+            ("Rotinas", "Acompanhe automações e lembretes locais."),
+            ("Integrações", "Confira o que está conectado ou em simulação."),
+        )
+        for index, (title, description) in enumerate(info_items):
+            card = QFrame()
+            card.setObjectName("InfoCard")
+            card_layout = QVBoxLayout(card)
+            card_layout.setContentsMargins(15, 14, 15, 14)
+            card_title = QLabel(title)
+            card_title.setFont(QFont("Segoe UI", 11, 700))
+            card_text = QLabel(description)
+            card_text.setWordWrap(True)
+            card_text.setStyleSheet(f"color: {UI['muted']};")
+            card_layout.addWidget(card_title)
+            card_layout.addWidget(card_text)
+            info_grid.addWidget(card, index // 2, index % 2)
+        center_layout.addLayout(info_grid)
+        center_layout.addStretch()
+        open_center = QPushButton("Abrir central no navegador")
+        open_center.setObjectName("Primary")
+        open_center.setMinimumHeight(44)
+        open_center.clicked.connect(
+            lambda _checked=False: self._run_quick_command("abre o dashboard")
+        )
+        center_layout.addWidget(open_center)
+        self._stack.addWidget(center_page)
+
+        root.addWidget(self._stack, 1)
 
         # Timer para poll da queue (100ms) — toda atualização vinda de outras
         # threads (orchestrator, voz, OAuth) passa por aqui para tocar a UI
@@ -266,6 +398,22 @@ class PacocaOverlay:
         self._position_window()
         self._apply_opacity()
         logger.info("Janela de desktop inicializada (tema: %s)", theme_name)
+
+    def _switch_page(self, index: int) -> None:
+        self._stack.setCurrentIndex(index)
+        for button_index, button in enumerate(self._nav_buttons):
+            button.setObjectName("NavActive" if button_index == index else "Nav")
+            button.style().unpolish(button)
+            button.style().polish(button)
+
+    def _run_quick_command(self, command: str) -> None:
+        self._switch_page(0)
+        self._append_chat("Você", command)
+        threading.Thread(
+            target=self._dispatch_command,
+            args=(command, "atalho"),
+            daemon=True,
+        ).start()
 
     def _position_window(self):
         from PyQt6.QtWidgets import QApplication
@@ -338,8 +486,19 @@ class PacocaOverlay:
     def _do_listen_once(self):
         global _voice
         try:
+            from input.stt import get_instance, init_voice
+
+            shared_voice = get_instance()
+            if shared_voice is not None:
+                # No modo de voz contínuo, o loop principal já é dono do
+                # microfone. Apenas sinaliza push-to-talk; abrir outro stream
+                # carregaria outro Whisper e disputaria o dispositivo.
+                shared_voice.request_push_to_talk()
+                _voice = shared_voice
+                _msg_queue.put(("mic_done",))
+                return
+
             if _voice is None:
-                from input.stt import init_voice
                 _voice = init_voice(self.config)
             text = _voice.listen_once(timeout=8.0)
         except Exception as e:

@@ -32,6 +32,9 @@ class TTS:
         self.engine_name = config.get("tts.engine", "edge")
         self._engine = None
         self._lock = threading.Lock()
+        self._stop_event = threading.Event()
+        self._playback_process = None
+        self._playback_lock = threading.Lock()
 
         if self.enabled:
             self._init()
@@ -90,11 +93,14 @@ class TTS:
         """Fala o texto em thread separada (não bloqueia)."""
         if not self.enabled or not text:
             return
+        self._stop_event.clear()
         thread = threading.Thread(target=self._speak_sync, args=(text,), daemon=True)
         thread.start()
 
     def _speak_sync(self, text: str):
         with self._lock:
+            if self._stop_event.is_set():
+                return
             try:
                 if self.engine_name == "edge":
                     self._speak_edge(text)
@@ -165,6 +171,8 @@ class TTS:
 
         path = asyncio.run(asyncio.wait_for(_run(), timeout=self.edge_timeout))
         try:
+            if self._stop_event.is_set():
+                return
             self._play_audio_file(path)
         finally:
             os.unlink(path)
@@ -216,12 +224,42 @@ class TTS:
             "Start-Sleep -Milliseconds $ms; "
             "$p.Close();"
         )
-        subprocess.run(
+        proc = subprocess.Popen(
             [ps, "-NoProfile", "-NonInteractive", "-Command", ps_script],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
-            timeout=30,
         )
+        with self._playback_lock:
+            self._playback_process = proc
+        try:
+            while proc.poll() is None:
+                if self._stop_event.wait(0.05):
+                    proc.terminate()
+                    try:
+                        proc.wait(timeout=1)
+                    except subprocess.TimeoutExpired:
+                        proc.kill()
+                    break
+        finally:
+            with self._playback_lock:
+                if self._playback_process is proc:
+                    self._playback_process = None
+
+    def stop(self) -> None:
+        """Interrompe imediatamente a fala atual, sem desabilitar o TTS."""
+        self._stop_event.set()
+        if self._engine:
+            try:
+                self._engine.stop()
+            except Exception:
+                logger.debug("Não foi possível interromper pyttsx3", exc_info=True)
+        with self._playback_lock:
+            proc = self._playback_process
+        if proc is not None and proc.poll() is None:
+            try:
+                proc.terminate()
+            except Exception:
+                logger.debug("Não foi possível interromper player TTS", exc_info=True)
 
     def speak_stream(self, generator: Generator[str, None, None]):
         """

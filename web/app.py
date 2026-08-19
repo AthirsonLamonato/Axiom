@@ -241,9 +241,9 @@ def _make_app():
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Paçoca Dashboard</title>
-<link rel="stylesheet" href="/static/dashboard.css?v=4">
-<script src="/static/dashboard.js?v=4" defer></script>
+<title>Paçoca — Central de controle</title>
+<link rel="stylesheet" href="/static/dashboard.css?v=5">
+<script src="/static/dashboard.js?v=5" defer></script>
 </head>
 <body>
 <header class="app-header">
@@ -251,11 +251,11 @@ def _make_app():
     <span class="brand-mark" aria-hidden="true">P</span>
     <div>
       <h1>Paçoca <span id="ws-status">● conectando...</span></h1>
-      <p class="eyebrow">Assistente local · controle e automação</p>
+      <p class="eyebrow">Central de controle · acompanhamento local</p>
     </div>
   </div>
   <nav class="nav" aria-label="Navegação principal">
-    <a href="/" class="active" aria-current="page">Dashboard</a>
+    <a href="/" class="active" aria-current="page">Visão geral</a>
     <a href="/metrics">Métricas</a>
     <a href="/integrations">Integrações</a>
     <a href="/docs">Documentação</a>
@@ -263,6 +263,17 @@ def _make_app():
 </header>
 
 <div class="grid">
+  <div class="card full purpose-card">
+    <div>
+      <span class="purpose-kicker">PAINEL OPCIONAL</span>
+      <h2>Para que serve esta tela?</h2>
+      <p>Use a janela desktop para conversar e executar comandos. Esta central serve para acompanhar histórico, métricas, lembretes, rotinas e integrações com mais detalhes.</p>
+    </div>
+    <div class="purpose-status">
+      <strong>Voz e comandos continuam funcionando sem o navegador aberto.</strong>
+      <span>Os dados ficam neste computador.</span>
+    </div>
+  </div>
   <!-- Status -->
   <div class="card">
     <h2>Status</h2>

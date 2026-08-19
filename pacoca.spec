@@ -2,6 +2,8 @@
 # pacoca.spec — Build completo: todas as deps bundled, sem pip install no usuário final
 # Uso: pyinstaller pacoca.spec --clean
 
+from PyInstaller.utils.hooks import collect_data_files
+
 block_cipher = None
 
 _hidden = [
@@ -154,7 +156,7 @@ a = Analysis(
         ("plugins",            "plugins"),
         ("web",                "web"),
         ("hooks",              "hooks"),
-    ],
+    ] + collect_data_files("openwakeword") + collect_data_files("faster_whisper"),
     hiddenimports=_hidden,
     hookspath=["hooks"],
     hooksconfig={},

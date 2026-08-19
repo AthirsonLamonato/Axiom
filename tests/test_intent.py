@@ -212,3 +212,56 @@ class TestConfirmActionNonInteractive:
         from modules.intent import _confirm_action
         result = _confirm_action("close_application", {"name": "discord"})
         assert result is False
+def test_media_commands_use_fast_deterministic_route():
+    from modules.intent import classify_local
+
+    assert classify_local("pausa o spotify") == [
+        {"name": "control_media", "arguments": {"action": "pause"}}
+    ]
+    assert classify_local("toca Coldplay") == [
+        {"name": "control_media", "arguments": {"action": "play", "query": "Coldplay"}}
+    ]
+
+
+def test_generic_play_is_valid_and_media_actions_are_normalized():
+    from modules.tools import validate
+
+    generic, error = validate("control_media", {"action": "play"})
+    assert error == ""
+    assert generic.action == "play"
+    normalized, error = validate("control_media", {"action": "pausar"})
+    assert error == ""
+    assert normalized.action == "pause"
+
+
+def test_natural_media_variations_stay_local():
+    from modules.intent import classify_local
+
+    assert classify_local("volta a tocar") == [
+        {"name": "control_media", "arguments": {"action": "resume"}}
+    ]
+    assert classify_local("dá play") == [
+        {"name": "control_media", "arguments": {"action": "resume"}}
+    ]
+    assert classify_local("dá play Coldplay") == [
+        {"name": "control_media", "arguments": {"action": "play", "query": "Coldplay"}}
+    ]
+
+
+def test_invalid_tool_args_return_friendly_clarification():
+    from modules.intent import _execute_tool
+
+    response = _execute_tool("set_volume", {})
+
+    assert response == "Não consegui entender todos os detalhes desse comando. Pode reformular?"
+
+
+def test_voice_politeness_and_common_names_are_normalized(monkeypatch):
+    monkeypatch.setattr("storage.memory.apply_vocabulary", lambda text: text)
+    from modules.intent import classify_local
+    from modules.learner import correct_transcription
+
+    assert correct_transcription("Você pode abrir pra mim o Spot Fire?") == "abrir o Spotify?"
+    assert classify_local(correct_transcription("Você pode abrir pra mim o Spot Fire?")) == [
+        {"name": "open_application", "arguments": {"name": "Spotify"}}
+    ]

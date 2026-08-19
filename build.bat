@@ -31,7 +31,13 @@ if errorlevel 1 (
 echo.
 echo [3/3] Copiando arquivos de dados...
 if not exist "dist\Pacoca\data" mkdir dist\Pacoca\data
+if not exist "dist\Pacoca\data\transcriptions" mkdir dist\Pacoca\data\transcriptions
+if not exist "dist\Pacoca\data\backups" mkdir dist\Pacoca\data\backups
+if not exist "dist\Pacoca\data\screenshots" mkdir dist\Pacoca\data\screenshots
 if not exist "dist\Pacoca\logs" mkdir dist\Pacoca\logs
+if not exist "dist\Pacoca\core" mkdir dist\Pacoca\core
+copy /Y "core\config.yaml" "dist\Pacoca\core\config.yaml" >nul
+if not exist "dist\Pacoca\plugins" xcopy /E /I /Y "plugins" "dist\Pacoca\plugins" >nul
 
 echo.
 echo ════════════════════════════════════════════

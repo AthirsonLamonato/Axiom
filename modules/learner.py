@@ -150,6 +150,29 @@ def correct_transcription(text: str) -> str:
     """
     from storage.memory import apply_vocabulary
     corrected = apply_vocabulary(text)
+    # Correções conservadoras para erros recorrentes do Whisper em nomes que
+    # fazem parte do vocabulário do assistente. Regras aprendidas pelo usuário
+    # continuam tendo prioridade porque foram aplicadas acima.
+    replacements = (
+        (r"\b(?:spot\s*fire|esporte\s*fi|spotify)\b", "Spotify"),
+        (r"\b(?:javis|jarves)\b", "Jarvis"),
+        (r"\b(?:cromi|crômio)\b", "Chrome"),
+    )
+    for pattern, replacement in replacements:
+        corrected = re.sub(pattern, replacement, corrected, flags=re.IGNORECASE)
+
+    # Remove pedidos de cortesia que não alteram a intenção e frequentemente
+    # impediam uma rota direta de casar com o início da frase.
+    corrected = re.sub(
+        r"^\s*(?:(?:ei|ol[aá])\s+pa[çc]oca[, ]+)?"
+        r"(?:(?:voc[eê]\s+)?pode(?:ria)?|por\s+favor|eu\s+quero\s+que\s+voc[eê])\s+",
+        "",
+        corrected,
+        flags=re.IGNORECASE,
+    )
+    corrected = re.sub(r"\s+(?:pra|para)\s+mim\b", "", corrected, flags=re.IGNORECASE)
+    corrected = re.sub(r"\s+por\s+favor\s*[.!?]*$", "", corrected, flags=re.IGNORECASE)
+    corrected = corrected.strip()
     if corrected.lower() != text.lower():
         logger.info("Transcrição corrigida: '%s' → '%s'", text, corrected)
     return corrected

@@ -1,6 +1,6 @@
 """Testes do diagnóstico de prontidão."""
 
-from core.readiness import Check, _check_wakeword, format_report
+from core.readiness import Check, _check_wakeword, _check_whisper, format_report
 
 
 def test_report_marks_required_failure():
@@ -36,3 +36,14 @@ def test_wakeword_requires_the_actual_model(monkeypatch):
     assert check.ok is False
     assert check.required is True
     assert "nao foi baixado" in check.detail
+
+
+def test_whisper_requires_vad_asset(monkeypatch):
+    monkeypatch.setattr("core.readiness._has_module", lambda name: True)
+    monkeypatch.setattr("faster_whisper.__file__", "X:/missing/faster_whisper/__init__.py")
+
+    check = _check_whisper(required=True)
+
+    assert check.ok is False
+    assert check.required is True
+    assert "silero_vad_v6.onnx" in check.detail

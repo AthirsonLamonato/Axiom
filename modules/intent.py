@@ -702,7 +702,9 @@ def _extract_slots(command: str, intent: str) -> dict:
     if intent == 'control_media':
         if re.search(r'\b(pausa|silencia|para\s+(?:a\s+)?m[úu]sica|para\s+o\s+spotify)\b', cmd_lower):
             return {'action': 'pause'}
-        if re.search(r'\b(continua|retoma|resume)\b', cmd_lower):
+        if re.search(r'\b(continua|retoma|resume|volta\s+a\s+tocar)\b', cmd_lower) or re.fullmatch(
+            r'd[aá]\s+play[.!?]*', cmd_lower
+        ):
             return {'action': 'resume'}
         if re.search(r'\b(pr[oó]xima|pula|avan[çc]a)\b', cmd_lower):
             return {'action': 'next'}
@@ -712,7 +714,7 @@ def _extract_slots(command: str, intent: str) -> dict:
             return {'action': 'current'}
         # play: remove o prefixo verbal e retorna a query limpa
         query = re.sub(
-            r'^(?:bota[r]?|coloca[r]?|toca[r]?|play|quero\s+(?:ouvir|escutar)|escuta[r]?)\s+',
+            r'^(?:bota[r]?|coloca[r]?|toca[r]?|play|d[aá]\s+play|quero\s+(?:ouvir|escutar)|escuta[r]?)\s+',
             '', command, flags=re.I,
         ).strip()
         query = re.sub(
@@ -794,12 +796,55 @@ def _extract_slots(command: str, intent: str) -> dict:
 
 # ── Parser principal ───────────────────────────────────────────────────
 
+def _parse_media_command(command: str) -> list[dict]:
+    """Resolve controles de mídia inequívocos sem esperar pelo LLM."""
+    text = command.lower().strip()
+    patterns = (
+        r"\b(?:pausa|pausar|silencia|para\s+(?:a\s+)?m[úu]sica|para\s+o\s+spotify)\b",
+        r"\b(?:continua|continuar|retoma|retomar|resume|volta\s+a\s+tocar|d[aá]\s+play)\b",
+        r"\b(?:pr[oó]xima|pula|pular|avan[çc]a|avan[çc]ar)\b",
+        r"\b(?:anterior|volta\s+(?:a\s+)?m[úu]sica|voltar\s+(?:a\s+)?m[úu]sica)\b",
+        r"\b(?:que\s+m[úu]sica|o\s+que\s+est[aá]\s+tocando|qual\s+m[úu]sica)\b",
+        r"^(?:bota[r]?|coloca[r]?|toca[r]?|play|d[aá]\s+play|quero\s+(?:ouvir|escutar)|escuta[r]?)\b",
+    )
+    if not any(re.search(pattern, text) for pattern in patterns):
+        return []
+    return [{"name": "control_media", "arguments": _extract_slots(command, "control_media")}]
+
+
+def _parse_app_command(command: str) -> list[dict]:
+    """Resolve abertura/fechamento simples de aplicativos sem LLM."""
+    text = command.strip().rstrip(".!?")
+    match = re.fullmatch(
+        r"(?:abr[ae]|abrir|inicia[r]?|executa[r]?)\s+(?:o\s+|a\s+)?(.+)",
+        text,
+        flags=re.IGNORECASE,
+    )
+    if match:
+        return [{"name": "open_application", "arguments": {"name": match.group(1).strip()}}]
+    match = re.fullmatch(
+        r"(?:fech[ae]|fechar|encerra[r]?)\s+(?:o\s+|a\s+)?(.+)",
+        text,
+        flags=re.IGNORECASE,
+    )
+    if match:
+        return [{"name": "close_application", "arguments": {"name": match.group(1).strip()}}]
+    return []
+
 def classify_local(command: str) -> list[dict]:
     """
     Roda apenas cache + TF-IDF (sem LLM). Retorna lista de tool calls se
     a confiança estiver acima do limiar, lista vazia caso contrário.
     Chamado pelo orchestrator para verificar se o LLM é necessário.
     """
+    media_calls = _parse_media_command(command)
+    if media_calls:
+        return _validate(media_calls)
+
+    app_calls = _parse_app_command(command)
+    if app_calls:
+        return _validate(app_calls)
+
     cached = _cache_get(command)
     if cached is not None:
         return cached
@@ -1301,7 +1346,9 @@ def _execute_tool(name: str, args: dict) -> str:
         validated, err = validate(name, args)
         if err:
             logger.warning("_execute_tool: %s", err)
-            return err
+            if err.startswith("Ferramenta desconhecida"):
+                return err
+            return "Não consegui entender todos os detalhes desse comando. Pode reformular?"
         return execute(name, validated)
     except Exception as e:
         logger.error("_execute_tool '%s' falhou: %s", name, e, exc_info=True)

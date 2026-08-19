@@ -6,9 +6,12 @@ Dois modos:
 """
 
 import contextlib
+from collections import deque
 import logging
 import os
+import re
 import threading
+import unicodedata
 from typing import Optional
 import numpy as np
 
@@ -80,9 +83,12 @@ CALIBRATION_DURATION = 1.5  # segundos para medir ruído ambiente
 ENERGY_MULTIPLIER = 2.5     # limiar = noise_rms × este fator
 MIN_ENERGY = 300.0           # limiar mínimo absoluto (evita calibração muito baixa)
 SILENCE_CHUNKS = 18          # chunks silenciosos consecutivos para encerrar gravação
+PRE_SPEECH_TIMEOUT = 3.0     # tempo máximo aguardando o usuário começar a falar
+PREROLL_CHUNKS = 4           # preserva ~250 ms antes da fala detectada
 
 # Instância singleton — acessível para comandos de voz
 _voice: Optional["VoiceInput"] = None
+_voice_init_lock = threading.Lock()
 
 
 def get_instance() -> Optional["VoiceInput"]:
@@ -91,8 +97,17 @@ def get_instance() -> Optional["VoiceInput"]:
 
 def init_voice(config) -> "VoiceInput":
     global _voice
-    _voice = VoiceInput(config)
+    with _voice_init_lock:
+        if _voice is None:
+            _voice = VoiceInput(config)
     return _voice
+
+
+def _is_wake_phrase_only(text: str) -> bool:
+    normalized = unicodedata.normalize("NFKD", text.lower()).encode("ascii", "ignore").decode()
+    normalized = re.sub(r"[^a-z0-9 ]+", " ", normalized)
+    normalized = re.sub(r"\s+", " ", normalized).strip()
+    return normalized in {"hey jarvis", "ei jarvis", "hey javis", "ei javis", "jarvis", "javis"}
 
 
 def calibrar_microfone(*_) -> str:
@@ -155,6 +170,8 @@ class VoiceInput:
         self.config = config
         self._push_to_talk_event = threading.Event()
         self._push_to_talk_hotkey_enabled = False
+        self._capture_lock = threading.Lock()
+        self._activation_callback = None
         self._whisper = self._load_whisper()
         self._pa = self._load_pyaudio()
         self._noise_threshold: float = config.get("stt.noise_threshold", MIN_ENERGY)
@@ -178,7 +195,19 @@ class VoiceInput:
         from faster_whisper import WhisperModel
         model_size = self.config.get("stt.model", "base")
         device = self.config.get("stt.device", "cpu")
-        model = WhisperModel(model_size, device=device, compute_type="int8")
+        local_only = bool(self.config.get("stt.local_files_only", True))
+        try:
+            model = WhisperModel(
+                model_size,
+                device=device,
+                compute_type="int8",
+                local_files_only=local_only,
+            )
+        except Exception:
+            if not local_only:
+                raise
+            logger.info("Modelo Whisper ausente no cache; baixando uma vez")
+            model = WhisperModel(model_size, device=device, compute_type="int8")
         logger.info(f"Whisper carregado: modelo={model_size} device={device}")
         return model
 
@@ -243,6 +272,19 @@ class VoiceInput:
         """Acorda o loop de voz para capturar um comando imediatamente."""
         self._push_to_talk_event.set()
 
+    def set_activation_callback(self, callback) -> None:
+        """Registra aviso chamado assim que wake word/PTT ativa a captura."""
+        self._activation_callback = callback
+
+    def _notify_activation(self) -> None:
+        callback = getattr(self, "_activation_callback", None)
+        if callback is None:
+            return
+        try:
+            callback()
+        except Exception:
+            logger.warning("Callback de ativação falhou", exc_info=True)
+
     # ── Wake word ──────────────────────────────────────────────────────
 
     def _listen_wake_word(self) -> str:
@@ -260,6 +302,7 @@ class VoiceInput:
                 if self._push_to_talk_event.is_set():
                     self._push_to_talk_event.clear()
                     stream.stop_stream()
+                    self._notify_activation()
                     return self._capture_and_transcribe()
                 pcm = np.frombuffer(
                     stream.read(OWW_CHUNK, exception_on_overflow=False),
@@ -269,6 +312,7 @@ class VoiceInput:
                 if any(v >= threshold for v in prediction.values()):
                     logger.debug("Wake word detectada: %s", prediction)
                     stream.stop_stream()
+                    self._notify_activation()
                     return self._capture_and_transcribe()
         finally:
             stream.stop_stream()
@@ -286,6 +330,7 @@ class VoiceInput:
             print("[Paçoca] Pressione Enter para falar...", end=" ", flush=True)
             input()
         print("gravando...", end=" ", flush=True)
+        self._notify_activation()
         return self._capture_and_transcribe()
 
     # ── Calibração de ruído ────────────────────────────────────────────
@@ -320,11 +365,42 @@ class VoiceInput:
 
     # ── Transcrição ────────────────────────────────────────────────────
 
-    def _capture_and_transcribe(self) -> str:
+    def _capture_and_transcribe(
+        self,
+        max_duration: float | None = None,
+        cue: bool = True,
+    ) -> str:
+        """Serializa o acesso ao microfone e executa uma captura completa."""
+        with self._capture_lock:
+            return self._capture_and_transcribe_unlocked(max_duration=max_duration, cue=cue)
+
+    def _play_ready_cue(self) -> None:
+        if not self.config.get("stt.beep_enabled", True):
+            return
+        try:
+            if os.name == "nt":
+                import winsound
+
+                winsound.Beep(880, 120)
+            else:
+                print("\a", end="", flush=True)
+        except Exception:
+            logger.debug("Sinal sonoro de captura indisponível", exc_info=True)
+
+    def _capture_and_transcribe_unlocked(
+        self,
+        max_duration: float | None = None,
+        cue: bool = True,
+    ) -> str:
         import pyaudio
 
         language = self.config.get("stt.language", "pt")
-        max_chunks = int(SAMPLE_RATE / CHUNK * MAX_COMMAND_DURATION)
+        duration = max_duration or MAX_COMMAND_DURATION
+        max_chunks = int(SAMPLE_RATE / CHUNK * duration)
+        speech_start_chunks = min(max_chunks, int(SAMPLE_RATE / CHUNK * PRE_SPEECH_TIMEOUT))
+
+        if cue:
+            self._play_ready_cue()
 
         stream = self._pa.open(
             rate=SAMPLE_RATE, channels=1, format=pyaudio.paInt16,
@@ -332,29 +408,62 @@ class VoiceInput:
         )
 
         frames = []
+        pre_roll = deque(maxlen=PREROLL_CHUNKS)
         voice_started = False
+        voiced_chunks = 0
         silence_count = 0
 
         try:
-            for _ in range(max_chunks):
+            for index in range(max_chunks):
                 chunk = stream.read(CHUNK, exception_on_overflow=False)
-                frames.append(chunk)
                 energy = self._rms(chunk)
 
                 if energy > self._noise_threshold:
+                    if not voice_started:
+                        frames.extend(pre_roll)
                     voice_started = True
+                    voiced_chunks += 1
                     silence_count = 0
+                    frames.append(chunk)
                 elif voice_started:
+                    frames.append(chunk)
                     silence_count += 1
                     if silence_count >= SILENCE_CHUNKS:
                         break  # fim da fala detectado
+                else:
+                    pre_roll.append(chunk)
+                    if index + 1 >= speech_start_chunks:
+                        break
         finally:
             stream.stop_stream()
             stream.close()
 
+        # Não chama o Whisper para silêncio/ruído curto. Além de economizar
+        # vários segundos no CPU, isso evita alucinações como comandos do
+        # Spotify quando ninguém falou nada.
+        min_voiced_chunks = max(2, int(SAMPLE_RATE / CHUNK * 0.18))
+        if not voice_started or voiced_chunks < min_voiced_chunks:
+            print("nenhuma fala detectada")
+            logger.info("Captura ignorada: fala insuficiente (%d chunks)", voiced_chunks)
+            return ""
+
         audio = np.frombuffer(b"".join(frames), dtype=np.int16).astype(np.float32) / 32768.0
-        segments, _ = self._whisper.transcribe(audio, language=language, vad_filter=True)
+        segments, _ = self._whisper.transcribe(
+            audio,
+            language=language,
+            vad_filter=True,
+            beam_size=int(self.config.get("stt.beam_size", 2)),
+            initial_prompt=self.config.get(
+                "stt.initial_prompt",
+                "Comandos para Paçoca: Spotify, Chrome, navegador, volume, pausar, continuar, próxima música.",
+            ),
+            condition_on_previous_text=False,
+        )
         text = " ".join(s.text for s in segments).strip()
+        if _is_wake_phrase_only(text):
+            print("wake word repetida; aguardando o comando")
+            logger.info("Transcrição ignorada por conter apenas a wake word: %r", text)
+            return ""
         print(f"ok → '{text}'")
         logger.info("Transcrição: %r", text)
         return text
@@ -364,36 +473,7 @@ class VoiceInput:
         Captura e transcreve um único utterance com tempo máximo de `timeout` segundos.
         Usado pelo callback de confirmação por voz.
         """
-        import pyaudio
-        max_chunks = int(SAMPLE_RATE / CHUNK * timeout)
-        stream = self._pa.open(
-            rate=SAMPLE_RATE, channels=1, format=pyaudio.paInt16,
-            input=True, frames_per_buffer=CHUNK,
-        )
-        frames = []
-        voice_started = False
-        silence_count = 0
-        try:
-            for _ in range(max_chunks):
-                chunk = stream.read(CHUNK, exception_on_overflow=False)
-                frames.append(chunk)
-                energy = self._rms(chunk)
-                if energy > self._noise_threshold:
-                    voice_started = True
-                    silence_count = 0
-                elif voice_started:
-                    silence_count += 1
-                    if silence_count >= SILENCE_CHUNKS:
-                        break
-        finally:
-            stream.stop_stream()
-            stream.close()
-        if not frames:
-            return ""
-        audio = np.frombuffer(b"".join(frames), dtype=np.int16).astype(np.float32) / 32768.0
-        language = self.config.get("stt.language", "pt")
-        segments, _ = self._whisper.transcribe(audio, language=language, vad_filter=True)
-        return " ".join(s.text for s in segments).strip()
+        return self._capture_and_transcribe(max_duration=timeout, cue=True)
 
     def transcribe_file(self, path: str) -> str:
         language = self.config.get("stt.language", "pt")
@@ -401,8 +481,12 @@ class VoiceInput:
         return " ".join(s.text for s in segments).strip()
 
     def close(self):
+        global _voice
         if self._pa:
             self._pa.terminate()
+        with _voice_init_lock:
+            if _voice is self:
+                _voice = None
 
 
 # ── Confirmação por voz ────────────────────────────────────────────────

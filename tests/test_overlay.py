@@ -143,3 +143,21 @@ class TestPublicInterface:
         ov.set_orchestrator(sentinel)
         assert ov._orchestrator is sentinel
         ov.set_orchestrator(None)  # não deixa estado vazando entre testes
+
+
+def test_overlay_mic_reuses_continuous_voice(monkeypatch):
+    import output.overlay as ov
+
+    requested = []
+    voice = type("Voice", (), {"request_push_to_talk": lambda self: requested.append(True)})()
+    monkeypatch.setattr("input.stt.get_instance", lambda: voice)
+    monkeypatch.setattr(
+        "input.stt.init_voice",
+        lambda config: (_ for _ in ()).throw(AssertionError("não deve recarregar Whisper")),
+    )
+    overlay = ov.PacocaOverlay.__new__(ov.PacocaOverlay)
+    overlay.config = object()
+
+    overlay._do_listen_once()
+
+    assert requested == [True]

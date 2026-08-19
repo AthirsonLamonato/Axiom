@@ -5,6 +5,7 @@ from __future__ import annotations
 import importlib.util
 import os
 from dataclasses import dataclass
+from pathlib import Path
 
 
 @dataclass(frozen=True)
@@ -110,6 +111,29 @@ def _check_microphone(required: bool) -> Check:
         )
 
 
+def _check_whisper(required: bool) -> Check:
+    if not _has_module("faster_whisper"):
+        return Check(
+            "Reconhecimento Whisper",
+            False,
+            required,
+            "faster-whisper ausente",
+            "pip install -r requirements-voice.txt",
+        )
+    try:
+        import faster_whisper
+
+        vad_model = Path(faster_whisper.__file__).parent / "assets" / "silero_vad_v6.onnx"
+        ok = vad_model.is_file()
+    except Exception:
+        ok = False
+    return Check(
+        "Reconhecimento Whisper",
+        ok,
+        required,
+        "motor e modelo VAD disponíveis" if ok else "modelo silero_vad_v6.onnx ausente",
+        "reinstale faster-whisper ou reconstrua o executável com seus assets" if not ok else "",
+    )
 def _check_wakeword(config, required: bool) -> Check:
     if not _has_module("openwakeword"):
         return Check(
@@ -186,12 +210,7 @@ def run_checks(config, mode: str = "voice", web: bool = False) -> list[Check]:
 
     if voice:
         checks.extend([
-            _module_check(
-                "Reconhecimento Whisper",
-                "faster_whisper",
-                True,
-                "pip install -r requirements-voice.txt",
-            ),
+            _check_whisper(True),
             _check_microphone(True),
         ])
         if config.get("wake_word.enabled", True):

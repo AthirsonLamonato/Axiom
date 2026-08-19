@@ -92,10 +92,26 @@ class ControlMediaArgs(BaseModel):
     def strip_q(cls, v: object) -> object:
         return v.strip() if isinstance(v, str) else v
 
+    @field_validator("action", mode="before")
+    @classmethod
+    def normalize_action(cls, value: object) -> object:
+        if not isinstance(value, str):
+            return value
+        normalized = value.lower().strip().replace("ç", "c")
+        aliases = {
+            "tocar": "play", "toca": "play", "reproduzir": "play",
+            "pausar": "pause", "pausa": "pause", "parar": "pause",
+            "continuar": "resume", "retomar": "resume", "continua": "resume",
+            "proxima": "next", "avancar": "next", "pular": "next",
+            "anterior": "previous", "voltar": "previous",
+            "tocando": "current", "atual": "current",
+        }
+        return aliases.get(normalized, normalized)
+
     @model_validator(mode="after")
     def query_required_for_play(self) -> "ControlMediaArgs":
-        if self.action == "play" and not self.query:
-            raise ValueError("query é obrigatória quando action='play'")
+        # query vazia em play significa apenas retomar a reprodução. O executor
+        # já trata esse caso sem busca e sem credenciais do Spotify.
         return self
 
 
