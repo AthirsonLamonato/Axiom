@@ -13,8 +13,7 @@
 #
 # Instale na ordem correta:
 #   pip install -r requirements.txt        (dependências base primeiro)
-#   pip install -r requirements-voice.txt  (inclui PyAudio no Windows)
-#   pip install -r requirements-voice.txt  (ML/voz)
+#   pip install -r requirements-voice.txt  (ML/voz e PyAudio)
 
 # ── STT ───────────────────────────────────────────────────────────────
 faster-whisper>=0.10

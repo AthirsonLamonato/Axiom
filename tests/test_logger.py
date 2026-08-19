@@ -42,3 +42,85 @@ def test_formatter_redacts_exception_text():
     output = RedactingFormatter("%(message)s").format(record)
     assert "hunter2" not in output
     assert "[SECRET_REDACTED]" in output
+
+
+def test_setup_logging_is_idempotent_and_accepts_plain_filename(tmp_path, monkeypatch):
+    from core.config import Config
+    from core.logger import setup_logging
+
+    config = Config.__new__(Config)
+    config.get = lambda key, default=None: {
+        "logging.level": "INFO",
+        "logging.file": str(tmp_path / "pacoca.log"),
+        "logging.max_mb": 0,
+    }.get(key, default)
+
+    root = logging.getLogger()
+    before = list(root.handlers)
+    try:
+        setup_logging(config)
+        first = [h for h in root.handlers if getattr(h, "_pacoca_handler", False)]
+        setup_logging(config)
+        second = [h for h in root.handlers if getattr(h, "_pacoca_handler", False)]
+        assert len(first) == 2
+        assert len(second) == 2
+        assert (tmp_path / "pacoca.log").exists()
+    finally:
+        for handler in list(root.handlers):
+            if getattr(handler, "_pacoca_handler", False):
+                root.removeHandler(handler)
+                handler.close()
+        for handler in before:
+            if handler not in root.handlers:
+                root.addHandler(handler)
+        monkeypatch.undo()
+
+
+def test_setup_logging_falls_back_for_invalid_max_mb(tmp_path):
+    from core.config import Config
+    from core.logger import setup_logging
+
+    config = Config.__new__(Config)
+    config.get = lambda key, default=None: {
+        "logging.level": "INFO",
+        "logging.file": str(tmp_path / "pacoca.log"),
+        "logging.max_mb": "invalido",
+    }.get(key, default)
+
+    root = logging.getLogger()
+    try:
+        setup_logging(config)
+        assert (tmp_path / "pacoca.log").exists()
+    finally:
+        for handler in list(root.handlers):
+            if getattr(handler, "_pacoca_handler", False):
+                root.removeHandler(handler)
+                handler.close()
+        root.handlers[:] = [h for h in root.handlers if not getattr(h, "_pacoca_handler", False)]
+        root.setLevel(logging.WARNING)
+
+def test_setup_logging_redacts_to_file(tmp_path):
+    from core.config import Config
+    from core.logger import setup_logging
+
+    config = Config.__new__(Config)
+    config.get = lambda key, default=None: {
+        "logging.level": "INFO",
+        "logging.file": str(tmp_path / "pacoca.log"),
+        "logging.max_mb": 1,
+    }.get(key, default)
+
+    root = logging.getLogger()
+    try:
+        setup_logging(config)
+        logging.getLogger("test_logger").error("password=segredo")
+        for handler in root.handlers:
+            if getattr(handler, "_pacoca_handler", False):
+                handler.flush()
+        assert "segredo" not in (tmp_path / "pacoca.log").read_text(encoding="utf-8")
+    finally:
+        for handler in list(root.handlers):
+            if getattr(handler, "_pacoca_handler", False):
+                root.removeHandler(handler)
+                handler.close()
+        root.setLevel(logging.WARNING)

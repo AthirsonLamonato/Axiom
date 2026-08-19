@@ -6,8 +6,13 @@ on:
   pull_request:
     branches: [master, main]
 
+env:
+  PYTHONUTF8: "1"
+  PYTHONIOENCODING: "utf-8"
+
 jobs:
   test:
+
     strategy:
       fail-fast: false
       matrix:
@@ -38,4 +43,6 @@ jobs:
         run: python -m ruff check core input modules output plugins storage web main.py mcp_server.py setup_wizard.py
 
       - name: Run tests
-        run: python -m pytest -v --tb=short
+        # O console Windows pode emitir CP1252; sem captura, o pytest não converte
+        # bytes inválidos em erros de teardown que mascaram o teste real.
+        run: python -m pytest -v --tb=short --capture=no

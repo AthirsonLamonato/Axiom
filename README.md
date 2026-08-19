@@ -5,7 +5,7 @@
 ![Version](https://img.shields.io/badge/version-v0.8--dev-blue)
 ![Python](https://img.shields.io/badge/python-3.10+-green)
 ![License](https://img.shields.io/badge/license-MIT-orange)
-![Tests](https://img.shields.io/badge/tests-376%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/tests-435%20passing-brightgreen)
 ![CI](https://github.com/AthirsonLamonato/Pacoca/actions/workflows/tests.yml/badge.svg)
 
 Paçoca é um assistente de desktop estilo Jarvis: escuta a frase **“Hey Jarvis”**, entende comandos em português, responde por voz e usa IA local pelo Ollama. As funções centrais podem operar offline depois que os modelos forem baixados; recursos como voz neural Edge, pesquisa web e integrações de nuvem precisam de internet.
@@ -69,6 +69,10 @@ python main.py --edit-routines
 
 # Diagnóstico completo da experiência Jarvis
 python main.py --doctor --mode voice --web
+
+# Diagnóstico da instalação sem exigir voz ou overlay
+python main.py --doctor --mode text --no-tts --no-overlay
+
 ```
 
 ### Servidor MCP local
@@ -85,6 +89,25 @@ python mcp_server.py
 O transporte padrão é `stdio`: cliente MCP inicia processo local sem abrir
 porta de rede. Modelo poderá rodar em outro servidor; executor do Windows
 continua neste computador, ligado por canal privado autenticado.
+
+---
+
+### Troubleshooting no Windows
+
+Se o `pytest` exibir `UnicodeDecodeError` durante o setup/teardown, force UTF-8 e
+execute sem a captura de saída do console. Isso evita que mensagens CP1252 de
+processos externos mascarem o resultado real dos testes:
+
+```bat
+chcp 65001
+set PYTHONUTF8=1
+set PYTHONIOENCODING=utf-8
+python -m pytest tests -q --capture=no
+```
+
+O diagnóstico pode ser executado em modo texto com `--no-tts --no-overlay` para
+separar problemas da instalação principal de problemas específicos de microfone,
+PyAudio, Whisper ou PyQt6.
 
 ---
 

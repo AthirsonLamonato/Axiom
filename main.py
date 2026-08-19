@@ -251,6 +251,15 @@ def main():
 
     config = Config()
 
+    # Sobrescreve config com flags da linha de comando antes de qualquer
+    # diagnóstico ou inicialização de subsistema.
+    if args.no_tts:
+        config.set("tts.enabled", False)
+    if args.no_overlay:
+        config.set("overlay.enabled", False)
+    if args.profile:
+        config.set("profile.active", args.profile)
+
     # Logging deve ser o primeiro subsistema a iniciar
     setup_logging(config)
 
@@ -263,14 +272,6 @@ def main():
     if args.edit_routines:
         _edit_routines(config)
         return
-
-    # Sobrescreve config com flags da linha de comando
-    if args.no_tts:
-        config.set("tts.enabled", False)
-    if args.no_overlay:
-        config.set("overlay.enabled", False)
-    if args.profile:
-        config.set("profile.active", args.profile)
 
     # Inicializa banco de dados SQLite e memória de longo prazo
     from storage import db
