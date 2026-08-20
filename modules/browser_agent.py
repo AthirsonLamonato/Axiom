@@ -1,8 +1,9 @@
 """Automação local e supervisionada de navegador para o Paçoca.
 
 O módulo usa Playwright de forma opcional. Nenhuma ação é executada sem uma
-sessão explicitamente iniciada pelo usuário e os domínios são validados pela
-lista de permissões configurada em ``core/config.yaml``.
+sessão explicitamente iniciada pelo usuário. O modo amplo permite qualquer
+URL http(s); o modo restrito usa a lista de domínios configurada em
+``core/config.yaml``.
 """
 
 from __future__ import annotations
@@ -58,8 +59,7 @@ class BrowserAgent:
     def _require_enabled(self) -> None:
         if not self.enabled:
             raise BrowserAgentError(
-                "O navegador do agente está desativado. Ative browser.enabled e "
-                "configure browser.allowed_domains antes de usar."
+                "O navegador do agente está desativado. Ative browser.enabled antes de usar."
             )
 
     def _validate_url(self, url: str) -> str:
@@ -68,8 +68,12 @@ class BrowserAgent:
             raise BrowserAgentError("A URL precisa começar com http:// ou https://.")
         parsed = urlparse(url)
         host = (parsed.hostname or "").lower().rstrip(".")
-        if not host or not self.allowed_domains:
-            raise BrowserAgentError("O domínio não está autorizado na configuração do navegador.")
+        if not host:
+            raise BrowserAgentError("A URL não contém um domínio válido.")
+        if bool(self.config.get("browser.allow_all_domains", False)):
+            return url
+        if not self.allowed_domains:
+            raise BrowserAgentError("Nenhum domínio autorizado na configuração restrita do navegador.")
         allowed = any(host == domain or host.endswith("." + domain) for domain in self.allowed_domains)
         if not allowed:
             raise BrowserAgentError(f"Domínio não autorizado: {host}")

@@ -45,6 +45,11 @@ def test_domain_allowlist_accepts_subdomains():
     assert agent._validate_url("https://app.example.com/dashboard").startswith("https://app.")
 
 
+def test_allow_all_domains_accepts_any_http_site():
+    agent = make_agent(enabled=True, allow_all_domains=True, allowed_domains=[])
+    assert agent._validate_url("https://news.ycombinator.com/") == "https://news.ycombinator.com/"
+
+
 def test_non_http_urls_are_rejected():
     agent = make_agent(enabled=True, allowed_domains=["example.com"])
     with pytest.raises(BrowserAgentError, match="http"):

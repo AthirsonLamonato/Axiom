@@ -19,15 +19,14 @@ Edite `core/config.yaml`:
 browser:
   enabled: true
   headless: false
+  allow_all_domains: true
   profile_dir: data/browser-profile
-  allowed_domains:
-    - example.com
-    - github.com
+  allowed_domains: []
 ```
 
-A lista `allowed_domains` é obrigatória para navegação. Subdomínios são permitidos, mas outros domínios são rejeitados. O agente aceita apenas URLs `http` e `https`; esquemas como `file://` não são aceitos.
+Com `allow_all_domains: true`, o agente pode navegar em qualquer domínio usando URLs `http` ou `https`. Para restringir o acesso, use `allow_all_domains: false` e preencha `allowed_domains`; nesse modo, subdomínios dos domínios listados são permitidos. Esquemas como `file://` não são aceitos.
 
-Para usar uma conta pessoal, abra o navegador do agente, faça o login manualmente e depois deixe o Paçoca operar somente nos domínios que você adicionou à lista de permissões. O perfil fica em `data/browser-profile`.
+Para usar uma conta pessoal, abra o navegador do agente e faça o login manualmente. Com o modo amplo ativado, ele poderá navegar em qualquer domínio HTTP ou HTTPS; o perfil fica em `data/browser-profile`.
 
 ## Ferramentas disponíveis
 
@@ -45,6 +44,6 @@ As ferramentas já estão disponíveis para o loop agentivo do Paçoca. O módul
 
 ## Segurança
 
-Não adicione domínios de bancos, serviços financeiros ou contas administrativas sem necessidade. Ações de envio, exclusão, compra, publicação e alterações irreversíveis devem continuar exigindo confirmação explícita. A configuração não concede ao navegador permissão para executar comandos do sistema.
+O modo amplo também permite alcançar páginas de bancos, serviços financeiros e contas administrativas, portanto não reutilize o perfil principal do seu navegador sem entender esse risco. Ações de envio, exclusão, compra, publicação e alterações irreversíveis devem continuar exigindo confirmação explícita. A configuração não concede ao navegador permissão para executar comandos do sistema.
 
 O modo sem custo recomendado é executar o modelo e o navegador localmente no seu próprio computador. O navegador deve ser instalado manualmente apenas uma vez e o computador precisa permanecer ligado enquanto uma tarefa estiver sendo executada.

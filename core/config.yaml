@@ -71,6 +71,7 @@ overlay:
 browser:
   enabled: false
   headless: false
+  allow_all_domains: true  # true = qualquer site http(s); false = usa allowed_domains
   profile_dir: data/browser-profile
   allowed_domains: []
 
