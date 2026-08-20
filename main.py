@@ -101,7 +101,51 @@ def parse_args():
         action="store_true",
         help="Lista os dispositivos de entrada e saída disponíveis e encerra",
     )
+    parser.add_argument(
+        "--doctor",
+        action="store_true",
+        help="Diagnostica IA local, Ollama, modelos instalados e segurança",
+    )
     return parser.parse_args()
+
+
+def _doctor(config):
+    """Exibe diagnóstico local sem iniciar microfone, overlay ou agendadores."""
+    import json
+    from urllib.error import HTTPError, URLError
+    from urllib.request import Request, urlopen
+    from core.ai_catalog import recommended_config, system_ram_gb
+
+    ram = system_ram_gb()
+    recommended = recommended_config(ram)
+    provider = config.get("ai.provider", "ollama")
+    model = config.get("ai.model", recommended["model"])
+    ollama_url = str(config.get("ai.ollama_url", "http://localhost:11434")).rstrip("/")
+    installed = []
+    status = "indisponível"
+    try:
+        response = urlopen(Request(f"{ollama_url}/api/tags"), timeout=2)
+        payload = json.loads(response.read().decode("utf-8"))
+        installed = [item.get("name", "") for item in payload.get("models", []) if item.get("name")]
+        status = "disponível"
+    except (URLError, HTTPError, TimeoutError, ValueError, OSError):
+        pass
+
+    print("Paçoca — diagnóstico local")
+    print(f"  RAM detectada: {ram or 'desconhecida'} GB")
+    print(f"  Provedor configurado: {provider}")
+    print(f"  Modelo configurado: {model}")
+    print(f"  Modelo recomendado: {recommended['model']}")
+    print(f"  Ollama: {status} ({ollama_url})")
+    print(f"  Modelo instalado: {'sim' if model in installed else 'não'}")
+    print(f"  Embeddings: {config.get('ai.embeddings_provider', 'ollama')} / {config.get('ai.embeddings_ollama_model', 'nomic-embed-text')}")
+    print(f"  Aprovação de planos: {'ativada' if config.get('agent.require_plan_approval', True) else 'desativada'}")
+    print(f"  Fallback remoto: {'ativado' if config.get('ai.cloud_first', False) else 'desativado'}")
+    if status != "disponível":
+        print(f"  Ação: inicie o Ollama e execute `ollama pull {model}`.")
+    elif model not in installed:
+        print(f"  Ação: execute `ollama pull {model}`.")
+    return 0
 
 
 def _ensure_directories():
@@ -250,6 +294,9 @@ def main():
     _ensure_directories()
 
     config = Config()
+
+    if args.doctor:
+        return _doctor(config)
 
     if args.list_audio_devices:
         from core.audio_devices import list_devices
