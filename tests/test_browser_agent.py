@@ -80,6 +80,12 @@ def test_browser_tools_are_registered_with_safe_defaults():
     assert validate("browser_navigate", {"url": "https://example.com"})[1] == ""
 
 
+def test_screenshot_path_cannot_escape_data_directory():
+    agent = make_agent(enabled=True, allow_all_domains=True)
+    with pytest.raises(BrowserAgentError, match="dentro de data"):
+        agent.screenshot("../../outside.png")
+
+
 def test_browser_advanced_tools_validate_arguments():
     assert validate("browser_switch_tab", {"index": 0})[1] == ""
     assert validate("browser_wait", {"seconds": 2})[1] == ""

@@ -206,8 +206,12 @@ class BrowserAgent:
         return f"Download salvo em {destination}"
 
     def screenshot(self, path: str = "data/browser-last.png") -> str:
-        page = self._require_page()
+        base = (Path.cwd() / "data").resolve()
         output = Path(path)
+        output = (Path.cwd() / output).resolve() if not output.is_absolute() else output.resolve()
+        if base not in output.parents:
+            raise BrowserAgentError("Screenshots só podem ser salvos dentro de data.")
+        page = self._require_page()
         output.parent.mkdir(parents=True, exist_ok=True)
         page.screenshot(path=str(output), full_page=True)
         return f"Screenshot salvo em {output}"
