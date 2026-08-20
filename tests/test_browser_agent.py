@@ -72,6 +72,7 @@ def test_browser_tools_are_registered_with_safe_defaults():
         "browser_press",
         "browser_select",
         "browser_links",
+        "browser_download",
         "browser_close",
     }
     assert expected <= known_tools()
@@ -85,6 +86,7 @@ def test_browser_advanced_tools_validate_arguments():
     assert validate("browser_press", {"selector": "#q", "key": "Enter"})[1] == ""
     assert validate("browser_select", {"selector": "select", "value": "br"})[1] == ""
     assert validate("browser_links", {"max_items": 10})[1] == ""
+    assert validate("browser_download", {"selector": "a.download"})[1] == ""
 
 
 def test_browser_fill_requires_selector_and_value():

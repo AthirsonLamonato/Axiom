@@ -188,6 +188,23 @@ class BrowserAgent:
         )
         return json.dumps(rows, ensure_ascii=False, indent=2)
 
+    def download(self, selector: str, path: str = "data/downloads") -> str:
+        page = self._require_page()
+        if not selector.strip():
+            raise BrowserAgentError("O seletor do download não pode ser vazio.")
+        base = (Path.cwd() / "data" / "downloads").resolve()
+        requested = Path(path)
+        output_dir = (base / requested).resolve() if not requested.is_absolute() else requested.resolve()
+        if base not in output_dir.parents and output_dir != base:
+            raise BrowserAgentError("Downloads só podem ser salvos em data/downloads.")
+        output_dir.mkdir(parents=True, exist_ok=True)
+        with page.expect_download(timeout=15000) as download_info:
+            page.locator(selector).first.click(timeout=10000)
+        download = download_info.value
+        destination = output_dir / Path(download.suggested_filename).name
+        download.save_as(str(destination))
+        return f"Download salvo em {destination}"
+
     def screenshot(self, path: str = "data/browser-last.png") -> str:
         page = self._require_page()
         output = Path(path)
@@ -264,6 +281,10 @@ def select(selector: str, value: str) -> str:
 
 def links(max_items: int = 30) -> str:
     return get_agent().links(max_items)
+
+
+def download(selector: str, path: str = "data/downloads") -> str:
+    return get_agent().download(selector, path)
 
 
 def screenshot(path: str = "data/browser-last.png") -> str:

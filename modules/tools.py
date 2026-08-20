@@ -86,6 +86,8 @@ class BrowserSelectArgs(BrowserSelectorArgs):
     value: str = Field(..., min_length=1, max_length=500, description="Valor da opção")
 class BrowserLinksArgs(BaseModel):
     max_items: int = Field(30, ge=1, le=100, description="Quantidade máxima de links")
+class BrowserDownloadArgs(BrowserSelectorArgs):
+    path: str = Field("data/downloads", min_length=1, max_length=200, description="Subdiretório dentro de data/downloads")
 class OpenFolderArgs(BaseModel):
     path: str = Field(..., min_length=1, description="Pasta a abrir")
 
@@ -305,6 +307,9 @@ def _exec_browser_select(a: BrowserSelectArgs) -> str:
 def _exec_browser_links(a: BrowserLinksArgs) -> str:
     from modules import browser_agent
     return browser_agent.links(a.max_items)
+def _exec_browser_download(a: BrowserDownloadArgs) -> str:
+    from modules import browser_agent
+    return browser_agent.download(a.selector, a.path)
 def _exec_browser_screenshot(a: BrowserScreenshotArgs) -> str:
     from modules import browser_agent
     return browser_agent.screenshot(a.path)
@@ -454,11 +459,13 @@ REGISTRY: dict[str, ToolDef] = {
         schema_model=BrowserSelectorArgs,
         executor=_exec_browser_click,
         risk="medium",
+        requires_confirmation=True,
     ),
     "browser_fill": ToolDef(
         schema_model=BrowserFillArgs,
         executor=_exec_browser_fill,
         risk="medium",
+        requires_confirmation=True,
     ),
     "browser_tabs": ToolDef(
         schema_model=BrowserCloseArgs,
@@ -489,16 +496,24 @@ REGISTRY: dict[str, ToolDef] = {
         schema_model=BrowserKeyArgs,
         executor=_exec_browser_press,
         risk="medium",
+        requires_confirmation=True,
     ),
     "browser_select": ToolDef(
         schema_model=BrowserSelectArgs,
         executor=_exec_browser_select,
         risk="medium",
+        requires_confirmation=True,
     ),
     "browser_links": ToolDef(
         schema_model=BrowserLinksArgs,
         executor=_exec_browser_links,
         risk="low",
+    ),
+    "browser_download": ToolDef(
+        schema_model=BrowserDownloadArgs,
+        executor=_exec_browser_download,
+        risk="high",
+        requires_confirmation=True,
     ),
     "browser_screenshot": ToolDef(
         schema_model=BrowserScreenshotArgs,

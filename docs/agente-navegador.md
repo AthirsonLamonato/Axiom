@@ -77,3 +77,7 @@ agent:
 Quando o modelo selecionar ferramentas, o Paçoca criará um plano `pending` na fila local e responderá com o identificador do plano. Nenhuma ferramenta será executada nesse momento. Abra o dashboard, revise as etapas e clique em **Aprovar e executar** ou **Rejeitar**.
 
 Com `require_plan_approval: false`, o comportamento anterior permanece: o loop executa as ferramentas diretamente, respeitando as confirmações individuais já existentes. Para um agente pessoal que opere sites e formulários, o modo supervisionado é o recomendado.
+
+## Downloads controlados
+
+A ferramenta `browser_download` pode acionar um link ou botão de download e salvar o arquivo em `data/downloads`. O caminho não pode escapar desse diretório, e o download exige confirmação porque pode criar arquivos no computador.

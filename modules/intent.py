@@ -184,6 +184,14 @@ TOOLS = [
     {
         "type": "function",
         "function": {
+            "name": "browser_download",
+            "description": "Baixa um arquivo acionando um link ou botão e salva somente em data/downloads; exige confirmação.",
+            "parameters": {"type": "object", "properties": {"selector": {"type": "string"}, "path": {"type": "string"}}, "required": ["selector"]},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "browser_screenshot",
             "description": "Salva uma captura da página atual para inspeção.",
             "parameters": {
