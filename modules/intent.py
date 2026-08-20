@@ -57,6 +57,88 @@ TOOLS = [
     {
         "type": "function",
         "function": {
+            "name": "browser_start",
+            "description": "Inicia uma sessão local supervisionada do navegador. Não use para ações externas; apenas prepara a sessão.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "url": {"type": "string", "description": "URL autorizada ou about:blank"}
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "browser_navigate",
+            "description": "Navega para uma URL dentro dos domínios autorizados no Paçoca.",
+            "parameters": {
+                "type": "object",
+                "properties": {"url": {"type": "string", "description": "URL http(s) autorizada"}},
+                "required": ["url"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "browser_inspect",
+            "description": "Lê o título, URL e texto visível da página atual.",
+            "parameters": {
+                "type": "object",
+                "properties": {"max_chars": {"type": "integer", "description": "Máximo de caracteres"}},
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "browser_click",
+            "description": "Clica em um elemento da página usando um seletor CSS.",
+            "parameters": {
+                "type": "object",
+                "properties": {"selector": {"type": "string", "description": "Seletor CSS do elemento"}},
+                "required": ["selector"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "browser_fill",
+            "description": "Preenche um campo de formulário. O envio final de dados exige confirmação.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "selector": {"type": "string", "description": "Seletor CSS do campo"},
+                    "value": {"type": "string", "description": "Valor a preencher"},
+                },
+                "required": ["selector", "value"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "browser_screenshot",
+            "description": "Salva uma captura da página atual para inspeção.",
+            "parameters": {
+                "type": "object",
+                "properties": {"path": {"type": "string", "description": "Caminho do arquivo"}},
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "browser_close",
+            "description": "Encerra a sessão local do navegador.",
+            "parameters": {"type": "object", "properties": {}},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "control_media",
             "description": "Controla reprodução de mídia no Spotify: tocar música ou playlist, pausar, próxima, anterior, ver o que está tocando.",
             "parameters": {

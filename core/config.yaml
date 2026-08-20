@@ -66,6 +66,14 @@ overlay:
   duration_ms: 4000     # não usado (histórico de chat substitui as mensagens em toast); mantido p/ compat
   opacity: 0.92
 
+# ── Navegador do agente ────────────────────────
+# Desativado por padrão. Ative somente após revisar os domínios autorizados.
+browser:
+  enabled: false
+  headless: false
+  profile_dir: data/browser-profile
+  allowed_domains: []
+
 # ── Segurança ─────────────────────────────────
 security:
   confirm_critical: true     # pede confirmação para ações críticas

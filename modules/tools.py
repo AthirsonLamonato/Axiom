@@ -50,6 +50,34 @@ class OpenBrowserArgs(BaseModel):
         return v.strip() if isinstance(v, str) else v
 
 
+class BrowserStartArgs(BaseModel):
+    url: str = Field("about:blank", description="URL inicial autorizada ou about:blank")
+
+
+class BrowserNavigateArgs(BaseModel):
+    url: str = Field(..., min_length=8, description="URL http(s) em domínio autorizado")
+
+
+class BrowserInspectArgs(BaseModel):
+    max_chars: int = Field(6000, ge=500, le=20000, description="Limite de texto retornado")
+
+
+class BrowserSelectorArgs(BaseModel):
+    selector: str = Field(..., min_length=1, max_length=500, description="Seletor CSS ou texto compatível")
+
+
+class BrowserFillArgs(BrowserSelectorArgs):
+    value: str = Field(..., max_length=5000, description="Texto a preencher")
+
+
+class BrowserScreenshotArgs(BaseModel):
+    path: str = Field("data/browser-last.png", min_length=1, max_length=300)
+
+
+class BrowserCloseArgs(BaseModel):
+    pass
+
+
 class OpenFolderArgs(BaseModel):
     path: str = Field(..., min_length=1, description="Pasta a abrir")
 
@@ -220,6 +248,41 @@ def _exec_open_browser(a: OpenBrowserArgs) -> str:
     return system_control.open_browser_with_search(a.browser, a.destination)
 
 
+def _exec_browser_start(a: BrowserStartArgs) -> str:
+    from modules import browser_agent
+    return browser_agent.start(a.url)
+
+
+def _exec_browser_navigate(a: BrowserNavigateArgs) -> str:
+    from modules import browser_agent
+    return browser_agent.navigate(a.url)
+
+
+def _exec_browser_inspect(a: BrowserInspectArgs) -> str:
+    from modules import browser_agent
+    return browser_agent.inspect(a.max_chars)
+
+
+def _exec_browser_click(a: BrowserSelectorArgs) -> str:
+    from modules import browser_agent
+    return browser_agent.click(a.selector)
+
+
+def _exec_browser_fill(a: BrowserFillArgs) -> str:
+    from modules import browser_agent
+    return browser_agent.fill(a.selector, a.value)
+
+
+def _exec_browser_screenshot(a: BrowserScreenshotArgs) -> str:
+    from modules import browser_agent
+    return browser_agent.screenshot(a.path)
+
+
+def _exec_browser_close(a: BrowserCloseArgs) -> str:
+    from modules import browser_agent
+    return browser_agent.close()
+
+
 def _exec_open_folder(a: OpenFolderArgs) -> str:
     from modules import system_control
     return system_control.open_folder(a.path)
@@ -340,6 +403,41 @@ REGISTRY: dict[str, ToolDef] = {
     "open_browser": ToolDef(
         schema_model=OpenBrowserArgs,
         executor=_exec_open_browser,
+        risk="low",
+    ),
+    "browser_start": ToolDef(
+        schema_model=BrowserStartArgs,
+        executor=_exec_browser_start,
+        risk="low",
+    ),
+    "browser_navigate": ToolDef(
+        schema_model=BrowserNavigateArgs,
+        executor=_exec_browser_navigate,
+        risk="low",
+    ),
+    "browser_inspect": ToolDef(
+        schema_model=BrowserInspectArgs,
+        executor=_exec_browser_inspect,
+        risk="low",
+    ),
+    "browser_click": ToolDef(
+        schema_model=BrowserSelectorArgs,
+        executor=_exec_browser_click,
+        risk="medium",
+    ),
+    "browser_fill": ToolDef(
+        schema_model=BrowserFillArgs,
+        executor=_exec_browser_fill,
+        risk="medium",
+    ),
+    "browser_screenshot": ToolDef(
+        schema_model=BrowserScreenshotArgs,
+        executor=_exec_browser_screenshot,
+        risk="low",
+    ),
+    "browser_close": ToolDef(
+        schema_model=BrowserCloseArgs,
+        executor=_exec_browser_close,
         risk="low",
     ),
     "open_folder": ToolDef(

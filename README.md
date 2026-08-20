@@ -101,6 +101,7 @@ python main.py --edit-routines
 | **Banco de dados** | SQLite — histórico de comandos, sessões e transcrições |
 | **TTS** | edge-tts (Microsoft Neural, padrão, requer internet) com fallback automático para pyttsx3 (100% offline) |
 | **WhatsApp** | Envia mensagens via WhatsApp Web (`pywhatkit`, opcional). Composição natural pelo LLM ("pede pro fulano o que ele está fazendo"). **Dupla barreira de segurança**: sempre pede confirmação explícita + só envia para números em `whatsapp.allowed_numbers` (whitelist) |
+| **Agente de navegador** | Automação local supervisionada via Playwright opcional: iniciar sessão isolada, navegar em domínios permitidos, inspecionar páginas, clicar, preencher campos e salvar screenshots. Desativado por padrão; veja [docs/agente-navegador.md](docs/agente-navegador.md) |
 
 ---
 
