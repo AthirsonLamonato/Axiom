@@ -139,6 +139,33 @@ def test_routines_add_accepts_valid_csrf_token(client):
         web_app._orchestrator = None
 
 
+def test_task_plan_requires_csrf(client):
+    resp = client.post("/api/tasks/plan", json={"steps": []})
+    assert resp.status_code == 403
+
+
+def test_task_plan_can_be_created_and_rejected(client):
+    created = client.post(
+        "/api/tasks/plan",
+        json={"steps": [{"tool": "answer_question", "args": {"question": "teste"}}]},
+        headers={"X-CSRF-Token": web_app._CSRF_TOKEN},
+    )
+    assert created.status_code == 201
+    task_id = created.json()["id"]
+    assert created.json()["status"] == "pending"
+    rejected = client.post(
+        f"/api/tasks/{task_id}/reject",
+        headers={"X-CSRF-Token": web_app._CSRF_TOKEN},
+    )
+    assert rejected.status_code == 200
+    assert rejected.json()["status"] == "rejected"
+
+
+def test_task_plan_not_found_is_reported(client):
+    resp = client.get("/api/tasks/does-not-exist")
+    assert resp.status_code == 404
+
+
 def test_docs_page_renders(client):
     resp = client.get("/docs")
     assert resp.status_code == 200
