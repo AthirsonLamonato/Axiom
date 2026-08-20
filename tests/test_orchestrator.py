@@ -255,3 +255,19 @@ def test_direct_route_uses_shared_confirmation_channel(orchestrator, monkeypatch
         "name": "direct_command",
         "args": {"action": "git pull", "risk": "medium", "external": False},
     }
+
+
+def test_session_exit_commands_are_configurable(config):
+    from core.orchestrator import _is_session_exit
+
+    config.set("voice.exit_commands", ["encerrar conversa", "voltar a esperar"])
+
+    assert _is_session_exit(" Encerrar Conversa ", config) is True
+    assert _is_session_exit("voltar a esperar", config) is True
+    assert _is_session_exit("sair", config) is False
+
+
+def test_session_exit_handles_missing_configuration(config):
+    from core.orchestrator import _is_session_exit
+
+    assert _is_session_exit("encerrar conversa", config) is False

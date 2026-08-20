@@ -468,11 +468,16 @@ class VoiceInput:
         logger.info("Transcrição: %r", text)
         return text
 
-    def listen_once(self, timeout: float = 6.0) -> str:
+    def listen_once(self, timeout: float = 6.0, *, announce_activation: bool = False) -> str:
         """
         Captura e transcreve um único utterance com tempo máximo de `timeout` segundos.
-        Usado pelo callback de confirmação por voz.
+
+        ``announce_activation`` é usado pela sessão hands-free para interromper
+        o TTS e atualizar o overlay antes de cada turno de seguimento. Fica
+        desativado por padrão para preservar o callback de confirmação existente.
         """
+        if announce_activation:
+            self._notify_activation()
         return self._capture_and_transcribe(max_duration=timeout, cue=True)
 
     def transcribe_file(self, path: str) -> str:

@@ -40,6 +40,14 @@ def _is_voice_exit(command: str) -> bool:
     return command.lower().strip() in _VOICE_EXIT_COMMANDS
 
 
+def _is_session_exit(command: str, config: Config) -> bool:
+    """Retorna se o usuário pediu o fim da conversa hands-free."""
+    normalized = command.casefold().strip()
+    configured = config.get("voice.exit_commands", []) or []
+    exits = {str(item).casefold().strip() for item in configured if str(item).strip()}
+    return normalized in exits
+
+
 # ── Importações lazy (evita falha se dependência ausente) ──────────────
 def _import_module(name: str):
     try:
@@ -790,6 +798,12 @@ class Orchestrator:
 
         mode = voice._mode
         keyword = self.config.get("wake_word.keyword", "paçoca")
+        hands_free = bool(self.config.get("voice.hands_free", False)) and mode != "push_to_talk"
+        followup_timeout = max(1.0, float(self.config.get("voice.followup_timeout_s", 8)))
+        max_turns = max(1, int(self.config.get("voice.max_turns", 20)))
+        session_end_message = str(
+            self.config.get("voice.session_end_message", "Encerrando a conversa.")
+        )
         if mode == "push_to_talk":
             trigger = "Ctrl+Shift+Space" if hotkeys and hotkeys._active else "Enter"
             print(f"[Paçoca] Modo push-to-talk ativo. Pressione {trigger} para falar.\n")
@@ -810,6 +824,8 @@ class Orchestrator:
 
         command_queue: _queue.Queue = _queue.Queue(maxsize=3)
         stop_listening = threading.Event()
+        session_active = threading.Event()
+        session_turns = [0]
         generation_lock = threading.Lock()
         activation_generation = [0]
 
@@ -841,12 +857,26 @@ class Orchestrator:
         def _listener_loop() -> None:
             while not stop_listening.is_set():
                 try:
-                    command = voice.listen_for_command()
-                    generation = _current_generation()
-                    if command:
-                        _enqueue_latest((command, generation))
-                    elif overlay:
-                        overlay.set_state_detail("idle", f"Aguardando {keyword}")
+                    if hands_free and session_active.is_set():
+                        command = voice.listen_once(
+                            timeout=followup_timeout,
+                            announce_activation=True,
+                        )
+                        generation = _current_generation()
+                        if command:
+                            _enqueue_latest((command, generation, True))
+                        else:
+                            session_active.clear()
+                            session_turns[0] = 0
+                            if overlay:
+                                overlay.set_state_detail("idle", f"Aguardando {keyword}")
+                    else:
+                        command = voice.listen_for_command()
+                        generation = _current_generation()
+                        if command:
+                            _enqueue_latest((command, generation, False))
+                        elif overlay:
+                            overlay.set_state_detail("idle", f"Aguardando {keyword}")
                 except Exception as exc:
                     if not stop_listening.is_set():
                         logger.warning("Escuta contínua falhou: %s", exc, exc_info=True)
@@ -861,16 +891,28 @@ class Orchestrator:
         try:
             while True:
                 try:
-                    command, command_generation = command_queue.get(timeout=0.25)
+                    command, command_generation, is_followup = command_queue.get(timeout=0.25)
                 except _queue.Empty:
                     continue
                 if command and _is_voice_exit(command):
                     stop_listening.set()
+                    session_active.clear()
                     self.tts.stop()
                     self.tts.speak("Até logo.")
                     print("[Paçoca] Encerrando modo voz.")
                     break
                 if command:
+                    if hands_free and not is_followup:
+                        session_active.set()
+                        session_turns[0] = 1
+                    if hands_free and _is_session_exit(command, self.config):
+                        session_active.clear()
+                        self.tts.stop()
+                        self.tts.speak(session_end_message)
+                        if overlay:
+                            overlay.set_state_detail("idle", f"Aguardando {keyword}")
+                        continue
+
                     logger.info(f"Comando recebido: {command}")
                     if overlay:
                         overlay.set_state("processing")
@@ -898,10 +940,22 @@ class Orchestrator:
                         learner.record(command, response or "", resolved=corrected, source="voice",
                                        success=success)
 
+                    if hands_free and not interrupted and session_active.is_set():
+                        session_turns[0] += 1
+                        if session_turns[0] >= max_turns:
+                            session_active.clear()
+                            session_turns[0] = 0
+                            self.tts.speak(session_end_message)
+                            logger.info("Sessão hands-free encerrada pelo limite de turnos")
+
                     if overlay and not interrupted:
-                        overlay.set_state_detail("idle", f"Aguardando {keyword}")
+                        overlay.set_state_detail(
+                            "idle",
+                            f"Aguardando {keyword}" if not session_active.is_set() else "Pode continuar",
+                        )
         finally:
             stop_listening.set()
+            session_active.clear()
             voice.set_activation_callback(None)
             if hotkeys:
                 hotkeys.stop()

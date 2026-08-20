@@ -737,3 +737,31 @@ MIT License — veja [LICENSE](LICENSE)
 ## Autor
 
 Desenvolvido por [Athy (AthirsonLamonato)](https://github.com/AthirsonLamonato)
+
+
+## Agente de voz contínuo no Windows
+
+O Paçoca pode permanecer em espera pela wake word e, após a primeira ativação, manter uma conversa hands-free sem exigir a wake word em cada frase. O modo é controlado por `voice.hands_free` em `core/config.yaml` e encerra a sessão quando não há fala dentro de `voice.followup_timeout_s`, quando o limite de `voice.max_turns` é atingido ou quando você diz `encerrar conversa`, `finalizar conversa` ou `voltar a esperar`.
+
+Para forçar o comportamento pela linha de comando, use:
+
+```powershell
+py main.py --mode voice --hands-free
+py main.py --mode voice --no-hands-free
+```
+
+A wake word continua sendo a primeira barreira de ativação. Ações críticas, como enviar mensagens, alterar calendário, executar operações Git ou fechar aplicativos, continuam sujeitas à confirmação configurada em `security.confirm_critical`. O modo hands-free não remove essa proteção.
+
+Para iniciar o agente automaticamente com o Windows, execute uma vez:
+
+```powershell
+py main.py --install-startup
+```
+
+A instalação ocorre apenas na pasta Startup do usuário atual, sem modificar o registro e sem exigir privilégios administrativos. Para remover:
+
+```powershell
+py main.py --remove-startup
+```
+
+O autostart executa o mesmo interpretador Python usado na instalação e inicia o modo de voz na raiz do projeto. Antes de ativá-lo, confirme que o microfone, o modelo Whisper e o mecanismo TTS funcionam com `py main.py --doctor --mode voice`.

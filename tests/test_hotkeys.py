@@ -94,3 +94,15 @@ def test_voice_activation_callback_is_immediate():
     voice._notify_activation()
 
     assert calls == ["activated"]
+
+
+def test_listen_once_can_announce_activation(monkeypatch):
+    voice = VoiceInput.__new__(VoiceInput)
+    calls = []
+    voice._activation_callback = lambda: calls.append("activated")
+    monkeypatch.setattr(voice, "_capture_and_transcribe", lambda **kwargs: "próximo comando")
+
+    result = voice.listen_once(timeout=4.0, announce_activation=True)
+
+    assert result == "próximo comando"
+    assert calls == ["activated"]

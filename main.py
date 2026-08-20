@@ -101,6 +101,28 @@ def parse_args():
         action="store_true",
         help="Verifica IA, voz, áudio, interface e dependências antes de iniciar",
     )
+    voice_group = parser.add_mutually_exclusive_group()
+    voice_group.add_argument(
+        "--hands-free",
+        action="store_true",
+        help="Mantém a conversa por voz após a primeira ativação",
+    )
+    voice_group.add_argument(
+        "--no-hands-free",
+        action="store_true",
+        help="Desativa a sessão contínua e exige nova ativação a cada comando",
+    )
+    startup_group = parser.add_mutually_exclusive_group()
+    startup_group.add_argument(
+        "--install-startup",
+        action="store_true",
+        help="Instala o agente de voz na inicialização do usuário no Windows",
+    )
+    startup_group.add_argument(
+        "--remove-startup",
+        action="store_true",
+        help="Remove o agente da inicialização do usuário no Windows",
+    )
     return parser.parse_args()
 
 
@@ -259,6 +281,24 @@ def main():
         config.set("overlay.enabled", False)
     if args.profile:
         config.set("profile.active", args.profile)
+    if args.hands_free:
+        config.set("voice.hands_free", True)
+    if args.no_hands_free:
+        config.set("voice.hands_free", False)
+
+    if args.install_startup or args.remove_startup:
+        from core import startup
+        try:
+            if args.install_startup:
+                target = startup.install_startup()
+                print(f"Autostart instalado em: {target}")
+            else:
+                removed = startup.remove_startup()
+                print("Autostart removido." if removed else "Autostart não estava instalado.")
+            return 0
+        except (OSError, RuntimeError) as exc:
+            print(f"Não foi possível alterar o autostart: {exc}")
+            return 1
 
     # Logging deve ser o primeiro subsistema a iniciar
     setup_logging(config)
@@ -313,7 +353,9 @@ def main():
 
     print(
         "\nPaçoca v0.6.0 — Assistente pessoal inteligente\n"
-        f"Modo: {args.mode} | Perfil: {config.get('profile.active', 'work')} | Ctrl+C encerra\n"
+                f"Modo: {args.mode} | Perfil: {config.get('profile.active', 'work')} | "
+        f"Hands-free: {'sim' if config.get('voice.hands_free', False) else 'não'} | Ctrl+C encerra\n"
+
     )
 
     # Avisa quando dados serão enviados para serviços externos

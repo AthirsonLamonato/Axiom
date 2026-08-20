@@ -17,6 +17,17 @@ wake_word:
                         # Deixe vazio para usar hey_jarvis como modelo de detecção
                         # Para treinar o modelo "Paçoca": github.com/dscripka/openWakeWord#training
 
+# ── Conversa contínua ─────────────────────────
+voice:
+  hands_free: true             # mantém a conversa após a primeira ativação
+  followup_timeout_s: 8        # silêncio para encerrar a sessão hands-free
+  max_turns: 20                # limite de segurança por sessão
+  session_end_message: "Encerrando a conversa."
+  exit_commands:
+    - encerrar conversa
+    - finalizar conversa
+    - voltar a esperar
+
 # ── Speech-to-Text ────────────────────────────
 stt:
   model: base           # base reduz a latência no CPU; small prioriza precisão
