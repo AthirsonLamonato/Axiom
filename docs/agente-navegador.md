@@ -47,3 +47,20 @@ As ferramentas já estão disponíveis para o loop agentivo do Paçoca. O módul
 O modo amplo também permite alcançar páginas de bancos, serviços financeiros e contas administrativas, portanto não reutilize o perfil principal do seu navegador sem entender esse risco. Ações de envio, exclusão, compra, publicação e alterações irreversíveis devem continuar exigindo confirmação explícita. A configuração não concede ao navegador permissão para executar comandos do sistema.
 
 O modo sem custo recomendado é executar o modelo e o navegador localmente no seu próprio computador. O navegador deve ser instalado manualmente apenas uma vez e o computador precisa permanecer ligado enquanto uma tarefa estiver sendo executada.
+
+## Planos supervisionados
+
+O dashboard expõe uma fila local para revisar e executar planos compostos. Um plano possui entre uma e trinta etapas e cada etapa contém o nome de uma ferramenta, seus argumentos e, opcionalmente, um texto esperado para verificação.
+
+Para criar um plano por API local:
+
+```bash
+curl -X POST http://127.0.0.1:7755/api/tasks/plan \
+  -H "Content-Type: application/json" \
+  -H "X-CSRF-Token: TOKEN_DA_SESSAO" \
+  -d '{"steps":[{"tool":"browser_start","args":{"url":"https://example.com"}},{"tool":"browser_inspect","args":{"max_chars":2000}}]}'
+```
+
+O plano aparece no painel **Planos de tarefas** do dashboard com os estados `pending`, `running`, `completed`, `failed` ou `rejected`. A execução só começa quando você clica em **Aprovar e executar**. A rejeição encerra o plano sem chamar nenhuma ferramenta.
+
+A aprovação do dashboard é a confirmação explícita das ações sensíveis que estejam dentro daquele plano. Mesmo assim, o agente para a sequência quando uma ferramenta falha ou quando a verificação definida para uma etapa não é satisfeita.

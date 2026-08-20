@@ -409,6 +409,11 @@ code{background:rgba(4,8,14,0.6); padding:1px 5px; border-radius:4px; font-famil
     <div id="cmd-response"></div>
   </div>
 
+  <!-- Planos supervisionados -->
+  <div class="card full">
+    <h2>Planos de tarefas</h2>
+    <div id="tasks-block" hx-get="/api/tasks-html" hx-trigger="load, every 5s" hx-swap="innerHTML">Carregando...</div>
+  </div>
   <!-- Lembretes -->
   <div class="card">
     <h2>Lembretes</h2>
@@ -729,6 +734,34 @@ connectEvtWs();
             </div>
         """)
 
+    @app.get("/api/tasks-html", response_class=HTMLResponse)
+    async def tasks_html():
+        from modules import task_store
+        tasks = task_store.list_tasks(20)
+        if not tasks:
+            return HTMLResponse('<div class="empty">Nenhum plano criado.</div>')
+        rows = []
+        for task in tasks:
+            tid = html_lib.escape(task["id"])
+            status = html_lib.escape(task["status"])
+            steps = html_lib.escape(str(len(task.get("steps", []))))
+            action = ""
+            if status == "pending":
+                action = (
+                    f'<button onclick="taskDecision(\'{tid}\', \'approve\')">Aprovar e executar</button>'
+                    f'<button class="danger" onclick="taskDecision(\'{tid}\', \'reject\')">Rejeitar</button>'
+                )
+            rows.append(f'<div class="routine-row"><span><b class="routine-name">{tid}</b> '
+                        f'<span class="routine-steps">{steps} etapa(s) — {status}</span></span>{action}</div>')
+        return HTMLResponse("".join(rows) + f'''<script>
+async function taskDecision(id, action) {{
+  const r = await fetch('/api/tasks/' + id + '/' + action, {{method:'POST', headers:{{'X-CSRF-Token':'{_CSRF_TOKEN}'}}}});
+  const data = await r.json();
+  if (!r.ok) alert(data.error || 'Falha na tarefa');
+  htmx.trigger('#tasks-block', 'load');
+}}
+</script>''')
+
     @app.get("/api/reminders-html", response_class=HTMLResponse)
     async def reminders_html():
         try:
@@ -886,6 +919,66 @@ connectEvtWs();
         return await routines_html()
 
     # ── JSON API ──────────────────────────────────────────────────────
+
+    # ── Planos supervisionados ───────────────────────────────────────
+    def _task_csrf_ok(request: Request) -> bool:
+        return request.headers.get("x-csrf-token") == _CSRF_TOKEN
+
+    @app.post("/api/tasks/plan")
+    async def create_task_plan(request: Request):
+        if not _task_csrf_ok(request):
+            return JSONResponse({"error": "Token CSRF inválido."}, status_code=403)
+        try:
+            payload = await request.json()
+            from modules import task_store
+            task = task_store.create(payload.get("steps", []))
+            push_event("task_created", f"Plano criado: {task['id']}")
+            return JSONResponse(task, status_code=201)
+        except Exception as exc:
+            return JSONResponse({"error": str(exc)}, status_code=400)
+
+    @app.get("/api/tasks")
+    async def list_task_plans():
+        from modules import task_store
+        return JSONResponse(task_store.list_tasks())
+
+    @app.get("/api/tasks/{task_id}")
+    async def get_task_plan(task_id: str):
+        from modules import task_store
+        task = task_store.get(task_id)
+        if task is None:
+            return JSONResponse({"error": "Tarefa não encontrada."}, status_code=404)
+        return JSONResponse(task)
+
+    @app.post("/api/tasks/{task_id}/approve")
+    async def approve_task_plan(task_id: str, request: Request):
+        if not _task_csrf_ok(request):
+            return JSONResponse({"error": "Token CSRF inválido."}, status_code=403)
+        try:
+            from modules import task_store
+            # O clique em “Aprovar e executar” é a confirmação explícita
+            # para as ações sensíveis contidas neste plano.
+            task = task_store.approve_and_run(task_id, confirm=lambda _name, _args: True)
+            push_event("task_updated", f"Plano atualizado: {task['id']} ({task['status']})")
+            return JSONResponse(task)
+        except KeyError as exc:
+            return JSONResponse({"error": str(exc)}, status_code=404)
+        except Exception as exc:
+            return JSONResponse({"error": str(exc)}, status_code=400)
+
+    @app.post("/api/tasks/{task_id}/reject")
+    async def reject_task_plan(task_id: str, request: Request):
+        if not _task_csrf_ok(request):
+            return JSONResponse({"error": "Token CSRF inválido."}, status_code=403)
+        try:
+            from modules import task_store
+            task = task_store.reject(task_id)
+            push_event("task_updated", f"Plano rejeitado: {task['id']}")
+            return JSONResponse(task)
+        except KeyError as exc:
+            return JSONResponse({"error": str(exc)}, status_code=404)
+        except Exception as exc:
+            return JSONResponse({"error": str(exc)}, status_code=400)
 
     @app.get("/api/status")
     async def api_status():
