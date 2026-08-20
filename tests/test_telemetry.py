@@ -97,3 +97,12 @@ def test_providers_counted_correctly():
     assert summary["providers"]["local"] == 1
 
 
+
+
+def test_error_sanitization_removes_credentials():
+    value = "request failed Bearer super-secret token=abc123 api_key=xyz789"
+    safe = telemetry._sanitize_error(value)
+    assert "super-secret" not in safe
+    assert "abc123" not in safe
+    assert "xyz789" not in safe
+    assert "***" in safe

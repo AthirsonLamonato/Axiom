@@ -6,6 +6,7 @@ Exposto via dashboard (GET /api/metrics) — sem conteúdo sensível.
 """
 
 import logging
+import re
 import threading
 import time
 from collections import deque
@@ -42,6 +43,16 @@ class LLMCallMetric:
 _command_log: deque[CommandMetric] = deque(maxlen=_MAX_ENTRIES)
 _llm_log:     deque[LLMCallMetric] = deque(maxlen=_MAX_ENTRIES)
 
+_SENSITIVE_ERROR_RE = re.compile(
+    r"(?i)(bearer\s+|(?:api[_-]?key|token|password|passwd|secret|cookie)\s*[:=]\s*)[^\s,;]+"
+)
+
+
+def _sanitize_error(value: str) -> str:
+    """Remove credenciais comuns antes de persistir ou expor erros."""
+    text = str(value or "")
+    return _SENSITIVE_ERROR_RE.sub(lambda m: m.group(1) + "***", text)[:180]
+
 # ── Escrita ───────────────────────────────────────────────────────────
 
 def record_command(
@@ -64,7 +75,7 @@ def record_command(
         latency_s=latency_s,
         success=success,
         fallback_used=fallback_used,
-        error=error,
+        error=_sanitize_error(error),
     )
     with _lock:
         _command_log.append(m)
@@ -146,7 +157,7 @@ def get_recent(n: int = 20) -> list[dict]:
             "latency_ms": round(e.latency_s * 1000, 1),
             "success": e.success,
             "fallback": e.fallback_used,
-            "error": e.error[:80] if e.error else "",
+            "error": _sanitize_error(e.error)[:80] if e.error else "",
         }
         for e in reversed(entries)
     ]
