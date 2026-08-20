@@ -70,7 +70,7 @@ overlay:
 
 # ── Agente e navegador ─────────────────────────
 agent:
-  require_plan_approval: false  # true = tool calls aguardam aprovação no dashboard
+  require_plan_approval: true   # tool calls aguardam aprovação no dashboard por padrão
 
 # Navegador do agente
 # Desativado por padrão. Ative somente após revisar os domínios autorizados.
