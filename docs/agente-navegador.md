@@ -64,3 +64,16 @@ curl -X POST http://127.0.0.1:7755/api/tasks/plan \
 O plano aparece no painel **Planos de tarefas** do dashboard com os estados `pending`, `running`, `completed`, `failed` ou `rejected`. A execução só começa quando você clica em **Aprovar e executar**. A rejeição encerra o plano sem chamar nenhuma ferramenta.
 
 A aprovação do dashboard é a confirmação explícita das ações sensíveis que estejam dentro daquele plano. Mesmo assim, o agente para a sequência quando uma ferramenta falha ou quando a verificação definida para uma etapa não é satisfeita.
+
+## Modo supervisionado do loop agentivo
+
+Para fazer com que pedidos complexos sejam apenas planejados e nunca executados diretamente pelo loop agentivo, ative:
+
+```yaml
+agent:
+  require_plan_approval: true
+```
+
+Quando o modelo selecionar ferramentas, o Paçoca criará um plano `pending` na fila local e responderá com o identificador do plano. Nenhuma ferramenta será executada nesse momento. Abra o dashboard, revise as etapas e clique em **Aprovar e executar** ou **Rejeitar**.
+
+Com `require_plan_approval: false`, o comportamento anterior permanece: o loop executa as ferramentas diretamente, respeitando as confirmações individuais já existentes. Para um agente pessoal que opere sites e formulários, o modo supervisionado é o recomendado.

@@ -66,7 +66,11 @@ overlay:
   duration_ms: 4000     # não usado (histórico de chat substitui as mensagens em toast); mantido p/ compat
   opacity: 0.92
 
-# ── Navegador do agente ────────────────────────
+# ── Agente e navegador ─────────────────────────
+agent:
+  require_plan_approval: false  # true = tool calls aguardam aprovação no dashboard
+
+# Navegador do agente
 # Desativado por padrão. Ative somente após revisar os domínios autorizados.
 browser:
   enabled: false

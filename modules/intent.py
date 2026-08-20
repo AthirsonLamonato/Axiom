@@ -1074,6 +1074,35 @@ def _parse_with_groq(command: str, config) -> list[dict]:
     return result
 
 
+def _defer_tool_calls_to_dashboard(tool_calls: list[dict], command: str) -> str:
+    """Cria um plano pendente para aprovação no dashboard, sem executar ferramentas."""
+    try:
+        from modules import task_store
+        from modules.task_agent import plan_from_tool_calls
+        steps = plan_from_tool_calls(tool_calls)
+        task = task_store.create([
+            {
+                "tool": step.tool,
+                "args": step.args,
+                "description": step.description,
+                "verify_contains": step.verify_contains,
+            }
+            for step in steps
+        ])
+        try:
+            from web.app import push_event
+            push_event("task_created", f"Plano criado pelo agente: {task['id']}")
+        except Exception:
+            pass
+        return (
+            f"Preparei o plano {task['id']} com {len(steps)} etapa(s), mas ainda não executei nada. "
+            "Revise e aprove o plano no dashboard do Paçoca."
+        )
+    except Exception as exc:
+        logger.error("Não foi possível criar plano pendente: %s", exc)
+        return f"Não consegui preparar o plano para aprovação: {exc}"
+
+
 def run_agentic_loop(command: str) -> str:
     """
     Loop agentivo completo com Groq:
@@ -1139,6 +1168,11 @@ def run_agentic_loop(command: str) -> str:
             logger.debug("run_agentic_loop: resposta final após %d turn(s)", turn + 1)
             _remember_semantic(command, executed_calls)
             return final
+
+        # Modo supervisionado: o primeiro conjunto de ações vira um plano
+        # pendente no dashboard, sem executar ferramentas diretamente.
+        if bool(config.get("agent.require_plan_approval", False)):
+            return _defer_tool_calls_to_dashboard(msg["tool_calls"], command)
 
         # Adiciona a mensagem do assistente (com as tool_calls) ao histórico
         messages.append({"role": "assistant", "content": msg.get("content") or "", "tool_calls": msg["tool_calls"]})
