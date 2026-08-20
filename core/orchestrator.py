@@ -800,6 +800,9 @@ class Orchestrator:
         keyword = self.config.get("wake_word.keyword", "paçoca")
         hands_free = bool(self.config.get("voice.hands_free", False)) and mode != "push_to_talk"
         followup_timeout = max(1.0, float(self.config.get("voice.followup_timeout_s", 8)))
+        followup_pre_speech_timeout = max(
+            0.2, float(self.config.get("voice.followup_pre_speech_timeout_s", 1.5))
+        )
         max_turns = max(1, int(self.config.get("voice.max_turns", 20)))
         session_end_message = str(
             self.config.get("voice.session_end_message", "Encerrando a conversa.")
@@ -861,6 +864,8 @@ class Orchestrator:
                         command = voice.listen_once(
                             timeout=followup_timeout,
                             announce_activation=True,
+                            activate_on_speech=True,
+                            pre_speech_timeout=followup_pre_speech_timeout,
                         )
                         generation = _current_generation()
                         if command:

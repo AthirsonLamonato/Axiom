@@ -20,7 +20,8 @@ wake_word:
 # ── Conversa contínua ─────────────────────────
 voice:
   hands_free: true             # mantém a conversa após a primeira ativação
-  followup_timeout_s: 8        # silêncio para encerrar a sessão hands-free
+  followup_timeout_s: 8        # silêncio total para encerrar a sessão hands-free
+  followup_pre_speech_timeout_s: 1.5  # espera pela fala antes de voltar ao modo de espera
   max_turns: 20                # limite de segurança por sessão
   session_end_message: "Encerrando a conversa."
   exit_commands:
@@ -37,7 +38,7 @@ stt:
   auto_calibrate: false # evita abrir o microfone no boot; diga "calibrar microfone" quando necessário
   noise_threshold: 300  # limiar de energia RMS (atualizado automaticamente na calibração)
   beep_enabled: true    # sinal curto: comece a falar depois dele
-  beam_size: 2          # equilíbrio entre precisão e velocidade no CPU
+  beam_size: 1          # resposta mais rápida no CPU; use 2 se priorizar precisão
   initial_prompt: "Comandos para Paçoca: Spotify, Chrome, navegador, volume, pausar, continuar, próxima música, abrir aplicativo, pesquisar na internet."
 
 # ── IA local (Ollama) ─────────────────────────

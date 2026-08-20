@@ -369,10 +369,17 @@ class VoiceInput:
         self,
         max_duration: float | None = None,
         cue: bool = True,
+        pre_speech_timeout: float | None = None,
+        on_speech_start=None,
     ) -> str:
         """Serializa o acesso ao microfone e executa uma captura completa."""
         with self._capture_lock:
-            return self._capture_and_transcribe_unlocked(max_duration=max_duration, cue=cue)
+            return self._capture_and_transcribe_unlocked(
+                max_duration=max_duration,
+                cue=cue,
+                pre_speech_timeout=pre_speech_timeout,
+                on_speech_start=on_speech_start,
+            )
 
     def _play_ready_cue(self) -> None:
         if not self.config.get("stt.beep_enabled", True):
@@ -391,13 +398,16 @@ class VoiceInput:
         self,
         max_duration: float | None = None,
         cue: bool = True,
+        pre_speech_timeout: float | None = None,
+        on_speech_start=None,
     ) -> str:
         import pyaudio
 
         language = self.config.get("stt.language", "pt")
         duration = max_duration or MAX_COMMAND_DURATION
         max_chunks = int(SAMPLE_RATE / CHUNK * duration)
-        speech_start_chunks = min(max_chunks, int(SAMPLE_RATE / CHUNK * PRE_SPEECH_TIMEOUT))
+        speech_timeout = PRE_SPEECH_TIMEOUT if pre_speech_timeout is None else max(0.2, float(pre_speech_timeout))
+        speech_start_chunks = min(max_chunks, int(SAMPLE_RATE / CHUNK * speech_timeout))
 
         if cue:
             self._play_ready_cue()
@@ -421,6 +431,11 @@ class VoiceInput:
                 if energy > self._noise_threshold:
                     if not voice_started:
                         frames.extend(pre_roll)
+                        if on_speech_start is not None:
+                            try:
+                                on_speech_start()
+                            except Exception:
+                                logger.debug("Callback de início de fala falhou", exc_info=True)
                     voice_started = True
                     voiced_chunks += 1
                     silence_count = 0
@@ -468,17 +483,31 @@ class VoiceInput:
         logger.info("Transcrição: %r", text)
         return text
 
-    def listen_once(self, timeout: float = 6.0, *, announce_activation: bool = False) -> str:
+    def listen_once(
+        self,
+        timeout: float = 6.0,
+        *,
+        announce_activation: bool = False,
+        pre_speech_timeout: float | None = None,
+        activate_on_speech: bool = False,
+    ) -> str:
         """
         Captura e transcreve um único utterance com tempo máximo de `timeout` segundos.
 
-        ``announce_activation`` é usado pela sessão hands-free para interromper
-        o TTS e atualizar o overlay antes de cada turno de seguimento. Fica
-        desativado por padrão para preservar o callback de confirmação existente.
+        Em seguimento hands-free, ``activate_on_speech`` chama o callback
+        somente quando a energia de voz realmente começa. Isso permite ouvir
+        a resposta e fazer barge-in sem cortar o TTS antes de o usuário falar.
+        O comportamento antigo, com ativação imediata, permanece disponível
+        quando ``announce_activation=True`` e ``activate_on_speech=False``.
         """
-        if announce_activation:
+        if announce_activation and not activate_on_speech:
             self._notify_activation()
-        return self._capture_and_transcribe(max_duration=timeout, cue=True)
+        return self._capture_and_transcribe(
+            max_duration=timeout,
+            cue=not announce_activation,
+            pre_speech_timeout=pre_speech_timeout,
+            on_speech_start=(self._notify_activation if activate_on_speech else None),
+        )
 
     def transcribe_file(self, path: str) -> str:
         language = self.config.get("stt.language", "pt")
