@@ -81,3 +81,20 @@ Com `require_plan_approval: false`, o comportamento anterior permanece: o loop e
 ## Downloads controlados
 
 A ferramenta `browser_download` pode acionar um link ou botão de download e salvar o arquivo em `data/downloads`. O caminho não pode escapar desse diretório, e o download exige confirmação porque pode criar arquivos no computador.
+
+## Modelos locais sem custo
+
+O Paçoca usa Ollama como provedor padrão para evitar dependência de API paga. O catálogo local em `core/ai_catalog.py` recomenda automaticamente um modelo conforme a memória RAM disponível. A recomendação padrão é `qwen3:4b`; em computadores com pouca memória, use `qwen3:1.7b`.
+
+Instale os modelos manualmente no Ollama:
+
+```bash
+ollama pull qwen3:4b
+ollama pull nomic-embed-text
+```
+
+O primeiro modelo é usado para conversa e ferramentas. O segundo é usado para memória semântica local. Para tarefas de programação, `qwen2.5-coder:3b` é uma opção auxiliar.
+
+O dashboard fornece os endpoints autenticados `GET /api/ai/models` e `GET /api/ai/diagnostics`. Eles informam o modelo recomendado, a memória detectada, o alcance do serviço Ollama e os modelos instalados, sem expor conversas ou chaves.
+
+O modo local não envia comandos para um provedor externo. O Groq e outros provedores remotos continuam disponíveis apenas quando configurados explicitamente.

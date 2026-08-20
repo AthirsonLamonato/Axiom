@@ -988,6 +988,52 @@ async function taskDecision(id, action) {{
         except Exception as exc:
             return JSONResponse({"error": str(exc)}, status_code=400)
 
+    @app.get("/api/ai/models")
+    async def api_ai_models():
+        """Catálogo local sem expor chaves ou dados de conversas."""
+        from core.ai_catalog import list_models, recommended_config, system_ram_gb
+        return JSONResponse({
+            "ram_gb": system_ram_gb(),
+            "recommended": recommended_config(),
+            "models": list_models(tools_only=True),
+        })
+
+    @app.get("/api/ai/diagnostics")
+    async def api_ai_diagnostics():
+        """Diagnóstico offline do provedor configurado e dos modelos instalados."""
+        import os
+        import requests as _req
+        from core.config import Config
+        from core.ai_catalog import recommend_model, system_ram_gb
+        cfg = Config()
+        provider = cfg.get("ai.provider", "ollama")
+        model = cfg.get("ai.model", "qwen3:1.7b")
+        url = cfg.get("ai.ollama_url", "http://localhost:11434").rstrip("/")
+        installed = []
+        reachable = False
+        error = ""
+        if provider in ("ollama", "auto"):
+            try:
+                response = _req.get(url + "/api/tags", timeout=2)
+                reachable = bool(response.ok)
+                installed = [m.get("name", "") for m in response.json().get("models", [])]
+            except Exception as exc:
+                error = str(exc)[:160]
+        configured = bool(os.environ.get("GROQ_API_KEY") or cfg.get("ai.groq_api_key", ""))
+        return JSONResponse({
+            "provider": provider,
+            "model": model,
+            "ollama_url": url,
+            "ollama_reachable": reachable,
+            "installed_models": installed,
+            "selected_model_installed": model in installed or any(model + ":" in name for name in installed),
+            "recommended_model": recommend_model(system_ram_gb()).name,
+            "ram_gb": system_ram_gb(),
+            "cloud_key_configured": configured,
+            "zero_cost_mode": provider == "ollama",
+            "error": error,
+        })
+
     @app.get("/api/status")
     async def api_status():
         return JSONResponse(_get_status_data())

@@ -27,8 +27,8 @@ stt:
 
 # ── IA local (Ollama) ─────────────────────────
 ai:
-  provider: groq        # ollama | groq
-  model: llama3         # llama3 | mistral | phi3 (modelos Ollama)
+  provider: ollama      # ollama | groq | auto — ollama evita custos de API
+  model: qwen3:4b       # use qwen3:1.7b em computadores com pouca RAM
   ollama_url: http://localhost:11434
   groq_model: llama-3.1-8b-instant  # sobrescrito por GROQ_MODEL no .env
   groq_api_key: ""                   # sobrescrito por GROQ_API_KEY no .env
@@ -36,8 +36,9 @@ ai:
   use_context: true     # injeta histórico da sessão no prompt (memória contextual)
   auto_learn: false     # extrai fatos de cada conversa e salva na KB (opt-in)
                         # quando true, cada troca é enviada ao LLM configurado
-  embeddings_provider: auto             # auto | gemini | ollama | none — memória semântica da KB
-  embeddings_model: gemini-embedding-001  # modelo Gemini (free tier)
+  embeddings_provider: ollama            # ollama | gemini | auto | none — modo sem custo
+  embeddings_model: nomic-embed-text      # usado quando o provedor for gemini
+
   embeddings_ollama_model: nomic-embed-text  # requer `ollama pull nomic-embed-text`
   embeddings_api_key: ""                # sobrescrito por GEMINI_API_KEY no .env
   system_prompt: |
