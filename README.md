@@ -56,6 +56,9 @@ python main.py --web
 
 # Editor de rotinas CLI
 python main.py --edit-routines
+
+# Diagnóstico de IA local, Ollama e segurança
+python main.py --doctor
 ```
 
 ---
