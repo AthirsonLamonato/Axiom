@@ -63,3 +63,10 @@ def test_file_not_found():
 def test_all_returns_dict(config):
     assert isinstance(config.all(), dict)
     assert "profile" in config.all()
+
+
+def test_distributed_config_requires_plan_approval_by_default():
+    repo_config = os.path.join(os.path.dirname(__file__), "..", "core", "config.yaml")
+    distributed = Config(repo_config)
+    assert distributed.get("agent.require_plan_approval") is True
+    assert distributed.get("ai.provider") == "ollama"
