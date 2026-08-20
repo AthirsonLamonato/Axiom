@@ -296,3 +296,33 @@ def test_auto_only_uses_cloud_first_when_explicitly_enabled(monkeypatch):
     monkeypatch.setattr(client, "_get_groq_key", lambda: (_ for _ in ()).throw(AssertionError("nuvem não deve ser consultada")))
     monkeypatch.setattr(client, "_ollama_chat", lambda messages, max_tokens=1024: "local")
     assert client.chat([{"role": "user", "content": "oi"}]) == "local"
+
+
+def test_ollama_error_is_available_for_diagnostics(monkeypatch):
+    import core.providers as p
+
+    class Config:
+        def get(self, key, default=None):
+            return {"ai.provider": "ollama", "ai.ollama_url": "http://127.0.0.1:9"}.get(key, default)
+
+    client = p.LLMClient(Config())
+    monkeypatch.setattr(p, "_retry_http", lambda fn, **kwargs: (_ for _ in ()).throw(RuntimeError("conexão recusada")))
+    assert client._ollama_chat([{"role": "user", "content": "oi"}]) == ""
+    assert "Ollama indisponível" in client.last_error
+
+
+def test_ollama_stream_failure_returns_actionable_message(monkeypatch):
+    import core.providers as p
+
+    class Config:
+        def get(self, key, default=None):
+            return {"ai.provider": "ollama", "ai.ollama_url": "http://127.0.0.1:9"}.get(key, default)
+
+    client = p.LLMClient(Config())
+    class BrokenRequests:
+        def post(self, *args, **kwargs):
+            raise RuntimeError("conexão recusada")
+    monkeypatch.setattr(p, "requests", BrokenRequests())
+    chunks = list(client._ollama_stream([{"role": "user", "content": "oi"}]))
+    assert chunks and "Ollama local" in chunks[0]
+    assert "Ollama indisponível" in client.last_error

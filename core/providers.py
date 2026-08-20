@@ -183,6 +183,12 @@ class LLMClient:
     def __init__(self, config):
         self.config = config
         self._groq_key: Optional[str] = None
+        self._last_error: str = ""
+
+    @property
+    def last_error(self) -> str:
+        """Último erro sanitizado do provedor, útil para diagnóstico local."""
+        return self._last_error
 
     def _get_groq_key(self) -> str:
         if not self._groq_key:
@@ -369,10 +375,12 @@ class LLMClient:
             )
             resp.raise_for_status()
             content = resp.json().get("message", {}).get("content", "").strip()
+            self._last_error = ""
             _emit_metric("ollama", time.monotonic() - t0, {})
             return content
         except Exception as e:
-            logger.warning("Ollama indisponível: %s", e)
+            self._last_error = f"Ollama indisponível: {str(e)[:180]}"
+            logger.warning("%s", self._last_error)
             return ""
 
     def _ollama_stream(self, messages: list[dict], max_tokens: int = 1024) -> Generator[str, None, None]:
@@ -404,7 +412,9 @@ class LLMClient:
                     except Exception:
                         pass
         except Exception as e:
-            logger.warning("Ollama stream indisponível: %s", e)
+            self._last_error = f"Ollama indisponível: {str(e)[:180]}"
+            logger.warning("%s", self._last_error)
+            yield "Não consegui acessar o Ollama local. Verifique se o Ollama está iniciado e se o modelo configurado foi baixado."
 
 
 # ── Cache simples com TTL ─────────────────────────────────────────────
