@@ -288,16 +288,36 @@ class TestAgenticLoop:
         assert result == ""
         mock_call.assert_not_called()
 
-    def test_returns_empty_string_for_non_groq_provider(self, tmp_path):
+    def test_ollama_provider_uses_local_agentic_path(self, tmp_path):
         import yaml
         from core.config import Config
         from modules.intent import run_agentic_loop
         data = {"ai": {"provider": "ollama"}, "logging": {"level": "WARNING", "file": str(tmp_path / "t.log"), "max_mb": 1}}
         path = tmp_path / "config.yaml"
         path.write_text(yaml.dump(data), encoding="utf-8")
-        with patch("core.config.Config", return_value=Config(str(path))):
+        cfg = Config(str(path))
+        with patch("core.config.Config", return_value=cfg), \
+             patch("modules.intent._parse_with_ollama_nlu", return_value=[]):
             result = run_agentic_loop("toca eminem")
         assert result == ""
+
+    def test_ollama_agentic_path_executes_tool(self, tmp_path):
+        import yaml
+        from core.config import Config
+        from modules.intent import run_agentic_loop
+        data = {"ai": {"provider": "ollama"}, "logging": {"level": "WARNING", "file": str(tmp_path / "t.log"), "max_mb": 1}}
+        path = tmp_path / "config.yaml"
+        path.write_text(yaml.dump(data), encoding="utf-8")
+        cfg = Config(str(path))
+        with patch("core.config.Config", return_value=cfg), \
+             patch("modules.intent._parse_with_ollama_nlu", return_value=[{"name": "control_media", "arguments": {"action": "pause"}}]), \
+             patch("modules.intent._execute_tool", return_value="Pausado com sucesso."), \
+             patch("modules.intent._confirm_action", return_value=True), \
+             patch("core.providers.get_client") as mock_client:
+            mock_client.return_value.chat.return_value = "Spotify pausado."
+            result = run_agentic_loop("pare a música")
+        assert result == "Spotify pausado."
+        mock_client.return_value.chat.assert_called_once()
 
     @patch("modules.intent._groq_call")
     @patch("modules.intent._build_kb_context", return_value="")

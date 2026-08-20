@@ -1175,6 +1175,52 @@ def _defer_tool_calls_to_dashboard(tool_calls: list[dict], command: str) -> str:
         return f"Não consegui preparar o plano para aprovação: {exc}"
 
 
+def _run_ollama_agentic_loop(command: str, config) -> str:
+    """Executa um ciclo agentivo local usando o parser NLU do Ollama."""
+    calls = _parse_with_ollama_nlu(command, config)
+    if not calls:
+        return ""
+    if bool(config.get("agent.require_plan_approval", False)):
+        tool_calls = [
+            {"function": {"name": c.get("name", ""), "arguments": json.dumps(c.get("arguments", {}), ensure_ascii=False)}}
+            for c in calls
+        ]
+        return _defer_tool_calls_to_dashboard(tool_calls, command)
+
+    results: list[str] = []
+    executed: list[dict] = []
+    for call in calls:
+        name = str(call.get("name", ""))
+        args = call.get("arguments") or {}
+        if not name or not isinstance(args, dict):
+            continue
+        arg_error = _check_required_args(name, args)
+        if arg_error:
+            results.append(arg_error)
+            continue
+        if _needs_confirmation(name, args) and not _confirm_action(name, args):
+            results.append(f"Ação '{name}' não executada: cancelada pelo usuário.")
+            continue
+        result = _execute_tool(name, args)
+        results.append(result)
+        if not result.startswith("Erro") and "não executada" not in result:
+            executed.append({"name": name, "arguments": args})
+
+    _remember_semantic(command, executed)
+    if not results:
+        return "Não consegui identificar uma ação executável para esse pedido."
+    joined = "\n".join(results)
+    try:
+        from core.providers import get_client
+        summary = get_client(config).chat([
+            {"role": "system", "content": "Resuma os resultados reais das ferramentas em português. Nunca diga que uma ação foi concluída se o resultado indicar erro ou cancelamento."},
+            {"role": "user", "content": f"Pedido: {command}\nResultados:\n{joined}"},
+        ], max_tokens=256)
+        return summary.strip() if isinstance(summary, str) and summary.strip() else joined
+    except Exception:
+        return joined
+
+
 def run_agentic_loop(command: str) -> str:
     """
     Loop agentivo completo com Groq:
@@ -1191,8 +1237,11 @@ def run_agentic_loop(command: str) -> str:
     except Exception:
         return ""
 
-    # Loop agentivo é exclusivo do Groq (provider=groq ou auto)
-    if config.get("ai.provider", "groq") not in ("groq", "auto"):
+    provider = config.get("ai.provider", "ollama")
+    if provider == "ollama":
+        return _run_ollama_agentic_loop(command, config)
+    # Loop completo com chamadas nativas de ferramentas é usado no Groq.
+    if provider not in ("groq", "auto"):
         return ""
 
     from core.providers import _resolve_key, _circuit_is_open
