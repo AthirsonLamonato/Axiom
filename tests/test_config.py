@@ -70,3 +70,32 @@ def test_distributed_config_requires_plan_approval_by_default():
     distributed = Config(repo_config)
     assert distributed.get("agent.require_plan_approval") is True
     assert distributed.get("ai.provider") == "ollama"
+
+
+
+def test_profile_policy_allows_work_profile_high_risk_by_default():
+    from core.security_policy import check_tool
+
+    allowed, reason = check_tool("close_application", "high")
+    assert allowed is True
+    assert reason == ""
+
+
+def test_profile_policy_blocks_high_risk_for_restricted_profile(monkeypatch):
+    from core import security_policy
+
+    monkeypatch.setattr(
+        security_policy,
+        "_config_data",
+        lambda: {
+            "profile": {"active": "focus"},
+            "security": {
+                "profile_policies": {
+                    "focus": {"max_risk": "medium", "allowed_tools": [], "denied_tools": []}
+                }
+            },
+        },
+    )
+    allowed, reason = security_policy.check_tool("close_application", "high")
+    assert allowed is False
+    assert "risco máximo" in reason

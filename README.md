@@ -678,3 +678,24 @@ Os planos supervisionados são persistidos em `data/task-plans.json`, sobrevivem
 ### IA local sem custo
 
 O Paçoca usa Ollama como provedor padrão para não depender de API paga. Para uma instalação equilibrada, execute `ollama pull qwen3:4b` e `ollama pull nomic-embed-text`. Em computadores com pouca RAM, use `qwen3:1.7b`. O catálogo e a recomendação automática ficam em `core/ai_catalog.py`; o dashboard expõe `GET /api/ai/models` e `GET /api/ai/diagnostics` para mostrar a memória detectada, o modelo recomendado, a conectividade do Ollama e os modelos instalados sem expor chaves.
+
+
+## Segurança operacional
+
+O executor de planos possui cancelamento cooperativo e timeout total. No dashboard, planos pendentes podem ser cancelados e planos em execução podem ser interrompidos entre etapas. Também é possível configurar perfis com risco máximo e listas de ferramentas permitidas ou bloqueadas em `security.profile_policies` no `core/config.yaml`.
+
+O perfil `work` mantém compatibilidade com todas as ferramentas, sempre respeitando confirmações. Perfis como `focus`, `meeting` e `night` podem restringir ações de alto risco. Por exemplo:
+
+```yaml
+security:
+  profile_policies:
+    focus:
+      max_risk: medium
+      allowed_tools: []
+      denied_tools:
+        - git_operation
+        - close_application
+        - send_whatsapp_message
+```
+
+Uma lista vazia em `allowed_tools` significa que todas as ferramentas abaixo do risco máximo são permitidas. A política é aplicada no registro central de ferramentas, antes da execução.

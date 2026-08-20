@@ -632,10 +632,15 @@ def validate(name: str, raw_args: dict) -> tuple[Optional[BaseModel], str]:
 
 
 def execute(name: str, validated: BaseModel) -> str:
-    """Executa a ferramenta com args já validados."""
+    """Executa a ferramenta com args já validados e política de perfil."""
     tool = REGISTRY.get(name)
     if not tool:
         return f"Ferramenta desconhecida: '{name}'"
+    from core.security_policy import check_tool
+    allowed, reason = check_tool(name, tool.risk)
+    if not allowed:
+        logger.warning("Ferramenta bloqueada por política: %s", reason)
+        return f"Ação bloqueada: {reason}"
     return tool.executor(validated)
 
 

@@ -94,6 +94,34 @@ security:
     - git push
     - git reset
     - rm -rf
+  # Políticas opcionais por perfil. Lista vazia em allowed_tools significa
+  # que todas as ferramentas abaixo do risco máximo ficam disponíveis.
+  profile_policies:
+    work:
+      max_risk: high
+      allowed_tools: []
+      denied_tools: []
+    casual:
+      max_risk: medium
+      allowed_tools: []
+      denied_tools:
+        - git_operation
+        - close_application
+    focus:
+      max_risk: medium
+      allowed_tools: []
+      denied_tools:
+        - git_operation
+        - close_application
+        - send_whatsapp_message
+    meeting:
+      max_risk: low
+      allowed_tools: []
+      denied_tools: []
+    night:
+      max_risk: low
+      allowed_tools: []
+      denied_tools: []
 
 # ── Transcrição ───────────────────────────────
 transcription:
