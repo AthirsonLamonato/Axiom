@@ -263,3 +263,36 @@ def test_ollama_chat_returns_text():
     client = get_client(Config())
     resp = client._ollama_chat([{"role": "user", "content": "responda apenas: ok"}], max_tokens=10)
     assert isinstance(resp, str)
+
+
+# ── Unit: seleção local por padrão ─────────────────────────────────────
+
+def test_chat_uses_ollama_by_default_without_reading_cloud_key(monkeypatch):
+    import core.providers as p
+
+    class Config:
+        def get(self, key, default=None):
+            return {"ai.provider": "ollama", "ai.model": "qwen3:4b"}.get(key, default)
+
+    client = p.LLMClient(Config())
+    calls = []
+    monkeypatch.setattr(client, "_get_groq_key", lambda: (_ for _ in ()).throw(AssertionError("não deve ler chave")))
+    monkeypatch.setattr(client, "_ollama_chat", lambda messages, max_tokens=1024: calls.append(messages) or "ok local")
+
+    assert client.chat([{"role": "user", "content": "oi"}]) == "ok local"
+    assert len(calls) == 1
+
+
+def test_auto_only_uses_cloud_first_when_explicitly_enabled(monkeypatch):
+    import core.providers as p
+
+    class Config:
+        def __init__(self, cloud_first):
+            self.cloud_first = cloud_first
+        def get(self, key, default=None):
+            return {"ai.provider": "auto", "ai.cloud_first": self.cloud_first}.get(key, default)
+
+    client = p.LLMClient(Config(False))
+    monkeypatch.setattr(client, "_get_groq_key", lambda: (_ for _ in ()).throw(AssertionError("nuvem não deve ser consultada")))
+    monkeypatch.setattr(client, "_ollama_chat", lambda messages, max_tokens=1024: "local")
+    assert client.chat([{"role": "user", "content": "oi"}]) == "local"

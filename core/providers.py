@@ -168,7 +168,7 @@ def _resolve_key(config_key: str, env_var: str, config) -> str:
 
 class LLMClient:
     """
-    Cliente de LLM online-first: Groq como principal, Ollama como fallback.
+    Cliente de LLM local-first: Ollama como padrão, com Groq opcional e explícito.
 
     Uso:
         client = LLMClient(config)
@@ -196,7 +196,7 @@ class LLMClient:
         )
 
     def _ollama_model(self) -> str:
-        return self.config.get("ai.model", "llama3")
+        return self.config.get("ai.model", "qwen3:4b")
 
     def _ollama_url(self) -> str:
         return self.config.get("ai.ollama_url", "http://localhost:11434")
@@ -214,7 +214,7 @@ class LLMClient:
     ) -> Any:
         """
         Envia mensagens ao LLM. Retorna str (ou Generator se stream=True).
-        Tenta Groq primeiro; cai para Ollama se circuit breaker aberto ou se Groq falhar.
+        Usa Ollama por padrão. Groq só é usado quando ai.provider=groq ou quando ai.provider=auto e ai.cloud_first=true.
         """
         if system:
             messages = [{"role": "system", "content": system}] + list(messages)
@@ -222,11 +222,13 @@ class LLMClient:
         # Trunca contexto muito longo antes de enviar
         messages = _truncate_messages(messages, max_chars=24_000)
 
-        provider = self.config.get("ai.provider", "groq")
-        groq_key = self._get_groq_key()
+        provider = self.config.get("ai.provider", "ollama")
+        cloud_first = bool(self.config.get("ai.cloud_first", False))
+        should_try_cloud = provider == "groq" or (provider == "auto" and cloud_first)
+        groq_key = self._get_groq_key() if should_try_cloud else ""
 
-        # Tenta Groq se configurado E circuit breaker fechado
-        if provider in ("groq", "auto") and groq_key and not _circuit_is_open():
+        # Groq só é prioritário quando explicitamente escolhido.
+        if (provider == "groq" or (provider == "auto" and cloud_first)) and groq_key and not _circuit_is_open():
             try:
                 if stream:
                     return self._groq_stream(messages, tools, tool_choice, max_tokens)
@@ -235,7 +237,7 @@ class LLMClient:
                 # _groq_raw() / _groq_stream() já registraram a falha — não duplicar
                 logger.warning("Groq falhou (%s) — usando Ollama como fallback.", e)
 
-        # Fallback para Ollama (sem suporte a tools)
+        # Ollama é o caminho padrão e não exige chave nem custo de API.
         if stream:
             return self._ollama_stream(messages, max_tokens)
         return self._ollama_chat(messages, max_tokens)

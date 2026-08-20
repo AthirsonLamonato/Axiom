@@ -28,6 +28,7 @@ stt:
 # ── IA local (Ollama) ─────────────────────────
 ai:
   provider: ollama      # ollama | groq | auto — ollama evita custos de API
+  cloud_first: false    # auto usa nuvem primeiro somente se true
   model: qwen3:4b       # use qwen3:1.7b em computadores com pouca RAM
   ollama_url: http://localhost:11434
   groq_model: llama-3.1-8b-instant  # sobrescrito por GROQ_MODEL no .env

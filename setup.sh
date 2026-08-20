@@ -112,18 +112,20 @@ if ! command -v ollama &>/dev/null; then
     echo "[INFO] Ollama não encontrado."
     echo "       Para usar IA local, instale via:"
     echo "       curl -fsSL https://ollama.com/install.sh | sh"
-    echo "       Depois execute: ollama pull llama3"
+    echo "       Depois execute: ollama pull qwen3:4b"
     echo "       Sem Ollama, o assistente usa DuckDuckGo para buscas."
 else
     OLLVER=$(ollama --version 2>&1 | head -1)
     echo "[OK] Ollama encontrado ($OLLVER)."
-    read -rp "Deseja baixar o modelo llama3 agora? (~4 GB) [s/N]: " BAIXAR
+    read -rp "Deseja baixar o modelo qwen3:4b agora? (~3 GB) [s/N]: " BAIXAR
     if [[ "$BAIXAR" =~ ^[sS]$ ]]; then
-        echo "Baixando llama3..."
-        ollama pull llama3
-        echo "[OK] Modelo llama3 pronto."
+        echo "Baixando qwen3:4b..."
+        ollama pull qwen3:4b
+        echo "Baixando nomic-embed-text..."
+        ollama pull nomic-embed-text
+        echo "[OK] Modelos locais prontos."
     else
-        echo "[INFO] Pulando. Execute 'ollama pull llama3' quando quiser."
+        echo "[INFO] Pulando. Execute 'ollama pull qwen3:4b' quando quiser."
     fi
 fi
 

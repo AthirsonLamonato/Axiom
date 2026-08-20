@@ -37,7 +37,7 @@ Ou manualmente:
 ```bash
 pip install -r requirements.txt
 pip install fastapi "uvicorn[standard]"
-ollama pull llama3
+ollama pull qwen3:4b
 ```
 
 ---
@@ -67,7 +67,7 @@ python main.py --edit-routines
 | **STT** | Transcrição via Whisper (`faster-whisper`). Calibração automática de ruído; VAD por energia RMS. Push-to-talk `ctrl+shift+space` por padrão; wake word via openWakeWord (sem API key, modelo customizável) |
 | **Janela de desktop** | Interface PyQt6 (`overlay.enabled: true`): histórico de conversa, caixa de texto, botão de microfone (comando de voz único) e botão de conta Google (Calendar/Drive). Toggle: `ctrl+shift+a`. Desabilitada, roda só por texto/voz no terminal |
 | **Transcrição** | Captura microfone ou loopback do sistema (Windows: WASAPI · Linux: PulseAudio). Auto-save a cada 5 min |
-| **Resumo / IA** | Resumo e explicações via Ollama (local) com fallback para Groq API (gratuito) |
+| **Resumo / IA** | Resumo e explicações via Ollama local, sem custo, com Groq apenas quando configurado explicitamente |
 | **Pesquisa** | Roteamento automático: perguntas factuais/atuais → DuckDuckGo + IA; demais → LLM local |
 | **Dev tools** | VS Code, abrir arquivo por nome, ir para linha, criar arquivo, git status/log/commit/push/pull/branch, rodar testes, explicar código via IA |
 | **Rotinas** | Sequências configuráveis em YAML com condições (`weekday`, `weekend`, `morning`, `afternoon`, `evening`). Suportam `schedule: {time, days}` para disparo **automático**, sem precisar de comando |
@@ -336,7 +336,7 @@ wake_word:
 # IA local
 ai:
   provider: ollama        # ollama | groq
-  model: llama3           # llama3 | mistral | phi3
+  model: qwen3:4b        # qwen3:1.7b em pouca RAM | qwen3:4b | qwen3:8b
 
 # Janela de desktop (texto + microfone + conta Google)
 overlay:
