@@ -750,7 +750,10 @@ connectEvtWs();
                 action = (
                     f'<button onclick="taskDecision(\'{tid}\', \'approve\')">Aprovar e executar</button>'
                     f'<button class="danger" onclick="taskDecision(\'{tid}\', \'reject\')">Rejeitar</button>'
+                    f'<button class="danger" onclick="taskDecision(\'{tid}\', \'cancel\')">Cancelar</button>'
                 )
+            elif status == "running":
+                action = f'<button class="danger" onclick="taskDecision(\'{tid}\', \'cancel\')">Interromper</button>'
             details = html_lib.escape(json.dumps(task.get("steps", []), ensure_ascii=False, indent=2))
             result_data = task.get("results", [])
             if task.get("error"):
@@ -968,6 +971,20 @@ async function taskDecision(id, action) {{
             # para as ações sensíveis contidas neste plano.
             task = task_store.approve_and_run(task_id, confirm=lambda _name, _args: True)
             push_event("task_updated", f"Plano atualizado: {task['id']} ({task['status']})")
+            return JSONResponse(task)
+        except KeyError as exc:
+            return JSONResponse({"error": str(exc)}, status_code=404)
+        except Exception as exc:
+            return JSONResponse({"error": str(exc)}, status_code=400)
+
+    @app.post("/api/tasks/{task_id}/cancel")
+    async def cancel_task_plan(task_id: str, request: Request):
+        if not _task_csrf_ok(request):
+            return JSONResponse({"error": "Token CSRF inválido."}, status_code=403)
+        try:
+            from modules import task_store
+            task = task_store.cancel(task_id)
+            push_event("task_updated", f"Cancelamento solicitado: {task['id']}")
             return JSONResponse(task)
         except KeyError as exc:
             return JSONResponse({"error": str(exc)}, status_code=404)

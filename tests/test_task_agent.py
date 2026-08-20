@@ -59,3 +59,50 @@ def test_execute_steps_requires_confirmation_for_sensitive_action():
     assert result.ok is False
     execute.assert_not_called()
     assert "não executada" in result.output
+
+
+
+def test_execute_steps_can_be_cancelled_before_next_step():
+    import threading
+
+    calls = []
+    cancel = threading.Event()
+
+    def fake_execute(name, args):
+        calls.append(name)
+        cancel.set()
+        return f"ok {name}"
+
+    with patch("modules.intent._execute_tool", side_effect=fake_execute), patch(
+        "modules.intent._needs_confirmation", return_value=False
+    ):
+        result = execute_steps(
+            [TaskStep("browser_start", {}), TaskStep("browser_inspect", {})],
+            cancel_event=cancel,
+        )
+
+    assert result.ok is False
+    assert result.cancelled is True
+    assert "cancelamento" in result.cancel_reason
+    assert calls == ["browser_start"]
+
+
+def test_execute_steps_stops_after_timeout():
+    calls = []
+
+    def fake_execute(name, args):
+        calls.append(name)
+        return f"ok {name}"
+
+    with patch("modules.intent._execute_tool", side_effect=fake_execute), patch(
+        "modules.intent._needs_confirmation", return_value=False
+    ):
+        result = execute_steps(
+            [TaskStep("browser_start", {}), TaskStep("browser_inspect", {})],
+            timeout_seconds=0,
+        )
+
+    assert result.ok is False
+    assert result.cancelled is True
+    assert "timeout" in result.cancel_reason
+    assert calls == []

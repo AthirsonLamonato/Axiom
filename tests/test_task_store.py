@@ -46,3 +46,24 @@ def test_plan_limits_number_of_steps():
         task_store.create([])
     with pytest.raises(ValueError, match="entre 1 e"):
         task_store.create([{"tool": "browser_inspect", "args": {}}] * 31)
+
+
+
+def test_cancel_pending_plan():
+    task = task_store.create([{"tool": "browser_inspect", "args": {}}])
+    cancelled = task_store.cancel(task["id"])
+    assert cancelled["status"] == "cancelled"
+    assert "antes da execução" in cancelled["error"]
+
+
+def test_cancel_running_plan_sets_request_event():
+    task = task_store.create([{"tool": "browser_inspect", "args": {}}])
+    with task_store._LOCK:
+        task_store._TASKS[task["id"]]["status"] = "running"
+        import threading
+        task_store._CANCEL_EVENTS[task["id"]] = threading.Event()
+    cancelled = task_store.cancel(task["id"])
+    assert cancelled["status"] == "running"
+    assert cancelled["cancel_requested"] is True
+    assert task_store._CANCEL_EVENTS[task["id"]].is_set()
+    task_store._CANCEL_EVENTS.pop(task["id"], None)

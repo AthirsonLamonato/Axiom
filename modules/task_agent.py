@@ -1,12 +1,14 @@
-"""Planejamento e execução supervisionada de tarefas compostas.
+"""Executor supervisionado de planos de tarefas.
 
-O módulo não inventa permissões próprias: reutiliza o ToolRegistry e o callback
-de confirmação do orquestrador. Cada etapa é validada, executada e verificada
-antes da próxima etapa começar.
+Cada etapa é validada, confirmada, executada e verificada antes da próxima.
+O executor também oferece cancelamento cooperativo e timeout total para evitar
+que uma automação fique presa indefinidamente.
 """
 
 from __future__ import annotations
 
+import threading
+import time
 from dataclasses import dataclass, field
 from typing import Callable, Iterable
 
@@ -31,13 +33,19 @@ class StepResult:
 class TaskResult:
     ok: bool
     results: list[StepResult] = field(default_factory=list)
+    cancelled: bool = False
+    cancel_reason: str = ""
 
     @property
     def output(self) -> str:
         return "\n".join(r.output for r in self.results)
 
 
-def _execute_with_confirmation(tool: str, args: dict, confirm: Callable[[str, dict], bool] | None) -> str:
+def _execute_with_confirmation(
+    tool: str,
+    args: dict,
+    confirm: Callable[[str, dict], bool] | None,
+) -> str:
     from modules.intent import _execute_tool, _needs_confirmation
 
     if _needs_confirmation(tool, args):
@@ -49,10 +57,38 @@ def _execute_with_confirmation(tool: str, args: dict, confirm: Callable[[str, di
 def execute_steps(
     steps: Iterable[TaskStep],
     confirm: Callable[[str, dict], bool] | None = None,
+    cancel_event: threading.Event | None = None,
+    timeout_seconds: float | None = None,
 ) -> TaskResult:
-    """Executa etapas em ordem e para no primeiro erro ou falha de verificação."""
+    """Executa etapas em ordem e para no primeiro erro ou falha de verificação.
+
+    ``cancel_event`` permite interromper o plano entre etapas. O timeout é total
+    para o plano e não tenta matar uma ferramenta já executando; nesse caso a
+    ferramenta termina naturalmente e nenhuma etapa posterior é iniciada.
+    """
     result = TaskResult(ok=True)
+    started = time.monotonic()
+    timeout = max(0.0, float(timeout_seconds)) if timeout_seconds is not None else None
+    event = cancel_event or threading.Event()
+
+    def stop_reason() -> str:
+        if event.is_set():
+            return "cancelamento solicitado pelo usuário"
+        if timeout is not None and time.monotonic() - started >= timeout:
+            return f"timeout do plano ({timeout:g}s)"
+        return ""
+
     for step in steps:
+        reason = stop_reason()
+        if reason:
+            result.ok = False
+            result.cancelled = True
+            result.cancel_reason = reason
+            result.results.append(
+                StepResult(step=step, ok=False, output=f"Plano interrompido: {reason}.")
+            )
+            break
+
         output = _execute_with_confirmation(step.tool, step.args, confirm)
         lowered = output.lower()
         failed = lowered.startswith(("erro", "args inválidos", "ferramenta desconhecida")) or "não executada" in lowered
@@ -62,6 +98,14 @@ def execute_steps(
         if not item.ok:
             result.ok = False
             break
+
+        reason = stop_reason()
+        if reason:
+            result.ok = False
+            result.cancelled = True
+            result.cancel_reason = reason
+            break
+
     return result
 
 

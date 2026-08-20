@@ -17,6 +17,7 @@ _MAX_STEPS = 30
 _DEFAULT_PATH = Path("data") / "task-plans.json"
 _STORE_PATH = Path(os.environ.get("PACOCA_TASK_STORE", str(_DEFAULT_PATH)))
 _TASKS: dict[str, dict[str, Any]] = {}
+_CANCEL_EVENTS: dict[str, threading.Event] = {}
 
 
 def _now() -> str:
@@ -107,7 +108,7 @@ def list_tasks(limit: int = 20) -> list[dict[str, Any]]:
         return [_public(item) for item in reversed(items)]
 
 
-def approve_and_run(task_id: str, confirm=None) -> dict[str, Any]:
+def approve_and_run(task_id: str, confirm=None, timeout_seconds: float | None = None) -> dict[str, Any]:
     with _LOCK:
         task = _TASKS.get(task_id)
         if task is None:
@@ -116,17 +117,26 @@ def approve_and_run(task_id: str, confirm=None) -> dict[str, Any]:
             raise ValueError(f"Tarefa não está pendente: {task['status']}.")
         task["status"] = "running"
         task["updated_at"] = _now()
+        task["cancel_requested"] = False
+        _CANCEL_EVENTS[task_id] = threading.Event()
         _persist_locked()
     try:
         steps = [TaskStep(**item) for item in task["steps"]]
-        result = execute_steps(steps, confirm=confirm)
+        result = execute_steps(
+            steps,
+            confirm=confirm,
+            cancel_event=_CANCEL_EVENTS.get(task_id),
+            timeout_seconds=timeout_seconds,
+        )
         with _LOCK:
-            task["status"] = "completed" if result.ok else "failed"
+            task["status"] = "cancelled" if result.cancelled else ("completed" if result.ok else "failed")
+            task["error"] = result.cancel_reason or task.get("error")
             task["results"] = [
                 {"tool": item.step.tool, "ok": item.ok, "verified": item.verified, "output": item.output}
                 for item in result.results
             ]
             task["updated_at"] = _now()
+            _CANCEL_EVENTS.pop(task_id, None)
             _persist_locked()
         return _public(task)
     except Exception as exc:
@@ -134,7 +144,31 @@ def approve_and_run(task_id: str, confirm=None) -> dict[str, Any]:
             task["status"] = "failed"
             task["error"] = str(exc)
             task["updated_at"] = _now()
+            _CANCEL_EVENTS.pop(task_id, None)
             _persist_locked()
+        return _public(task)
+
+
+def cancel(task_id: str) -> dict[str, Any]:
+    """Solicita cancelamento de um plano pendente ou em execução."""
+    with _LOCK:
+        task = _TASKS.get(task_id)
+        if task is None:
+            raise KeyError("Tarefa não encontrada.")
+        status = task.get("status")
+        if status == "pending":
+            task["status"] = "cancelled"
+            task["error"] = "Cancelada pelo usuário antes da execução."
+        elif status == "running":
+            task["cancel_requested"] = True
+            event = _CANCEL_EVENTS.get(task_id)
+            if event:
+                event.set()
+            task["error"] = "Cancelamento solicitado; aguardando a etapa atual terminar."
+        else:
+            raise ValueError(f"Tarefa não pode ser cancelada no estado: {status}.")
+        task["updated_at"] = _now()
+        _persist_locked()
         return _public(task)
 
 
