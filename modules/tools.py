@@ -76,8 +76,16 @@ class BrowserScreenshotArgs(BaseModel):
 
 class BrowserCloseArgs(BaseModel):
     pass
-
-
+class BrowserTabArgs(BaseModel):
+    index: int = Field(..., ge=0, le=50, description="Índice da aba")
+class BrowserWaitArgs(BaseModel):
+    seconds: float = Field(1.0, ge=0.1, le=20.0, description="Segundos de espera")
+class BrowserKeyArgs(BrowserSelectorArgs):
+    key: str = Field(..., min_length=1, max_length=40, description="Tecla ou combinação, por exemplo Enter")
+class BrowserSelectArgs(BrowserSelectorArgs):
+    value: str = Field(..., min_length=1, max_length=500, description="Valor da opção")
+class BrowserLinksArgs(BaseModel):
+    max_items: int = Field(30, ge=1, le=100, description="Quantidade máxima de links")
 class OpenFolderArgs(BaseModel):
     path: str = Field(..., min_length=1, description="Pasta a abrir")
 
@@ -273,11 +281,33 @@ def _exec_browser_fill(a: BrowserFillArgs) -> str:
     return browser_agent.fill(a.selector, a.value)
 
 
+def _exec_browser_tabs(a: BrowserCloseArgs) -> str:
+    from modules import browser_agent
+    return browser_agent.tabs()
+def _exec_browser_switch_tab(a: BrowserTabArgs) -> str:
+    from modules import browser_agent
+    return browser_agent.switch_tab(a.index)
+def _exec_browser_back(a: BrowserCloseArgs) -> str:
+    from modules import browser_agent
+    return browser_agent.back()
+def _exec_browser_forward(a: BrowserCloseArgs) -> str:
+    from modules import browser_agent
+    return browser_agent.forward()
+def _exec_browser_wait(a: BrowserWaitArgs) -> str:
+    from modules import browser_agent
+    return browser_agent.wait(a.seconds)
+def _exec_browser_press(a: BrowserKeyArgs) -> str:
+    from modules import browser_agent
+    return browser_agent.press(a.selector, a.key)
+def _exec_browser_select(a: BrowserSelectArgs) -> str:
+    from modules import browser_agent
+    return browser_agent.select(a.selector, a.value)
+def _exec_browser_links(a: BrowserLinksArgs) -> str:
+    from modules import browser_agent
+    return browser_agent.links(a.max_items)
 def _exec_browser_screenshot(a: BrowserScreenshotArgs) -> str:
     from modules import browser_agent
     return browser_agent.screenshot(a.path)
-
-
 def _exec_browser_close(a: BrowserCloseArgs) -> str:
     from modules import browser_agent
     return browser_agent.close()
@@ -429,6 +459,46 @@ REGISTRY: dict[str, ToolDef] = {
         schema_model=BrowserFillArgs,
         executor=_exec_browser_fill,
         risk="medium",
+    ),
+    "browser_tabs": ToolDef(
+        schema_model=BrowserCloseArgs,
+        executor=_exec_browser_tabs,
+        risk="low",
+    ),
+    "browser_switch_tab": ToolDef(
+        schema_model=BrowserTabArgs,
+        executor=_exec_browser_switch_tab,
+        risk="low",
+    ),
+    "browser_back": ToolDef(
+        schema_model=BrowserCloseArgs,
+        executor=_exec_browser_back,
+        risk="low",
+    ),
+    "browser_forward": ToolDef(
+        schema_model=BrowserCloseArgs,
+        executor=_exec_browser_forward,
+        risk="low",
+    ),
+    "browser_wait": ToolDef(
+        schema_model=BrowserWaitArgs,
+        executor=_exec_browser_wait,
+        risk="low",
+    ),
+    "browser_press": ToolDef(
+        schema_model=BrowserKeyArgs,
+        executor=_exec_browser_press,
+        risk="medium",
+    ),
+    "browser_select": ToolDef(
+        schema_model=BrowserSelectArgs,
+        executor=_exec_browser_select,
+        risk="medium",
+    ),
+    "browser_links": ToolDef(
+        schema_model=BrowserLinksArgs,
+        executor=_exec_browser_links,
+        risk="low",
     ),
     "browser_screenshot": ToolDef(
         schema_model=BrowserScreenshotArgs,

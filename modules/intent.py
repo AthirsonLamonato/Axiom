@@ -120,6 +120,70 @@ TOOLS = [
     {
         "type": "function",
         "function": {
+            "name": "browser_tabs",
+            "description": "Lista as abas abertas no navegador local com índice, título e URL.",
+            "parameters": {"type": "object", "properties": {}},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "browser_switch_tab",
+            "description": "Seleciona uma aba aberta pelo índice.",
+            "parameters": {"type": "object", "properties": {"index": {"type": "integer", "minimum": 0}}, "required": ["index"]},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "browser_back",
+            "description": "Volta uma página no histórico da aba atual.",
+            "parameters": {"type": "object", "properties": {}},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "browser_forward",
+            "description": "Avança uma página no histórico da aba atual.",
+            "parameters": {"type": "object", "properties": {}},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "browser_wait",
+            "description": "Aguarda a página carregar conteúdo dinâmico, por no máximo 20 segundos.",
+            "parameters": {"type": "object", "properties": {"seconds": {"type": "number", "minimum": 0.1, "maximum": 20}}},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "browser_press",
+            "description": "Pressiona uma tecla ou combinação em um elemento.",
+            "parameters": {"type": "object", "properties": {"selector": {"type": "string"}, "key": {"type": "string"}}, "required": ["selector", "key"]},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "browser_select",
+            "description": "Seleciona uma opção em um elemento select.",
+            "parameters": {"type": "object", "properties": {"selector": {"type": "string"}, "value": {"type": "string"}}, "required": ["selector", "value"]},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "browser_links",
+            "description": "Lista links visíveis ou disponíveis na página atual.",
+            "parameters": {"type": "object", "properties": {"max_items": {"type": "integer", "minimum": 1, "maximum": 100}}},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "browser_screenshot",
             "description": "Salva uma captura da página atual para inspeção.",
             "parameters": {

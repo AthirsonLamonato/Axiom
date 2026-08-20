@@ -1,22 +1,69 @@
-"""Fila em memória para planos supervisionados do dashboard local."""
+"""Fila persistente de planos supervisionados do dashboard local."""
 
 from __future__ import annotations
 
+import json
+import os
 import threading
 import uuid
-from dataclasses import asdict
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 from modules.task_agent import TaskStep, execute_steps
 
 _LOCK = threading.RLock()
-_TASKS: dict[str, dict[str, Any]] = {}
 _MAX_STEPS = 30
+_DEFAULT_PATH = Path("data") / "task-plans.json"
+_STORE_PATH = Path(os.environ.get("PACOCA_TASK_STORE", str(_DEFAULT_PATH)))
+_TASKS: dict[str, dict[str, Any]] = {}
 
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _persist_locked() -> None:
+    _STORE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    temporary = _STORE_PATH.with_suffix(".tmp")
+    temporary.write_text(json.dumps(_TASKS, ensure_ascii=False, indent=2), encoding="utf-8")
+    temporary.replace(_STORE_PATH)
+
+
+def _load() -> None:
+    if not _STORE_PATH.exists():
+        return
+    try:
+        loaded = json.loads(_STORE_PATH.read_text(encoding="utf-8"))
+        if isinstance(loaded, dict):
+            for task_id, task in loaded.items():
+                if isinstance(task, dict) and isinstance(task_id, str):
+                    if task.get("status") == "running":
+                        task["status"] = "failed"
+                        task["error"] = "Execução interrompida quando o Paçoca foi reiniciado."
+                        task["updated_at"] = _now()
+                    _TASKS[task_id] = task
+    except (OSError, ValueError):
+        # Um arquivo corrompido não impede o dashboard de iniciar.
+        return
+
+
+def _redact(value: Any, key: str = "") -> Any:
+    sensitive = ("password", "passwd", "secret", "token", "api_key", "apikey", "cookie", "authorization")
+    if any(part in key.lower() for part in sensitive):
+        return "[oculto]"
+    if isinstance(value, dict):
+        return {str(k): _redact(v, str(k)) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_redact(v, key) for v in value]
+    return value
+
+
+def _public(task: dict[str, Any]) -> dict[str, Any]:
+    return _redact(task)
+
+
+_load()
 
 
 def create(steps: list[dict[str, Any]]) -> dict[str, Any]:
@@ -44,19 +91,20 @@ def create(steps: list[dict[str, Any]]) -> dict[str, Any]:
     }
     with _LOCK:
         _TASKS[task_id] = task
-    return task.copy()
+        _persist_locked()
+    return _public(task)
 
 
 def get(task_id: str) -> dict[str, Any] | None:
     with _LOCK:
         task = _TASKS.get(task_id)
-        return task.copy() if task else None
+        return _public(task) if task else None
 
 
 def list_tasks(limit: int = 20) -> list[dict[str, Any]]:
     with _LOCK:
         items = list(_TASKS.values())[-max(1, min(limit, 100)):]
-        return [item.copy() for item in reversed(items)]
+        return [_public(item) for item in reversed(items)]
 
 
 def approve_and_run(task_id: str, confirm=None) -> dict[str, Any]:
@@ -68,6 +116,7 @@ def approve_and_run(task_id: str, confirm=None) -> dict[str, Any]:
             raise ValueError(f"Tarefa não está pendente: {task['status']}.")
         task["status"] = "running"
         task["updated_at"] = _now()
+        _persist_locked()
     try:
         steps = [TaskStep(**item) for item in task["steps"]]
         result = execute_steps(steps, confirm=confirm)
@@ -78,13 +127,15 @@ def approve_and_run(task_id: str, confirm=None) -> dict[str, Any]:
                 for item in result.results
             ]
             task["updated_at"] = _now()
-        return task.copy()
+            _persist_locked()
+        return _public(task)
     except Exception as exc:
         with _LOCK:
             task["status"] = "failed"
             task["error"] = str(exc)
             task["updated_at"] = _now()
-        return task.copy()
+            _persist_locked()
+        return _public(task)
 
 
 def reject(task_id: str) -> dict[str, Any]:
@@ -96,4 +147,5 @@ def reject(task_id: str) -> dict[str, Any]:
             raise ValueError(f"Tarefa não está pendente: {task['status']}.")
         task["status"] = "rejected"
         task["updated_at"] = _now()
-        return task.copy()
+        _persist_locked()
+        return _public(task)

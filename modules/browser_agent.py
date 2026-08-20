@@ -132,6 +132,62 @@ class BrowserAgent:
         page.locator(selector).first.fill(value)
         return f"Campo preenchido: {selector}"
 
+    def tabs(self) -> str:
+        context = self._context
+        if context is None:
+            raise BrowserAgentError("Nenhuma sessão do navegador está aberta. Use browser_start primeiro.")
+        payload = [{"index": i, "url": page.url, "title": page.title()} for i, page in enumerate(context.pages)]
+        return json.dumps(payload, ensure_ascii=False, indent=2)
+
+    def switch_tab(self, index: int) -> str:
+        context = self._context
+        if context is None:
+            raise BrowserAgentError("Nenhuma sessão do navegador está aberta. Use browser_start primeiro.")
+        pages = context.pages
+        if index < 0 or index >= len(pages):
+            raise BrowserAgentError(f"Aba inexistente: {index}. Existem {len(pages)} aba(s).")
+        self._page = pages[index]
+        return f"Aba selecionada: {index} — {self._page.title()} ({self._page.url})"
+
+    def back(self) -> str:
+        page = self._require_page()
+        page.go_back(wait_until="domcontentloaded")
+        return f"Voltou para: {page.title()} ({page.url})"
+
+    def forward(self) -> str:
+        page = self._require_page()
+        page.go_forward(wait_until="domcontentloaded")
+        return f"Avançou para: {page.title()} ({page.url})"
+
+    def wait(self, seconds: float = 1.0) -> str:
+        page = self._require_page()
+        seconds = max(0.1, min(float(seconds), 20.0))
+        page.wait_for_timeout(int(seconds * 1000))
+        return f"Aguardou {seconds:g} segundo(s)."
+
+    def press(self, selector: str, key: str) -> str:
+        page = self._require_page()
+        if not selector.strip() or not key.strip():
+            raise BrowserAgentError("Seletor e tecla são obrigatórios.")
+        page.locator(selector).first.press(key, timeout=10000)
+        return f"Tecla {key} pressionada em {selector}."
+
+    def select(self, selector: str, value: str) -> str:
+        page = self._require_page()
+        if not selector.strip() or not value.strip():
+            raise BrowserAgentError("Seletor e valor são obrigatórios.")
+        page.locator(selector).first.select_option(value)
+        return f"Opção selecionada em {selector}."
+
+    def links(self, max_items: int = 30) -> str:
+        page = self._require_page()
+        max_items = max(1, min(int(max_items), 100))
+        rows = page.locator("a").evaluate_all(
+            """(els, limit) => els.slice(0, limit).map(a => ({text: (a.innerText || '').trim(), href: a.href}))""",
+            max_items,
+        )
+        return json.dumps(rows, ensure_ascii=False, indent=2)
+
     def screenshot(self, path: str = "data/browser-last.png") -> str:
         page = self._require_page()
         output = Path(path)
@@ -176,6 +232,38 @@ def click(selector: str) -> str:
 
 def fill(selector: str, value: str) -> str:
     return get_agent().fill(selector, value)
+
+
+def tabs() -> str:
+    return get_agent().tabs()
+
+
+def switch_tab(index: int) -> str:
+    return get_agent().switch_tab(index)
+
+
+def back() -> str:
+    return get_agent().back()
+
+
+def forward() -> str:
+    return get_agent().forward()
+
+
+def wait(seconds: float = 1.0) -> str:
+    return get_agent().wait(seconds)
+
+
+def press(selector: str, key: str) -> str:
+    return get_agent().press(selector, key)
+
+
+def select(selector: str, value: str) -> str:
+    return get_agent().select(selector, value)
+
+
+def links(max_items: int = 30) -> str:
+    return get_agent().links(max_items)
 
 
 def screenshot(path: str = "data/browser-last.png") -> str:

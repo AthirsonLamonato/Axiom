@@ -34,6 +34,13 @@ def test_approve_runs_and_records_results():
     execute.assert_called_once()
 
 
+def test_sensitive_arguments_are_redacted_in_public_plan():
+    task = task_store.create([{"tool": "browser_fill", "args": {"selector": "#password", "password": "segredo"}}])
+    assert task["steps"][0]["args"]["password"] == "[oculto]"
+    stored = task_store._TASKS[task["id"]]
+    assert stored["steps"][0]["args"]["password"] == "segredo"
+
+
 def test_plan_limits_number_of_steps():
     with pytest.raises(ValueError, match="entre 1 e"):
         task_store.create([])

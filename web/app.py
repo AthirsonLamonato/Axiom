@@ -751,8 +751,11 @@ connectEvtWs();
                     f'<button onclick="taskDecision(\'{tid}\', \'approve\')">Aprovar e executar</button>'
                     f'<button class="danger" onclick="taskDecision(\'{tid}\', \'reject\')">Rejeitar</button>'
                 )
+            details = html_lib.escape(json.dumps(task.get("steps", []), ensure_ascii=False, indent=2))
             rows.append(f'<div class="routine-row"><span><b class="routine-name">{tid}</b> '
-                        f'<span class="routine-steps">{steps} etapa(s) — {status}</span></span>{action}</div>')
+                        f'<span class="routine-steps">{steps} etapa(s) — {status}</span>'
+                        f'<details style="margin-top:6px"><summary>Ver etapas</summary><pre style="white-space:pre-wrap;color:var(--muted);font-size:.78em">{details}</pre></details>'
+                        f'</span>{action}</div>')
         return HTMLResponse("".join(rows) + f'''<script>
 async function taskDecision(id, action) {{
   const r = await fetch('/api/tasks/' + id + '/' + action, {{method:'POST', headers:{{'X-CSRF-Token':'{_CSRF_TOKEN}'}}}});
