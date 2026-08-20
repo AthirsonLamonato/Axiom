@@ -152,6 +152,7 @@ obsidian:
 # ── Backup ────────────────────────────────────
 backup:
   local_dir: data/backups
+  keep: 10                    # quantidade máxima de backups locais mantidos
   auto_schedule: true        # agenda backup automático diário
   daily_time: "23:30"        # horário do backup automático (HH:MM)
   google_drive:

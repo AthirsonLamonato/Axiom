@@ -699,3 +699,10 @@ security:
 ```
 
 Uma lista vazia em `allowed_tools` significa que todas as ferramentas abaixo do risco máximo são permitidas. A política é aplicada no registro central de ferramentas, antes da execução.
+
+
+### Backup e restauração local
+
+O backup automático inclui transcrições, resumos, a base de conhecimento e planos persistentes. Cada cópia contém um `manifest.json` com os itens incluídos e excluídos. Perfil do navegador, downloads, credenciais e tokens nunca entram no backup automático. A quantidade de cópias mantidas é controlada por `backup.keep`.
+
+A restauração deve ser feita somente com um caminho criado pelo próprio Paçoca dentro de `backup.local_dir`; caminhos externos são rejeitados. A função restaura apenas diretórios e arquivos reconhecidos (`transcriptions`, `summaries`, `kb` e `task-plans.json`).

@@ -3,10 +3,12 @@ modules/backup.py — Backup automático de transcrições e resumos
 Salva localmente e opcionalmente no Google Drive.
 """
 
+import json
 import logging
 import os
 import shutil
 from datetime import datetime
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -32,11 +34,26 @@ def backup_all(*_) -> str:
     os.makedirs(backup_path, exist_ok=True)
 
     results = []
-    for folder in ("data/transcriptions", "data/summaries"):
+    # Dados úteis para recuperação; credenciais, perfil do navegador e downloads
+    # ficam deliberadamente fora do backup automático.
+    for folder in ("data/transcriptions", "data/summaries", "data/kb"):
         if os.path.exists(folder):
             dest = os.path.join(backup_path, os.path.basename(folder))
-            shutil.copytree(folder, dest)
+            shutil.copytree(folder, dest, dirs_exist_ok=True)
             results.append(folder)
+    for file_path in ("data/task-plans.json",):
+        if os.path.isfile(file_path):
+            shutil.copy2(file_path, os.path.join(backup_path, os.path.basename(file_path)))
+            results.append(file_path)
+
+    manifest = {
+        "created_at": datetime.now().isoformat(timespec="seconds"),
+        "items": results,
+        "excluded": ["browser-profile", "downloads", "credentials", "tokens"],
+    }
+    with open(os.path.join(backup_path, "manifest.json"), "w", encoding="utf-8") as f:
+        json.dump(manifest, f, ensure_ascii=False, indent=2)
+    _apply_retention(local_dir, int(config.get("backup.keep", 10)))
 
     msg = f"Backup local criado em {backup_path}."
     logger.info(msg)
@@ -46,6 +63,59 @@ def backup_all(*_) -> str:
         msg += f" {drive_result}"
 
     return msg
+
+
+def list_backups() -> list[dict]:
+    """Lista backups locais sem expor conteúdo sensível."""
+    local_dir = _get_config().get("backup.local_dir", "data/backups")
+    root = Path(local_dir)
+    if not root.exists():
+        return []
+    result = []
+    for path in sorted(root.glob("backup_*"), reverse=True):
+        if path.is_dir():
+            manifest = path / "manifest.json"
+            data = {}
+            if manifest.exists():
+                try:
+                    data = json.loads(manifest.read_text(encoding="utf-8"))
+                except Exception:
+                    data = {}
+            result.append({"path": str(path), "created_at": data.get("created_at", path.name), "items": data.get("items", [])})
+    return result
+
+
+def restore_backup(backup_path: str) -> str:
+    """Restaura somente os dados suportados de um backup local conhecido."""
+    config = _get_config()
+    root = Path(config.get("backup.local_dir", "data/backups")).resolve()
+    source = Path(backup_path).resolve()
+    if root not in source.parents or not source.is_dir() or not source.name.startswith("backup_"):
+        raise ValueError("Backup inválido: o caminho precisa estar dentro do diretório de backups.")
+    allowed = {"transcriptions", "summaries", "kb", "task-plans.json"}
+    restored = []
+    for child in source.iterdir():
+        if child.name == "manifest.json":
+            continue
+        if child.name not in allowed:
+            continue
+        target = Path("data") / child.name
+        if child.is_dir():
+            shutil.copytree(child, target, dirs_exist_ok=True)
+        else:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(child, target)
+        restored.append(child.name)
+    return f"Backup restaurado: {', '.join(restored) if restored else 'nenhum dado encontrado'}."
+
+
+def _apply_retention(local_dir: str, keep: int):
+    if keep <= 0:
+        return
+    root = Path(local_dir)
+    backups = sorted((p for p in root.glob("backup_*") if p.is_dir()), reverse=True)
+    for old in backups[keep:]:
+        shutil.rmtree(old, ignore_errors=True)
 
 
 def _get_drive_service(config):
