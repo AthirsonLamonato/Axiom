@@ -665,3 +665,9 @@ MIT License — veja [LICENSE](LICENSE)
 ## Autor
 
 Desenvolvido por [Athy (AthirsonLamonato)](https://github.com/AthirsonLamonato)
+
+### Capacidades ampliadas do agente de navegador
+
+Além das operações básicas, o navegador local agora suporta abas, histórico, espera por conteúdo dinâmico, teclas, seleção de opções, listagem de links e downloads controlados. Downloads exigem confirmação e são salvos somente em `data/downloads`; screenshots são limitados ao diretório `data/`.
+
+Os planos supervisionados são persistidos em `data/task-plans.json`, sobrevivem a reinícios e ocultam valores de credenciais na resposta do dashboard. A página de planos mostra as etapas antes da aprovação e os resultados detalhados depois da execução. A suíte de integração cobre autenticação, CSRF, criação, rejeição e consulta de planos.
